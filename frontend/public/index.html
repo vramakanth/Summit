@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Applied — Job Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+  --bg: #0e0e0f; --bg2: #161617; --bg3: #1e1e20; --bg4: #262628;
+  --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+  --text: #f0ede8; --text2: #9c9894; --text3: #5c5a57;
+  --accent: #c8f060; --accent2: #a8d040;
+  --red: #ff6b6b; --blue: #6ba3ff; --amber: #ffb347; --green: #6bffb3; --purple: #b47fff;
+  --radius: 10px; --radius-sm: 6px;
+}
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; }
+
+/* ─── AUTH SCREENS ─── */
+.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
+.auth-card { width: 100%; max-width: 400px; }
+.auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
+.auth-logo-mark { width: 36px; height: 36px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.auth-logo-mark svg { width: 20px; height: 20px; }
+.auth-logo-text { font-size: 20px; font-weight: 500; letter-spacing: -0.5px; }
+.auth-logo-sub { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+.auth-heading { font-size: 24px; font-weight: 500; letter-spacing: -0.5px; margin-bottom: 6px; }
+.auth-sub { font-size: 13px; color: var(--text2); margin-bottom: 32px; line-height: 1.6; }
+.auth-field { margin-bottom: 14px; }
+.auth-field label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 6px; letter-spacing: 0.5px; }
+.auth-field input { width: 100%; padding: 11px 14px; background: var(--bg2); border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-family: var(--font); font-size: 14px; color: var(--text); outline: none; transition: border-color 0.15s; }
+.auth-field input:focus { border-color: var(--accent); }
+.auth-field input::placeholder { color: var(--text3); }
+.auth-btn { width: 100%; padding: 12px; background: var(--accent); color: #0e0e0f; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 8px; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.auth-btn:hover { background: var(--accent2); }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-switch { margin-top: 24px; text-align: center; font-size: 13px; color: var(--text2); }
+.auth-switch a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.auth-switch a:hover { text-decoration: underline; }
+.auth-error { background: rgba(255,107,107,0.1); border: 0.5px solid rgba(255,107,107,0.3); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--red); margin-bottom: 16px; display: none; }
+.auth-error.show { display: block; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+.auth-divider-line { flex: 1; height: 0.5px; background: var(--border); }
+.auth-divider-text { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+
+/* ─── APP SHELL ─── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* SIDEBAR */
+.sidebar { width: 260px; min-width: 260px; background: var(--bg2); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-header { padding: 20px 16px 12px; border-bottom: 0.5px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.logo-mark { width: 28px; height: 28px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.logo-mark svg { width: 16px; height: 16px; }
+.logo-text { font-size: 15px; font-weight: 500; letter-spacing: -0.3px; }
+.logo-sub { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+.add-btn { width: 100%; padding: 9px 12px; background: var(--accent); color: #0e0e0f; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s; }
+.add-btn:hover { background: var(--accent2); }
+.sidebar-search { padding: 10px 16px; }
+.search-input { width: 100%; padding: 7px 10px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text); outline: none; }
+.search-input::placeholder { color: var(--text3); }
+.search-input:focus { border-color: var(--border2); }
+.filter-tabs { display: flex; gap: 4px; padding: 0 16px 10px; flex-wrap: wrap; }
+.filter-tab { padding: 4px 10px; border-radius: 100px; font-size: 11px; font-family: var(--mono); cursor: pointer; border: 0.5px solid var(--border); color: var(--text2); background: transparent; transition: all 0.15s; white-space: nowrap; }
+.filter-tab.active { background: var(--accent); color: #0e0e0f; border-color: transparent; font-weight: 500; }
+.job-list { flex: 1; overflow-y: auto; padding: 8px; }
+.job-list::-webkit-scrollbar { width: 4px; }
+.job-list::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.job-item { padding: 12px; border-radius: var(--radius-sm); cursor: pointer; margin-bottom: 4px; border: 0.5px solid transparent; transition: all 0.15s; }
+.job-item:hover { background: var(--bg3); }
+.job-item.active { background: var(--bg3); border-color: var(--border); }
+.job-item-company { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-bottom: 2px; }
+.job-item-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-item-meta { display: flex; align-items: center; gap: 6px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.empty-list { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 13px; }
+
+/* USER BAR */
+.user-bar { padding: 12px 16px; border-top: 0.5px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.user-avatar { width: 28px; height: 28px; border-radius: 50%; background: rgba(200,240,96,0.15); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: var(--accent); font-family: var(--mono); flex-shrink: 0; }
+.user-name { font-size: 12px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logout-btn { background: none; border: none; cursor: pointer; color: var(--text3); padding: 4px; border-radius: 4px; transition: color 0.15s; display: flex; }
+.logout-btn:hover { color: var(--red); }
+
+/* MAIN */
+.main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; color: var(--text2); }
+.empty-state svg { width: 64px; height: 64px; opacity: 0.15; margin-bottom: 20px; }
+.empty-state h2 { font-size: 18px; font-weight: 500; color: var(--text); margin-bottom: 8px; }
+.empty-state p { font-size: 13px; line-height: 1.7; max-width: 320px; }
+.detail-view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.detail-view::-webkit-scrollbar { width: 4px; }
+.detail-view::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.detail-header { padding: 24px 28px 20px; border-bottom: 0.5px solid var(--border); display: flex; align-items: flex-start; gap: 16px; }
+.detail-header-info { flex: 1; }
+.detail-company { font-size: 12px; font-family: var(--mono); color: var(--text2); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.detail-company a { color: var(--blue); text-decoration: none; font-size: 11px; }
+.detail-company a:hover { text-decoration: underline; }
+.detail-title { font-size: 22px; font-weight: 500; letter-spacing: -0.5px; margin-bottom: 12px; }
+.detail-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.status-select { padding: 5px 28px 5px 10px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: 100px; font-family: var(--mono); font-size: 11px; color: var(--text); cursor: pointer; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235c5a57' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+.date-added { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.action-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.icon-btn { width: 34px; height: 34px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; color: var(--text2); }
+.icon-btn:hover { background: var(--bg4); color: var(--text); }
+.icon-btn.danger:hover { background: rgba(255,107,107,0.1); color: var(--red); border-color: rgba(255,107,107,0.3); }
+.detail-tabs { display: flex; border-bottom: 0.5px solid var(--border); padding: 0 28px; }
+.detail-tab { padding: 12px 0; margin-right: 24px; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { padding: 24px 28px; flex: 1; }
+
+/* NOTES */
+.notes-compose { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 20px; }
+.notes-textarea { width: 100%; background: transparent; border: none; outline: none; font-family: var(--font); font-size: 13px; color: var(--text); resize: none; min-height: 70px; line-height: 1.6; }
+.notes-textarea::placeholder { color: var(--text3); }
+.notes-actions { display: flex; justify-content: flex-end; margin-top: 10px; gap: 8px; align-items: center; }
+.note-ts-preview { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.save-note-btn { padding: 6px 14px; background: var(--accent); color: #0e0e0f; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; }
+.save-note-btn:hover { background: var(--accent2); }
+.note-entry { padding: 14px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 10px; position: relative; }
+.note-ts { font-size: 10px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; }
+.note-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.note-delete { position: absolute; top: 10px; right: 10px; opacity: 0; background: none; border: none; cursor: pointer; color: var(--text3); transition: opacity 0.15s, color 0.15s; }
+.note-entry:hover .note-delete { opacity: 1; }
+.note-delete:hover { color: var(--red); }
+.no-notes { text-align: center; padding: 30px; color: var(--text3); font-size: 13px; }
+
+/* FILES */
+.files-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.file-slot { background: var(--bg2); border: 0.5px dashed var(--border2); border-radius: var(--radius); padding: 20px; text-align: center; }
+.file-slot.has-file { border-style: solid; border-color: var(--border); }
+.file-slot-label { font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 12px; }
+.file-slot-icon { width: 36px; height: 36px; margin: 0 auto 10px; opacity: 0.3; }
+.file-slot-name { font-size: 12px; color: var(--text); margin-bottom: 8px; word-break: break-all; }
+.file-slot-size { font-size: 10px; color: var(--text3); font-family: var(--mono); margin-bottom: 12px; }
+.file-upload-btn { padding: 6px 14px; background: transparent; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); font-family: var(--font); font-size: 12px; color: var(--text2); cursor: pointer; transition: all 0.15s; }
+.file-upload-btn:hover { background: var(--bg3); color: var(--text); }
+.file-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.file-action-btn { padding: 5px 12px; background: transparent; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 11px; color: var(--text2); cursor: pointer; transition: all 0.15s; }
+.file-action-btn:hover { background: var(--bg3); color: var(--text); }
+.file-action-btn.primary { border-color: var(--accent); color: var(--accent); }
+.file-action-btn.primary:hover { background: rgba(200,240,96,0.1); }
+.file-action-btn.danger-btn { border-color: rgba(255,107,107,0.3); color: var(--red); }
+.file-action-btn.danger-btn:hover { background: rgba(255,107,107,0.1); }
+.tailor-section { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
+.tailor-heading { font-size: 13px; font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.tailor-sub { font-size: 12px; color: var(--text2); margin-bottom: 16px; }
+.tailor-options { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tailor-toggle { padding: 6px 14px; background: transparent; border: 0.5px solid var(--border); border-radius: 100px; font-size: 12px; font-family: var(--mono); color: var(--text2); cursor: pointer; transition: all 0.15s; }
+.tailor-toggle.active { background: rgba(200,240,96,0.1); border-color: var(--accent); color: var(--accent); }
+.tailor-context { width: 100%; padding: 10px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text); resize: none; min-height: 80px; outline: none; margin-bottom: 12px; line-height: 1.6; }
+.tailor-context::placeholder { color: var(--text3); }
+.tailor-btn { padding: 8px 18px; background: var(--accent); color: #0e0e0f; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }
+.tailor-btn:hover { background: var(--accent2); }
+.tailor-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-result { margin-top: 16px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 16px; }
+.ai-result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.ai-result-label { font-size: 11px; font-family: var(--mono); color: var(--accent); }
+.ai-result-actions { display: flex; gap: 8px; }
+.ai-text { font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+.ai-text::-webkit-scrollbar { width: 3px; }
+.ai-text::-webkit-scrollbar-thumb { background: var(--bg4); }
+.typing-cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink 1s infinite; vertical-align: middle; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal { background: var(--bg2); border: 0.5px solid var(--border2); border-radius: 14px; width: 100%; max-width: 520px; padding: 28px; }
+.modal-title { font-size: 17px; font-weight: 500; margin-bottom: 6px; letter-spacing: -0.3px; }
+.modal-sub { font-size: 12px; color: var(--text2); margin-bottom: 24px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 6px; letter-spacing: 0.5px; }
+.field input, .field select, .field textarea { width: 100%; padding: 9px 12px; background: var(--bg3); border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text); outline: none; transition: border-color 0.15s; }
+.field input:focus, .field select:focus { border-color: var(--border2); }
+.field input::placeholder { color: var(--text3); }
+.field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235c5a57' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; cursor: pointer; }
+.field select option { background: var(--bg3); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+.cancel-btn { padding: 8px 18px; background: transparent; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text2); cursor: pointer; }
+.create-btn { padding: 8px 18px; background: var(--accent); color: #0e0e0f; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; }
+.create-btn:hover { background: var(--accent2); }
+
+.spinner-sm { width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #0e0e0f; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<!-- AUTH: LOGIN -->
+<div id="screen-login" class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#0e0e0f"/></svg>
+      </div>
+      <div>
+        <div class="auth-logo-text">Applied</div>
+        <div class="auth-logo-sub">job tracker</div>
+      </div>
+    </div>
+    <div class="auth-heading">Welcome back</div>
+    <div class="auth-sub">Sign in to your account to track your applications.</div>
+    <div class="auth-error" id="login-error"></div>
+    <div class="auth-field">
+      <label>USERNAME</label>
+      <input type="text" id="login-username" placeholder="your username" autocomplete="username">
+    </div>
+    <div class="auth-field">
+      <label>PASSWORD</label>
+      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="auth-btn" id="login-btn" onclick="doLogin()">Sign in</button>
+    <div class="auth-switch">Don't have an account? <a onclick="showScreen('register')">Create one</a></div>
+  </div>
+</div>
+
+<!-- AUTH: REGISTER -->
+<div id="screen-register" class="auth-wrap" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#0e0e0f"/></svg>
+      </div>
+      <div>
+        <div class="auth-logo-text">Applied</div>
+        <div class="auth-logo-sub">job tracker</div>
+      </div>
+    </div>
+    <div class="auth-heading">Create account</div>
+    <div class="auth-sub">Start tracking your job applications. Free forever.</div>
+    <div class="auth-error" id="register-error"></div>
+    <div class="auth-field">
+      <label>USERNAME</label>
+      <input type="text" id="reg-username" placeholder="choose a username" autocomplete="username">
+    </div>
+    <div class="auth-field">
+      <label>PASSWORD</label>
+      <input type="password" id="reg-password" placeholder="at least 6 characters" autocomplete="new-password">
+    </div>
+    <div class="auth-field">
+      <label>CONFIRM PASSWORD</label>
+      <input type="password" id="reg-confirm" placeholder="repeat password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()">
+    </div>
+    <button class="auth-btn" id="register-btn" onclick="doRegister()">Create account</button>
+    <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="screen-app" class="app" style="display:none">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 13V7l5-4 5 4v6H10v-4H6v4H3z" fill="#0e0e0f"/></svg>
+        </div>
+        <div>
+          <div class="logo-text">Applied</div>
+          <div class="logo-sub">job tracker</div>
+        </div>
+      </div>
+      <button class="add-btn" onclick="openAddModal()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Add application
+      </button>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" class="search-input" placeholder="Search jobs..." oninput="renderJobList()" id="search-input">
+    </div>
+    <div class="filter-tabs" id="filter-tabs">
+      <div class="filter-tab active" onclick="setFilter('all',this)">all</div>
+      <div class="filter-tab" onclick="setFilter('applied',this)">applied</div>
+      <div class="filter-tab" onclick="setFilter('interviewing',this)">interview</div>
+      <div class="filter-tab" onclick="setFilter('offer',this)">offer</div>
+      <div class="filter-tab" onclick="setFilter('rejected',this)">rejected</div>
+    </div>
+    <div class="job-list" id="job-list"></div>
+    <div class="user-bar">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <div class="user-name" id="user-name-display"></div>
+      <button class="logout-btn" onclick="doLogout()" title="Sign out">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="main" id="main">
+    <div class="empty-state" id="empty-state">
+      <svg viewBox="0 0 64 64" fill="none"><rect x="8" y="12" width="48" height="40" rx="4" stroke="currentColor" stroke-width="2"/><path d="M20 24h24M20 32h16M20 40h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <h2>No application selected</h2>
+      <p>Add a job application or select one from the list to view details, manage files, and track your progress.</p>
+    </div>
+    <div id="detail-view" style="display:none; flex:1; flex-direction:column; overflow:hidden;"></div>
+  </div>
+</div>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="add-modal" style="display:none" onclick="if(event.target===this)closeAddModal()">
+  <div class="modal">
+    <div class="modal-title">New application</div>
+    <div class="modal-sub">Paste a job posting link or fill in the details manually</div>
+    <div class="field"><label>JOB POSTING URL</label><input type="text" id="job-url" placeholder="https://jobs.example.com/..." oninput="tryAutofill()"></div>
+    <div class="field"><label>JOB TITLE</label><input type="text" id="job-title" placeholder="Software Engineer"></div>
+    <div class="field"><label>COMPANY</label><input type="text" id="job-company" placeholder="Acme Corp"></div>
+    <div class="field"><label>LOCATION</label><input type="text" id="job-location" placeholder="San Francisco, CA / Remote"></div>
+    <div class="field">
+      <label>STATUS</label>
+      <select id="job-status">
+        <option value="applied">Applied</option>
+        <option value="screening">Screening</option>
+        <option value="interviewing">Interviewing</option>
+        <option value="offer">Offer</option>
+        <option value="rejected">Rejected</option>
+        <option value="ghosted">Ghosted</option>
+        <option value="withdrawn">Withdrawn</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" onclick="closeAddModal()">Cancel</button>
+      <button class="create-btn" onclick="addJob()">Create application</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="resume-upload" accept=".pdf,.doc,.docx,.txt" onchange="handleFileUpload('resume',event)">
+<input type="file" id="cover-upload" accept=".pdf,.doc,.docx,.txt" onchange="handleFileUpload('cover',event)">
+
+<script>
+// ── CONFIG ──
+const API = ''; // empty = same origin; change to 'http://localhost:3000' for dev
+
+// ── STATE ──
+let token = localStorage.getItem('applied_token');
+let currentUser = localStorage.getItem('applied_user');
+let jobs = {};
+let currentJobId = null;
+let currentFilter = 'all';
+let activeDetailTab = 'notes';
+let tailorFor = { resume: false, cover: false };
+let isGenerating = false;
+let saveTimer = null;
+
+const STATUSES = ['applied','screening','interviewing','offer','rejected','ghosted','withdrawn'];
+
+// ── INIT ──
+window.addEventListener('DOMContentLoaded', () => {
+  if (token && currentUser) { showApp(); loadJobs(); }
+  else showScreen('login');
+});
+
+function showScreen(name) {
+  ['login','register','app'].forEach(s => {
+    document.getElementById('screen-' + s).style.display = s === name ? (s === 'app' ? 'flex' : 'flex') : 'none';
+  });
+  if (name === 'login') setTimeout(() => document.getElementById('login-username').focus(), 50);
+  if (name === 'register') setTimeout(() => document.getElementById('reg-username').focus(), 50);
+}
+
+function showApp() {
+  showScreen('app');
+  const initials = (currentUser || '?').slice(0, 2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name-display').textContent = currentUser;
+}
+
+// ── AUTH ──
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  errEl.classList.remove('show');
+  if (!username || !password) { showErr(errEl, 'Please fill in all fields.'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-sm"></span> Signing in...';
+  try {
+    const res = await fetch(API + '/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await res.json();
+    if (!res.ok) { showErr(errEl, data.error || 'Login failed'); return; }
+    token = data.token; currentUser = data.username;
+    localStorage.setItem('applied_token', token);
+    localStorage.setItem('applied_user', currentUser);
+    showApp(); loadJobs();
+  } catch(e) { showErr(errEl, 'Could not connect to server.'); }
+  finally { btn.disabled = false; btn.innerHTML = 'Sign in'; }
+}
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const confirm = document.getElementById('reg-confirm').value;
+  const errEl = document.getElementById('register-error');
+  const btn = document.getElementById('register-btn');
+  errEl.classList.remove('show');
+  if (!username || !password) { showErr(errEl, 'Please fill in all fields.'); return; }
+  if (password !== confirm) { showErr(errEl, 'Passwords do not match.'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-sm"></span> Creating account...';
+  try {
+    const res = await fetch(API + '/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await res.json();
+    if (!res.ok) { showErr(errEl, data.error || 'Registration failed'); return; }
+    token = data.token; currentUser = data.username;
+    localStorage.setItem('applied_token', token);
+    localStorage.setItem('applied_user', currentUser);
+    showApp(); loadJobs();
+  } catch(e) { showErr(errEl, 'Could not connect to server.'); }
+  finally { btn.disabled = false; btn.innerHTML = 'Create account'; }
+}
+
+function doLogout() {
+  token = null; currentUser = null; jobs = {}; currentJobId = null;
+  localStorage.removeItem('applied_token'); localStorage.removeItem('applied_user');
+  showScreen('login');
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+function showErr(el, msg) { el.textContent = msg; el.classList.add('show'); }
+
+// ── DATA ──
+async function loadJobs() {
+  try {
+    const res = await fetch(API + '/api/jobs', { headers: { Authorization: 'Bearer ' + token } });
+    if (res.status === 401) { doLogout(); return; }
+    jobs = await res.json();
+  } catch(e) { jobs = {}; }
+  renderJobList();
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persistJobs, 800);
+}
+
+async function persistJobs() {
+  try {
+    await fetch(API + '/api/jobs', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(jobs) });
+  } catch(e) {}
+}
+
+// ── HELPERS ──
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function statusColor(s) {
+  return {applied:'#6ba3ff',screening:'#ffb347',interviewing:'#b47fff',offer:'#6bffb3',rejected:'#ff6b6b',ghosted:'#5c5a57',withdrawn:'#5c5a57'}[s] || '#5c5a57';
+}
+function fmtDate(ts) { return new Date(ts).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+function fmtDatetime(ts) { const d = new Date(ts); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function formatBytes(b) { if(!b)return''; if(b<1024)return b+' B'; if(b<1048576)return(b/1024).toFixed(1)+' KB'; return(b/1048576).toFixed(1)+' MB'; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── JOBS ──
+function openAddModal() {
+  document.getElementById('add-modal').style.display = 'flex';
+  ['job-url','job-title','job-company','job-location'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('job-status').value = 'applied';
+  setTimeout(() => document.getElementById('job-url').focus(), 50);
+}
+function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
+
+function tryAutofill() {
+  try {
+    const url = document.getElementById('job-url').value.trim();
+    if (!url) return;
+    const host = new URL(url).hostname.replace(/^www\./,'');
+    const parts = host.split('.');
+    if (parts.length >= 2 && !document.getElementById('job-company').value) {
+      const n = parts[parts.length-2];
+      document.getElementById('job-company').value = n.charAt(0).toUpperCase() + n.slice(1);
+    }
+  } catch(e){}
+}
+
+function addJob() {
+  const title = document.getElementById('job-title').value.trim();
+  const company = document.getElementById('job-company').value.trim();
+  if (!title || !company) { alert('Please enter at least a job title and company.'); return; }
+  const id = genId();
+  jobs[id] = { id, title, company, url: document.getElementById('job-url').value.trim(), location: document.getElementById('job-location').value.trim(), status: document.getElementById('job-status').value, createdAt: Date.now(), notes: [], resume: null, cover: null, tailoredResume: null, tailoredCover: null };
+  scheduleSave(); closeAddModal(); renderJobList(); selectJob(id);
+}
+
+function deleteJob(id) {
+  if (!confirm('Delete this application?')) return;
+  delete jobs[id];
+  scheduleSave();
+  if (currentJobId === id) { currentJobId = null; document.getElementById('empty-state').style.display='flex'; document.getElementById('detail-view').style.display='none'; }
+  renderJobList();
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderJobList();
+}
+
+function getFilteredJobs() {
+  const q = (document.getElementById('search-input')?.value||'').toLowerCase();
+  return Object.values(jobs).filter(j => {
+    const mf = currentFilter==='all' || j.status===currentFilter;
+    const ms = !q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q);
+    return mf && ms;
+  }).sort((a,b) => b.createdAt - a.createdAt);
+}
+
+function renderJobList() {
+  const list = document.getElementById('job-list');
+  const filtered = getFilteredJobs();
+  if (!filtered.length) { list.innerHTML = '<div class="empty-list">No applications yet</div>'; return; }
+  list.innerHTML = filtered.map(j => `
+    <div class="job-item${currentJobId===j.id?' active':''}" onclick="selectJob('${j.id}')">
+      <div class="job-item-company">${esc(j.company)}</div>
+      <div class="job-item-title">${esc(j.title)}</div>
+      <div class="job-item-meta">
+        <div class="status-dot" style="background:${statusColor(j.status)}"></div>
+        <span style="font-size:10px;font-family:var(--mono);color:${statusColor(j.status)}">${j.status}</span>
+        <span style="flex:1"></span>
+        <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${fmtDate(j.createdAt)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectJob(id) {
+  currentJobId = id; activeDetailTab = 'notes'; tailorFor = {resume:false,cover:false};
+  renderJobList(); renderDetail();
+  document.getElementById('empty-state').style.display = 'none';
+  const dv = document.getElementById('detail-view');
+  dv.style.display = 'flex'; dv.style.flexDirection = 'column'; dv.style.overflow = 'hidden';
+}
+
+// ── DETAIL ──
+function renderDetail() {
+  const j = jobs[currentJobId]; if (!j) return;
+  const dv = document.getElementById('detail-view');
+  dv.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-header-info">
+        <div class="detail-company">
+          ${esc(j.company)}
+          ${j.location ? `<span style="color:var(--text3)">·</span><span style="font-size:11px">${esc(j.location)}</span>` : ''}
+          ${j.url ? `<a href="${esc(j.url)}" target="_blank">↗ posting</a>` : ''}
+        </div>
+        <div class="detail-title">${esc(j.title)}</div>
+        <div class="detail-meta">
+          <select class="status-select" onchange="updateStatus('${j.id}',this.value)" style="color:${statusColor(j.status)}">
+            ${STATUSES.map(s=>`<option value="${s}"${j.status===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          <span class="date-added">Added ${fmtDate(j.createdAt)}</span>
+        </div>
+      </div>
+      <div class="action-btns">
+        <button class="icon-btn danger" onclick="deleteJob('${j.id}')" title="Delete">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M5 11V5M9 11V5M3 3.5l.5 8a1 1 0 001 .5h5a1 1 0 001-.5l.5-8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="detail-tabs">
+      <div class="detail-tab${activeDetailTab==='notes'?' active':''}" onclick="switchTab('notes')">Notes</div>
+      <div class="detail-tab${activeDetailTab==='files'?' active':''}" onclick="switchTab('files')">Files & Tailoring</div>
+    </div>
+    <div class="tab-content" id="tab-content" style="overflow-y:auto;flex:1;">
+      ${activeDetailTab==='notes' ? renderNotesTab(j) : renderFilesTab(j)}
+    </div>
+  `;
+}
+
+function switchTab(tab) { activeDetailTab = tab; renderDetail(); }
+
+function renderNotesTab(j) {
+  const notesList = (j.notes||[]).map(n => `
+    <div class="note-entry">
+      <div class="note-ts">${fmtDatetime(n.ts)}</div>
+      <div class="note-text">${esc(n.text)}</div>
+      <button class="note-delete" onclick="deleteNote('${j.id}','${n.id}')">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  `).join('');
+  return `
+    <div class="notes-compose">
+      <textarea class="notes-textarea" id="note-input" placeholder="Add a note... (recruiter name, interview details, follow-up tasks)"></textarea>
+      <div class="notes-actions">
+        <span class="note-ts-preview" id="note-ts-preview"></span>
+        <button class="save-note-btn" onclick="saveNote('${j.id}')">Save note</button>
+      </div>
+    </div>
+    <div id="notes-list">${notesList || '<div class="no-notes">No notes yet.</div>'}</div>
+  `;
+}
+
+function renderFilesTab(j) {
+  const resumeHtml = j.resume ? `
+    <div class="file-slot has-file">
+      <div class="file-slot-label">RESUME</div>
+      <svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M9 10h12M9 15h12M9 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div class="file-slot-name">${esc(j.resume.name)}</div>
+      <div class="file-slot-size">${formatBytes(j.resume.size)}</div>
+      <div class="file-actions">
+        <button class="file-action-btn" onclick="downloadFile('resume')">↓ download</button>
+        <button class="file-action-btn danger-btn" onclick="removeFile('resume')">remove</button>
+      </div>
+    </div>` : `
+    <div class="file-slot">
+      <div class="file-slot-label">RESUME</div>
+      <svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M9 10h12M9 15h12M9 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">No resume attached</div>
+      <button class="file-upload-btn" onclick="document.getElementById('resume-upload').click()">↑ Upload resume</button>
+    </div>`;
+  const coverHtml = j.cover ? `
+    <div class="file-slot has-file">
+      <div class="file-slot-label">COVER LETTER TEMPLATE</div>
+      <svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="8" width="28" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 10l14 10 14-10" stroke="currentColor" stroke-width="1.5"/></svg>
+      <div class="file-slot-name">${esc(j.cover.name)}</div>
+      <div class="file-slot-size">${formatBytes(j.cover.size)}</div>
+      <div class="file-actions">
+        <button class="file-action-btn" onclick="downloadFile('cover')">↓ download</button>
+        <button class="file-action-btn danger-btn" onclick="removeFile('cover')">remove</button>
+      </div>
+    </div>` : `
+    <div class="file-slot">
+      <div class="file-slot-label">COVER LETTER TEMPLATE</div>
+      <svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="8" width="28" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 10l14 10 14-10" stroke="currentColor" stroke-width="1.5"/></svg>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">No cover letter attached</div>
+      <button class="file-upload-btn" onclick="document.getElementById('cover-upload').click()">↑ Upload template</button>
+    </div>`;
+
+  const tailoredSection = (j.tailoredResume || j.tailoredCover) ? `
+    <div style="margin-top:20px">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:12px;letter-spacing:0.5px">TAILORED VERSIONS</div>
+      ${j.tailoredResume ? `<div class="ai-result" style="margin-bottom:12px"><div class="ai-result-header"><span class="ai-result-label">Tailored resume</span><div class="ai-result-actions"><button class="file-action-btn" onclick="downloadTailored('resume')">↓ download</button><button class="file-action-btn danger-btn" onclick="clearTailored('resume')">clear</button></div></div><div class="ai-text">${esc(j.tailoredResume)}</div></div>` : ''}
+      ${j.tailoredCover ? `<div class="ai-result"><div class="ai-result-header"><span class="ai-result-label">Tailored cover letter</span><div class="ai-result-actions"><button class="file-action-btn" onclick="downloadTailored('cover')">↓ download</button><button class="file-action-btn danger-btn" onclick="clearTailored('cover')">clear</button></div></div><div class="ai-text">${esc(j.tailoredCover)}</div></div>` : ''}
+    </div>` : '';
+
+  return `
+    <div class="files-grid">${resumeHtml}${coverHtml}</div>
+    ${tailoredSection}
+    <div class="tailor-section">
+      <div class="tailor-heading">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5 3.5.5-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        AI Tailoring
+      </div>
+      <div class="tailor-sub">Let AI tailor your resume and cover letter for this specific role.</div>
+      <div class="tailor-options">
+        <button class="tailor-toggle${tailorFor.resume?' active':''}" id="tailor-resume-btn" onclick="toggleTailor('resume')">Resume</button>
+        <button class="tailor-toggle${tailorFor.cover?' active':''}" id="tailor-cover-btn" onclick="toggleTailor('cover')">Cover letter</button>
+      </div>
+      <textarea class="tailor-context" id="tailor-context" placeholder="Optional: skills to emphasize, specific requirements, tone..."></textarea>
+      <button class="tailor-btn" id="tailor-btn" onclick="runTailoring()" ${isGenerating?'disabled':''}>
+        ${isGenerating?'<div style="width:14px;height:14px;border:2px solid rgba(0,0,0,0.2);border-top-color:#0e0e0f;border-radius:50%;animation:spin 0.7s linear infinite"></div> Tailoring...':'<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5 3.5.5-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Tailor for this role'}
+      </button>
+      <div id="ai-stream-output"></div>
+    </div>
+  `;
+}
+
+function toggleTailor(type) {
+  tailorFor[type] = !tailorFor[type];
+  const btn = document.getElementById(`tailor-${type}-btn`);
+  if (btn) btn.classList.toggle('active', tailorFor[type]);
+}
+
+async function runTailoring() {
+  const j = jobs[currentJobId]; if (!j) return;
+  if (!tailorFor.resume && !tailorFor.cover) { alert('Select Resume or Cover letter to tailor.'); return; }
+  if (tailorFor.resume && !j.resume) { alert('Upload a resume first.'); return; }
+  if (tailorFor.cover && !j.cover) { alert('Upload a cover letter template first.'); return; }
+  isGenerating = true;
+  const btn = document.getElementById('tailor-btn');
+  if (btn) { btn.disabled=true; btn.innerHTML='<div style="width:14px;height:14px;border:2px solid rgba(0,0,0,0.2);border-top-color:#0e0e0f;border-radius:50%;animation:spin 0.7s linear infinite"></div> Tailoring...'; }
+  const context = document.getElementById('tailor-context')?.value||'';
+  const outputEl = document.getElementById('ai-stream-output');
+  if (outputEl) outputEl.innerHTML = '';
+  const parts = [];
+  if (tailorFor.resume) parts.push(`RESUME:\n${j.resume.content||j.resume.name}`);
+  if (tailorFor.cover) parts.push(`COVER LETTER TEMPLATE:\n${j.cover.content||j.cover.name}`);
+  const prompt = `You are a professional career coach. Tailor these job application documents for:\n\nCompany: ${j.company}\nRole: ${j.title}\n${j.location?`Location: ${j.location}\n`:''}${j.url?`Job URL: ${j.url}\n`:''}${context?`Extra context: ${context}\n`:''}\nDocuments:\n\n${parts.join('\n\n')}\n\nRespond with sections labeled "TAILORED RESUME:" and/or "TAILORED COVER LETTER:" as appropriate. Make it compelling and keyword-optimized.`;
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, stream: true, messages: [{role:'user',content:prompt}] })
+    });
+    let fullText = '';
+    if (outputEl) outputEl.innerHTML = '<div class="ai-result"><span class="ai-result-label">Generating...</span><div class="ai-text" id="stream-text"><span class="typing-cursor"></span></div></div>';
+    const streamEl = document.getElementById('stream-text');
+    const reader = response.body.getReader(); const dec = new TextDecoder();
+    while (true) {
+      const {done, value} = await reader.read(); if (done) break;
+      for (const line of dec.decode(value).split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim(); if (d==='[DONE]') continue;
+        try { const p = JSON.parse(d); if (p.type==='content_block_delta'&&p.delta?.text) { fullText+=p.delta.text; if(streamEl) streamEl.innerHTML=esc(fullText)+'<span class="typing-cursor"></span>'; } } catch(e){}
+      }
+    }
+    if (streamEl) streamEl.innerHTML = esc(fullText);
+    if (tailorFor.resume && fullText.includes('TAILORED RESUME:')) { const m=fullText.match(/TAILORED RESUME:([\s\S]*?)(?=TAILORED COVER LETTER:|$)/i); if(m) j.tailoredResume=m[1].trim(); }
+    if (tailorFor.cover && fullText.includes('TAILORED COVER LETTER:')) { const m=fullText.match(/TAILORED COVER LETTER:([\s\S]*?)$/i); if(m) j.tailoredCover=m[1].trim(); }
+    if (!j.tailoredResume && !j.tailoredCover && fullText) { if(tailorFor.resume) j.tailoredResume=fullText; else j.tailoredCover=fullText; }
+    scheduleSave();
+  } catch(e) { if(outputEl) outputEl.innerHTML=`<div class="ai-result" style="border-color:rgba(255,107,107,0.3)"><div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div></div>`; }
+  isGenerating = false;
+  if (btn) { btn.disabled=false; btn.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5 3.5.5-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Tailor again'; }
+}
+
+function handleFileUpload(type, event) {
+  const file = event.target.files[0]; if (!file) return;
+  const j = jobs[currentJobId]; if (!j) return;
+  const reader = new FileReader();
+  reader.onload = (e) => { j[type]={name:file.name,size:file.size,content:e.target.result,uploadedAt:Date.now()}; scheduleSave(); renderDetail(); };
+  reader.readAsText(file); event.target.value='';
+}
+
+function downloadFile(type) {
+  const j = jobs[currentJobId]; if (!j||!j[type]) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([j[type].content||''],{type:'text/plain'}));
+  a.download = j[type].name; a.click();
+}
+
+function downloadTailored(type) {
+  const j = jobs[currentJobId];
+  const content = type==='resume' ? j.tailoredResume : j.tailoredCover; if (!content) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type:'text/plain'}));
+  a.download = `${j.company}_${j.title}_${type}_tailored.txt`; a.click();
+}
+
+function clearTailored(type) {
+  const j = jobs[currentJobId];
+  if (type==='resume') j.tailoredResume=null; else j.tailoredCover=null;
+  scheduleSave(); renderDetail();
+}
+
+function removeFile(type) {
+  const j = jobs[currentJobId]; if (!j) return;
+  j[type]=null; if(type==='resume') j.tailoredResume=null; if(type==='cover') j.tailoredCover=null;
+  scheduleSave(); renderDetail();
+}
+
+function updateStatus(id, val) {
+  jobs[id].status=val; scheduleSave(); renderJobList();
+  const sel = document.querySelector('.status-select'); if(sel) sel.style.color=statusColor(val);
+}
+
+function saveNote(jobId) {
+  const input = document.getElementById('note-input');
+  const text = input?.value.trim(); if (!text) return;
+  const j = jobs[jobId]; if (!j) return;
+  if (!j.notes) j.notes=[];
+  j.notes.unshift({id:genId(),text,ts:Date.now()});
+  scheduleSave(); renderDetail();
+}
+
+function deleteNote(jobId, noteId) {
+  const j = jobs[jobId]; if (!j) return;
+  j.notes=j.notes.filter(n=>n.id!==noteId);
+  scheduleSave(); renderDetail();
+}
+
+setInterval(()=>{ const el=document.getElementById('note-ts-preview'); if(el) el.textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); },1000);
+</script>
+</body>
+</html>
