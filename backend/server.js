@@ -131,12 +131,10 @@ async function parseJobFromUrl(url) {
   const hostname = parsed.hostname;
 
   // ── Eightfold / Dexcom-style ATS ──
-  // careers.example.com/careers/job/12345 -> job id in path
   if (hostname.includes('eightfold') || /\/careers\/job\/(\d+)/.test(parsed.pathname)) {
     const match = parsed.pathname.match(/\/careers\/job\/(\d+)/);
     if (match) {
       const jobId = match[1];
-      // Extract the base domain to build the API URL
       const apiBase = `${parsed.protocol}//${parsed.hostname}`;
       try {
         const apiUrl = `${apiBase}/api/apply/v2/jobs/${jobId}?domain=${parsed.hostname.replace(/^careers\./,'')}`;
@@ -146,19 +144,52 @@ async function parseJobFromUrl(url) {
         if (apiRes.ok) {
           const data = await apiRes.json();
           const job = data.job || data;
+
+          // Description may be HTML or plain text
+          const descHtml = job.job_description || job.description || job.desc || null;
+          const descText = descHtml ? stripHtml(descHtml) : null;
+
+          // Try many possible salary field names from Eightfold's API
+          let salary = job.salary_range || job.compensation || job.pay_range
+            || job.min_pay || job.salary || job.base_salary || null;
+
+          // Format min/max pay fields into a range string
+          if (!salary && (job.min_pay || job.max_pay)) {
+            const min = job.min_pay ? `$${Number(job.min_pay).toLocaleString()}` : null;
+            const max = job.max_pay ? `$${Number(job.max_pay).toLocaleString()}` : null;
+            salary = [min, max].filter(Boolean).join(' – ');
+          }
+
+          // If still no salary, scan the job description text for dollar ranges
+          if (!salary && descText) {
+            salary = extractSalaryFromText(descText);
+          }
+
+          // Build location string — Eightfold may return city/state/country separately or as "location"
+          let location = null;
+          if (job.location && typeof job.location === 'string') {
+            location = job.location;
+          } else if (job.locations && Array.isArray(job.locations) && job.locations.length > 0) {
+            location = job.locations.map(l => l.name || l.city || l).filter(Boolean).join(', ');
+          } else {
+            location = formatLocation(job.city, job.state, job.country);
+          }
+
           return {
             fields: {
               title: job.name || job.title || null,
               company: job.company_name || job.company || extractCompanyFromHost(hostname),
-              location: formatLocation(job.location || job.city, job.state, job.country),
-              salary: job.salary_range || job.compensation || null,
-              remote: job.is_remote || job.work_location_option === 'remote' || false,
+              location,
+              salary,
+              remote: job.is_remote || job.work_location_option === 'remote'
+                || (job.name || '').toLowerCase().includes('remote')
+                || (location || '').toLowerCase().includes('remote') || false,
             },
-            html: null,
-            text: job.job_description || job.description || null,
+            html: descHtml,
+            text: descText,
           };
         }
-      } catch(e) {}
+      } catch(e) { console.error('Eightfold API error:', e.message); }
     }
   }
 
@@ -283,7 +314,44 @@ async function parseJobFromUrl(url) {
   // Fill in company from hostname if missing
   if (!fields.company) fields.company = extractCompanyFromHost(hostname);
 
+  // If no salary from structured data, scan the page text
+  if (!fields.salary && text) {
+    fields.salary = extractSalaryFromText(text);
+  }
+
   return { fields, html, text };
+}
+
+function extractSalaryFromText(text) {
+  if (!text) return null;
+
+  // Match patterns like:
+  // $231,100.00 - $385,100.00
+  // $120,000 – $160,000
+  // $120k - $160k
+  // $50/hr - $75/hr
+  // USD 120,000 to 160,000
+  const patterns = [
+    // $X,XXX.XX - $X,XXX.XX  (full dollar amounts with decimals)
+    /\$[\d,]+(?:\.\d{2})?\s*[-–—to]+\s*\$[\d,]+(?:\.\d{2})?(?:\s*(?:per year|\/yr|annually|\/hour|\/hr))?/i,
+    // $XXXk - $XXXk
+    /\$\d+(?:\.\d+)?[kK]\s*[-–—to]+\s*\$\d+(?:\.\d+)?[kK]/i,
+    // Single amount: $231,100
+    /\$[\d,]{6,}(?:\.\d{2})?/,
+    // Salary: $X label
+    /(?:salary|compensation|pay)[:\s]+(\$[\d,k]+(?:\.\d{2})?(?:\s*[-–]\s*\$[\d,k]+(?:\.\d{2})?)?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (m) {
+      // Clean up the match
+      const raw = (m[1] || m[0]).trim();
+      // Normalize dashes/en-dashes to " – "
+      return raw.replace(/\s*[-–—]\s*/g, ' – ');
+    }
+  }
+  return null;
 }
 
 function extractStructuredData(html) {
@@ -296,15 +364,23 @@ function extractStructuredData(html) {
       const data = JSON.parse(json);
       const job = data['@type'] === 'JobPosting' ? data : null;
       if (job) {
+        let salary = null;
+        const bs = job.baseSalary;
+        if (bs?.value) {
+          const v = bs.value;
+          if (v.minValue && v.maxValue) {
+            salary = `$${Number(v.minValue).toLocaleString()} – $${Number(v.maxValue).toLocaleString()}`;
+          } else if (v.value) {
+            salary = `$${Number(v.value).toLocaleString()}`;
+          }
+        }
         return {
           title: job.title || null,
           company: job.hiringOrganization?.name || null,
           location: job.jobLocation?.address?.addressLocality
             ? `${job.jobLocation.address.addressLocality}${job.jobLocation.address.addressRegion ? ', '+job.jobLocation.address.addressRegion : ''}`
             : null,
-          salary: job.baseSalary?.value?.value
-            ? `$${job.baseSalary.value.value}`
-            : null,
+          salary,
           remote: job.jobLocationType === 'TELECOMMUTE' || false,
         };
       }
