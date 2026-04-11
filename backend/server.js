@@ -11,7 +11,11 @@ const mammoth = require('mammoth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production-please';
-const DATA_DIR = path.join(__dirname, 'data');
+// DATA_DIR: controlled by environment variable so disk mount path is explicit.
+// On Render: set DATA_DIR to match your disk mount path exactly.
+// If disk mounted at /app/data → DATA_DIR=/app/data
+// If disk mounted at /app/backend/data → DATA_DIR=/app/backend/data
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -675,4 +679,14 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Applied Tracker running on http://localhost:${PORT}`);
+  console.log(`Data directory: ${DATA_DIR}`);
+  console.log(`Users file: ${USERS_FILE}`);
+  console.log(`Jobs directory: ${JOBS_DIR}`);
+  // Warn if data dir doesn't look like a mounted disk
+  const isDisk = DATA_DIR.startsWith('/app/data') || DATA_DIR.startsWith('/mnt');
+  if (!isDisk) {
+    console.warn('⚠️  DATA_DIR appears to be ephemeral. Set DATA_DIR env var to your Render disk mount path to persist data.');
+  } else {
+    console.log('✓  Data is stored on persistent disk.');
+  }
 });
