@@ -34,7 +34,21 @@ const upload = multer({
 app.use(cors());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '../frontend/public')));
+// Serve static files with PWA-appropriate cache headers
+app.use(express.static(path.join(__dirname, '../frontend/public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('sw.js')) {
+      // Service worker must not be cached by browser
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Service-Worker-Allowed', '/');
+    } else if (filePath.endsWith('manifest.json')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (filePath.match(/\.(?:png|ico|jpg|svg)$/)) {
+      // Icons can be cached for a day
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
+}));
 
 // --- Helpers ---
 function loadUsers() {
@@ -457,6 +471,202 @@ function extractCompanyFromHost(hostname) {
 function toTitleCase(str) {
   return str.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
 }
+
+
+// ── Insights research endpoint ──
+// Calls Anthropic API server-side with web_search tool, handles multi-turn tool loop
+app.post('/api/insights', authMiddleware, async (req, res) => {
+  const { company, title, location, salary, url, postingText, finnhubKey } = req.body;
+  if (!company || !title) return res.status(400).json({ error: 'company and title required' });
+
+  // ── 1. Fetch Finnhub stock data if key provided ──
+  let stockData = null;
+  if (finnhubKey) {
+    try {
+      const searchR = await fetchWithTimeout(
+        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(company)}&token=${finnhubKey}`
+      );
+      if (searchR.ok) {
+        const sd = await searchR.json();
+        const match = (sd.result || []).find(r => r.type === 'Common Stock' && r.symbol && !r.symbol.includes('.'));
+        if (match) {
+          const ticker = match.symbol;
+          const [qR, pR, mR, tR] = await Promise.allSettled([
+            fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}`),
+            fetchWithTimeout(`https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${finnhubKey}`),
+            fetchWithTimeout(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${finnhubKey}`),
+            fetchWithTimeout(`https://finnhub.io/api/v1/stock/price-target?symbol=${ticker}&token=${finnhubKey}`),
+          ]);
+          const q = qR.status === 'fulfilled' && qR.value.ok ? await qR.value.json() : {};
+          const p = pR.status === 'fulfilled' && pR.value.ok ? await pR.value.json() : {};
+          const m = mR.status === 'fulfilled' && mR.value.ok ? await mR.value.json() : { metric: {} };
+          const t = tR.status === 'fulfilled' && tR.value.ok ? await tR.value.json() : {};
+          stockData = {
+            ticker, price: q.c, change: q.d, changePct: q.dp,
+            marketCap: p.marketCapitalization ? p.marketCapitalization * 1e6 : null,
+            peRatio: m.metric?.peBasicExclExtraTTM,
+            week52High: m.metric?.['52WeekHigh'],
+            week52Low: m.metric?.['52WeekLow'],
+            analystTarget: t.targetMean,
+            recommendation: t.targetMean
+              ? (q.c < t.targetMean ? 'Upside potential' : 'Trading above target')
+              : null,
+          };
+        } else {
+          stockData = { error: 'No public stock ticker found for this company' };
+        }
+      }
+    } catch (e) {
+      stockData = { error: 'Stock fetch failed: ' + e.message };
+    }
+  }
+
+  // ── 2. Call Anthropic API server-side with web_search, handle tool loop ──
+  const today = new Date().toISOString().split('T')[0];
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set on server' });
+
+  const systemPrompt = `You are a career research assistant. Today is ${today}. Use web search to find current, accurate information about companies and roles. Always return valid JSON.`;
+
+  const userPrompt = `Research this job for a candidate who has applied:
+
+Company: ${company}
+Role: ${title}
+Location: ${location || 'Not specified'}
+Salary: ${salary || 'Not specified'}
+Job URL: ${url || 'Not provided'}
+${postingText ? `Job posting excerpt:\n${postingText.slice(0, 1500)}` : ''}
+
+Search for: Glassdoor ratings, recent news, layoffs, funding, culture reviews, interview process, LinkedIn contacts to reach out to.
+
+Return ONLY a valid JSON object with these exact fields (no markdown, no backticks):
+{
+  "overview": { "founded": "year", "employees": "range e.g. 5,000-10,000", "hq": "city, country", "industry": "sector" },
+  "companyOverview": "3-4 paragraph overview: mission, business model, financial health, recent layoffs or growth, market position, key products. Use specific numbers.",
+  "culture": {
+    "overallRating": 3.8,
+    "workLifeBalance": 3.5,
+    "cultureValues": 4.0,
+    "careerOpp": 3.2,
+    "compensation": 3.8,
+    "leadership": 3.1,
+    "ceoApproval": 72,
+    "recommend": 65,
+    "numRatings": "~2,400",
+    "summary": "2-3 paragraphs on what employees say about culture, management, work-life balance, growth opportunities."
+  },
+  "roleIntel": "3-4 paragraphs: how often this role has been posted (turnover signal?), typical day-to-day, career trajectory, interview difficulty, salary benchmarking.",
+  "flags": {
+    "green": ["4-6 genuine positives: financial stability, culture, growth, benefits"],
+    "red": ["3-5 genuine concerns: layoffs, glassdoor issues, role reposted frequently, management problems"]
+  },
+  "linkedin": {
+    "suggestedContacts": [
+      {"name": "Type of person e.g. Hiring Manager", "role": "Specific role title at ${company}", "company": "${company}", "tip": "Why contact them and what to say"},
+      {"name": "Type of person e.g. Recruiter", "role": "Technical Recruiter", "company": "${company}", "tip": "What to ask them"},
+      {"name": "Type of person e.g. Team Peer", "role": "Peer-level engineer/role", "company": "${company}", "tip": "What to learn from them"}
+    ],
+    "outreachTip": "Specific timing and strategy for LinkedIn outreach at this company.",
+    "messageTemplate": "Hi [Name],\\n\\nI recently applied for the ${title} role at ${company} and noticed your background — [specific observation].\\n\\nWould you be open to a quick 15-min chat about the team?\\n\\nThanks,\\n[Your name]"
+  },
+  "news": [
+    {"headline": "Real recent headline", "source": "Source name", "date": "YYYY-MM-DD", "url": "https://real-url.com", "sentiment": "positive"},
+    {"headline": "...", "source": "...", "date": "...", "url": "...", "sentiment": "negative"},
+    {"headline": "...", "source": "...", "date": "...", "url": "...", "sentiment": "neutral"}
+  ],
+  "interviewTips": "4-5 paragraphs: interview stages and format at this company, what they look for, common questions, how to stand out. Be specific to this company and role."
+}`;
+
+  try {
+    // Multi-turn loop to handle web_search tool calls
+    const messages = [{ role: 'user', content: userPrompt }];
+    let finalText = '';
+    let iterations = 0;
+    const MAX_ITERATIONS = 8;
+
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
+      const apiRes = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 5000,
+          system: systemPrompt,
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+          messages,
+        }),
+      }, 60000);
+
+      if (!apiRes.ok) {
+        const err = await apiRes.text();
+        throw new Error(`Anthropic API error ${apiRes.status}: ${err.slice(0, 200)}`);
+      }
+
+      const apiData = await apiRes.json();
+      const { content, stop_reason } = apiData;
+
+      // Add assistant turn to messages
+      messages.push({ role: 'assistant', content });
+
+      if (stop_reason === 'end_turn') {
+        // Extract all text blocks
+        finalText = content
+          .filter(b => b.type === 'text')
+          .map(b => b.text)
+          .join('');
+        break;
+      }
+
+      if (stop_reason === 'tool_use') {
+        // Process all tool_use blocks and build tool_result content
+        const toolResults = [];
+        for (const block of content) {
+          if (block.type === 'tool_use' && block.name === 'web_search') {
+            // The web_search tool executes on Anthropic's side — we just need to
+            // acknowledge it. The results come back automatically in the next turn.
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: 'Search executed.',
+            });
+          }
+        }
+        if (toolResults.length > 0) {
+          messages.push({ role: 'user', content: toolResults });
+        } else {
+          break;
+        }
+      } else {
+        // Unexpected stop reason
+        finalText = content.filter(b => b.type === 'text').map(b => b.text).join('');
+        break;
+      }
+    }
+
+    // Parse JSON from the final response
+    if (!finalText) throw new Error('Empty response from AI');
+    const cleaned = finalText.replace(/```json|```/g, '').trim();
+    // Find the outermost JSON object
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('No JSON found in response');
+    const jsonStr = cleaned.slice(start, end + 1);
+    const insights = JSON.parse(jsonStr);
+    insights.generatedAt = Date.now();
+    if (stockData) insights.stock = stockData;
+
+    res.json(insights);
+  } catch (e) {
+    console.error('Insights error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Catch-all: serve frontend
 app.get('*', (req, res) => {

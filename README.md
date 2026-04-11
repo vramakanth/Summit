@@ -94,6 +94,7 @@ docker run -d -p 3000:3000 -v $(pwd)/data:/app/data -e JWT_SECRET=your-secret ap
 |----------|---------|-------------|
 | `PORT` | `3000` | Port to listen on |
 | `JWT_SECRET` | `change-this-secret-in-production-please` | Secret for signing JWTs — **change this!** |
+| `ANTHROPIC_API_KEY` | *(required for Insights tab)* | Your Anthropic API key — get one at [console.anthropic.com](https://console.anthropic.com) |
 
 ---
 
