@@ -208,7 +208,7 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .fetch-loading { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 60px; color: var(--text2); font-size: 13px; }
 
 /* ── INSIGHTS TAB ── */
-.insights-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px 28px; display: block; min-height: 0; height: 0; }
+.insights-wrap { display: block; min-height: 100%; padding: 24px 28px; box-sizing: border-box; }
 .insights-wrap::-webkit-scrollbar { width: 4px; }
 .insights-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
 .insights-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
@@ -919,7 +919,7 @@ function renderDetail() {
     ${activeDetailTab === 'posting'
       ? renderPostingTab(j)
       : activeDetailTab === 'insights'
-        ? `<div style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0">${renderInsightsTab(j)}</div>`
+        ? renderInsightsTab(j)
         : `<div class="tab-pane">${activeDetailTab==='notes' ? renderNotesTab(j) : renderFilesTab(j)}</div>`
     }
   `;
