@@ -208,7 +208,7 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .fetch-loading { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 60px; color: var(--text2); font-size: 13px; }
 
 /* ── INSIGHTS TAB ── */
-.insights-wrap { display: block; min-height: 100%; padding: 24px 28px; box-sizing: border-box; }
+.insights-wrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px 28px; box-sizing: border-box; }
 .insights-wrap::-webkit-scrollbar { width: 4px; }
 .insights-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
 .insights-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
@@ -329,13 +329,13 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 /* ── SETTINGS ── */
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 600; display: flex; align-items: flex-start; justify-content: flex-end; }
 @media (prefers-color-scheme: dark) { .settings-overlay { background: rgba(0,0,0,0.65); } }
-.settings-panel { width: min(480px, 100vw); height: 100vh; background: var(--bg2); border-left: 1px solid var(--border2); display: flex; flex-direction: column; overflow: hidden; animation: slideInRight 0.2s ease; }
+.settings-panel { width: min(480px, 100vw); height: 100vh; background: var(--bg2); border-left: 1px solid var(--border2); display: flex; flex-direction: column; overflow: visible; animation: slideInRight 0.2s ease; }
 @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .settings-header { display: flex; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .settings-title { font-size: 16px; font-weight: 600; color: var(--text); flex: 1; }
 .settings-close { width: 32px; height: 32px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text2); transition: all 0.15s; }
 .settings-close:hover { background: var(--bg4); color: var(--text); }
-.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; }
+.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; max-height: calc(100vh - 65px); }
 .settings-body::-webkit-scrollbar { width: 4px; }
 .settings-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
 .settings-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -1393,13 +1393,12 @@ function renderInsightsTab(j) {
         <span class="insight-section-badge">${hasFinnhub ? 'API key set' : 'API key required'}</span>
       </div>
       <div class="insight-section-body">
-        <div class="insights-key-row" style="margin-bottom:${hasFinnhub?'0':'0'}px">
-          <span class="insights-key-label">FINNHUB KEY</span>
-          <input type="password" class="insights-key-input" id="finnhub-key-input" placeholder="Enter free API key from finnhub.io" value="${localStorage.getItem('finnhub_key')||''}">
-          <button class="insights-key-save" onclick="saveFinnhubKey()">Save</button>
-          <a href="https://finnhub.io/register" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;white-space:nowrap">Get free key ↗</a>
-        </div>
-        ${ins && ins.stock ? renderStockData(ins.stock) : `<div style="font-size:12px;color:var(--text3);margin-top:12px">Run insights to fetch live financial data. Finnhub key required for public companies.</div>`}
+        ${hasFinnhub
+          ? (ins && ins.stock
+              ? renderStockData(ins.stock)
+              : `<div style="font-size:12px;color:var(--text3)">Financial data loads when you click <strong style="color:var(--text)">Refresh now</strong>. Finnhub key is set — stock data will be fetched automatically.</div>`)
+          : `<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Add your Finnhub API key in <a href="#" onclick="openSettings();return false;" style="color:var(--blue)">Settings ⚙</a> to see live stock price, market cap and analyst ratings.</div>`
+        }
       </div>
     </div>
 
