@@ -1188,30 +1188,40 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
       const runMatches = [...paraXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
       if (runMatches.length === 0) continue;
 
-      // Distribute new text across runs proportionally by character count
-      const origRunTexts = runMatches.map(m => m[1]);
-      const totalOrigLen = origRunTexts.join('').length || 1;
-      const newWords = newText.split(' ');
-      let wordPos = 0;
+      // Strategy: put ALL new text into the first non-empty run, clear remaining runs.
+      // This avoids all inter-run spacing issues (no xml:space="preserve" needed,
+      // no word boundary gaps between adjacent runs).
+      // Paragraph-level formatting (font, size, color, indent, spacing) is preserved.
       let modifiedPara = paraXml;
+      let placedText = false;
+      const escaped = newText
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
       for (let r = 0; r < runMatches.length; r++) {
         const runMatch = runMatches[r];
-        const origLen = runMatch[1].length;
-        const proportion = origLen / totalOrigLen;
-        const wordCount = r === runMatches.length - 1
-          ? newWords.length - wordPos  // give remaining words to last run
-          : Math.max(1, Math.round(proportion * newWords.length));
-        const slice = newWords.slice(wordPos, wordPos + wordCount).join(' ');
-        wordPos = Math.min(wordPos + wordCount, newWords.length);
-
-        if (slice !== undefined) {
-          const escaped = slice.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-          // Replace this specific run's text — use exact match
-          modifiedPara = modifiedPara.replace(runMatch[0], runMatch[0].replace(
-            '>' + runMatch[1] + '</w:t>',
-            '>' + escaped + '</w:t>'
-          ));
+        if (!placedText && runMatch[1].trim()) {
+          // First non-empty run: inject full paragraph text with xml:space="preserve"
+          // Ensure the <w:t> tag has xml:space="preserve" so spaces aren't stripped
+          let newRunXml = runMatch[0];
+          // Replace the <w:t> opening tag to ensure xml:space="preserve"
+          newRunXml = newRunXml.replace(
+            /<w:t(?:\s[^>]*)?>/, 
+            '<w:t xml:space="preserve">'
+          );
+          // Replace the text content
+          newRunXml = newRunXml.replace(
+            /<w:t[^>]*>[^<]*<\/w:t>/,
+            `<w:t xml:space="preserve">${escaped}</w:t>`
+          );
+          modifiedPara = modifiedPara.replace(runMatch[0], newRunXml);
+          placedText = true;
+        } else if (placedText && runMatch[1].trim()) {
+          // Subsequent runs with text: clear the text (keep run properties for formatting)
+          modifiedPara = modifiedPara.replace(
+            runMatch[0],
+            runMatch[0].replace(/<w:t[^>]*>[^<]*<\/w:t>/, '<w:t/>')
+          );
         }
       }
 
