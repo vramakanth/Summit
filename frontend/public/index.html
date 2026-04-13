@@ -1037,13 +1037,16 @@ function renderDetail() {
       <div class="detail-tab${activeDetailTab==='notes'?' active':''}"    onclick="switchTab('notes')">Notes</div>
       <div class="detail-tab${activeDetailTab==='insights'?' active':''}" onclick="switchTab('insights')">Insights</div>
       <div class="detail-tab${activeDetailTab==='posting'?' active':''}"  onclick="switchTab('posting')">Job Posting</div>
-      <div class="detail-tab${activeDetailTab==='files'?' active':''}"    onclick="switchTab('files')">Files &amp; Tailoring</div>
+      <div class="detail-tab${activeDetailTab==='files'?' active':''}"    onclick="switchTab('files')">Tailoring</div>
+      <div class="detail-tab${activeDetailTab==='documents'?' active':''}"  onclick="switchTab('documents')">Documents${j.documents?.length ? ` <span style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:100px;border:1px solid var(--border)">${j.documents.length}</span>` : ''}</div>
     </div>
     ${activeDetailTab === 'posting'
       ? renderPostingTab(j)
       : activeDetailTab === 'insights'
         ? renderInsightsTab(j)
-        : `<div class="tab-pane">${activeDetailTab==='notes' ? renderNotesTab(j) : renderFilesTab(j)}</div>`
+        : activeDetailTab === 'documents'
+          ? `<div class="tab-pane">${renderDocumentsTab(j)}</div>`
+          : `<div class="tab-pane">${activeDetailTab==='notes' ? renderNotesTab(j) : renderFilesTab(j)}</div>`
     }
   `;
 }
@@ -1235,74 +1238,75 @@ function fileSlotHtml(type, file, label, iconSvg, uploadLabel) {
 
 // ── FILES & TAILORING TAB ──
 function renderFilesTab(j) {
-  const doc = activeTailorDoc === 'resume' ? j.resume : j.cover;
-  const tailored = activeTailorDoc === 'resume' ? j.tailoredResume : j.tailoredCover;
-  const tailoredHtml = activeTailorDoc === 'resume' ? j.tailoredResumeHtml : j.tailoredCoverHtml;
-  const label = activeTailorDoc === 'resume' ? 'Resume' : 'Cover Letter';
+  const type = activeTailorDoc;
+  const doc = type === 'resume' ? j.resume : j.cover;
+  const tailored = type === 'resume' ? j.tailoredResume : j.tailoredCover;
+  const tailoredHtml = type === 'resume' ? j.tailoredResumeHtml : j.tailoredCoverHtml;
+  const label = type === 'resume' ? 'Resume' : 'Cover Letter';
 
-  return `<div class="tailor-wrap">
+  return `<div class="tailor-wrap" style="max-width:680px;margin:0 auto">
 
-    <!-- Doc type selector tabs -->
-    <div style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
-      <button onclick="setActiveTailorDoc('resume')" style="flex:1;padding:11px 16px;background:${activeTailorDoc==='resume'?'var(--bg2)':'var(--bg3)'};border:none;border-right:1px solid var(--border);font-family:var(--font);font-size:13px;font-weight:${activeTailorDoc==='resume'?'600':'400'};color:${activeTailorDoc==='resume'?'var(--text)':'var(--text2)'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s">
-        <svg width="14" height="14" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Resume
-        ${j.resume ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>` : `<span style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>`}
-      </button>
-      <button onclick="setActiveTailorDoc('cover')" style="flex:1;padding:11px 16px;background:${activeTailorDoc==='cover'?'var(--bg2)':'var(--bg3)'};border:none;font-family:var(--font);font-size:13px;font-weight:${activeTailorDoc==='cover'?'600':'400'};color:${activeTailorDoc==='cover'?'var(--text)':'var(--text2)'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s">
-        <svg width="14" height="14" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="2"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="2"/></svg>
-        Cover Letter
-        ${j.cover ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>` : `<span style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>`}
-      </button>
+    <!-- Step 0: Doc type selector -->
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      ${['resume','cover'].map(t => `
+        <button onclick="setActiveTailorDoc('${t}')" style="flex:1;padding:9px 14px;background:${type===t?'var(--bg2)':'var(--bg3)'};border:1px solid ${type===t?'var(--border2)':'var(--border)'};border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:${type===t?'600':'400'};color:${type===t?'var(--text)':'var(--text2)'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s">
+          ${t==='resume'?'📄 Resume':'✉️ Cover Letter'}
+          ${(t==='resume'?j.resume:j.cover) ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>' : ''}
+          ${(t==='resume'?j.tailoredResume:j.tailoredCover) ? '<span style="font-size:10px;font-family:var(--mono);color:var(--green)">✓ tailored</span>' : ''}
+        </button>`).join('')}
     </div>
 
-    <!-- File slot for active doc type -->
-    <div style="margin-bottom:16px">
-      ${fileSlotHtml(activeTailorDoc, doc, label.toUpperCase(), activeTailorDoc==='resume'
-        ? `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
-        : `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="1.5"/></svg>`)}
+    <!-- Step 1: Source -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">STEP 1 — SELECT DOCUMENT</div>
+      ${doc ? `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm)">
+          <span style="font-size:20px">${type==='resume'?'📄':'✉️'}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(doc.name)}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${doc.content ? Math.round(doc.content.length/100)/10+'kb extracted' : 'no text'}</div>
+          </div>
+          <button onclick="pickFromLibrary('${type}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">Change</button>
+          <button onclick="removeFile('${type}','${j.id}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--red);cursor:pointer">Remove</button>
+        </div>` : `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label style="padding:16px;background:var(--bg2);border:2px dashed var(--border);border-radius:var(--radius-sm);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 15V3M8 7l4-4 4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div style="font-size:13px;font-weight:500;color:var(--text)">Upload from PC</div>
+            <div style="font-size:11px;color:var(--text3)">PDF, DOCX, or TXT</div>
+            <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="handleFileUpload(event,'${type}')">
+          </label>
+          <button onclick="pickFromLibrary('${type}')" style="padding:16px;background:var(--bg2);border:2px dashed var(--border);border-radius:var(--radius-sm);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;transition:all 0.15s;font-family:var(--font)" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 7h6l2 3h10v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <div style="font-size:13px;font-weight:500;color:var(--text)">From Document Library</div>
+            <div style="font-size:11px;color:var(--text3)">Pick a saved document</div>
+          </button>
+        </div>`}
     </div>
 
-    <!-- Tailoring section - only shows if doc is uploaded -->
     ${doc ? `
-    <div class="tailor-section">
-      <div class="tailor-heading">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-        Tailor ${label}
-      </div>
-      <div class="tailor-sub">Add optional context to guide the AI — keywords, interview notes, or specific requirements.</div>
-      <textarea class="tailor-context" id="tailor-context" placeholder="Optional: keywords, job requirements, interview notes..." rows="2"></textarea>
-
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button class="tailor-btn" id="tailor-main-btn" onclick="runTailoring('${activeTailorDoc}')" ${isGenerating?'disabled':''} style="justify-content:center">
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-          ${isGenerating ? 'Tailoring...' : `Tailor ${label}`}
-        </button>
-        ${doc?.originalBase64 ? `
-        <button id="tailor-docx-btn" onclick="runTailoringDocx('${activeTailorDoc}')" style="padding:8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
-          <span style="color:var(--accent);font-size:14px">✦</span>
-          Tailor with formatting preserved (.docx)
-        </button>` : ''}
-      </div>
-
-      <div id="ai-stream-output" style="margin-top:14px"></div>
+    <!-- Step 2: Tailor -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">STEP 2 — TAILOR</div>
+      <textarea id="tailor-context" class="tailor-context" placeholder="Optional: add keywords, requirements, or notes to guide the AI..." rows="2" style="margin-bottom:10px"></textarea>
+      <button class="tailor-btn" id="tailor-main-btn" onclick="runTailoring('${type}')" ${isGenerating?'disabled':''} style="width:100%;justify-content:center;font-size:14px;padding:12px">
+        <svg width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        ${isGenerating ? 'Tailoring...' : `Tailor ${label} for this role`}
+      </button>
+      <div id="ai-stream-output" style="margin-top:10px"></div>
     </div>
-    ` : `
-    <div style="padding:32px 20px;text-align:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
-      <div style="font-size:28px;margin-bottom:12px">📄</div>
-      <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No ${label} uploaded</div>
-      <div style="font-size:13px;color:var(--text3)">Upload a file above or pick from your Document Library to start tailoring.</div>
-    </div>`}
 
-    <!-- Tailored result -->
     ${tailored || tailoredHtml ? `
-    <div class="tailor-section" style="margin-top:16px">
-      <div class="tailor-heading">Tailored ${label}</div>
-      ${renderTailoredDoc(activeTailorDoc, tailored || '', j.id)}
+    <!-- Step 3: Result -->
+    <div>
+      <div style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">STEP 3 — RESULT</div>
+      ${renderTailoredDoc(type, tailored||'', j.id)}
     </div>` : ''}
+    ` : ''}
 
   </div>`;
 }
+
 
 function setActiveTailorDoc(type) {
   activeTailorDoc = type;
@@ -1317,18 +1321,16 @@ function renderTailoredDoc(type, text, jobId) {
   const editorId = `wysiwyg-${type}`;
   const j = jobs[jobId];
   const htmlContent = type === 'resume' ? j?.tailoredResumeHtml : j?.tailoredCoverHtml;
-  const displayContent = htmlContent || esc(text); // HTML if available, escaped text otherwise
+  const displayContent = htmlContent || esc(text);
   return `
-    <div style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">${label}</div>
-        <div style="display:flex;gap:6px">
-          <button onclick="downloadTailoredDocx('${type}','${jobId}')" style="padding:5px 12px;background:var(--accent-bg);border:none;border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:#1a1917;cursor:pointer;font-weight:600">↓ Download .docx</button>
-          <button onclick="downloadTailoredTxt('${type}','${jobId}')" style="padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">↓ .txt</button>
-          <button onclick="retailor('${type}','${jobId}')" style="padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">↺ Re-tailor</button>
-        </div>
+    <div>
+      <div id="${editorId}" class="wysiwyg-editor" style="min-height:200px;max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm) var(--radius-sm) 0 0;padding:20px;background:var(--bg2);font-size:13px;line-height:1.7;color:var(--text);outline:none" contenteditable="true" oninput="saveTailoredEdit('${type}','${jobId}',this)">${displayContent}</div>
+      <div style="display:flex;gap:8px;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);flex-wrap:wrap">
+        <button onclick="downloadTailoredDocx('${type}','${jobId}')" style="padding:6px 14px;background:var(--accent-bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:#1a1917;cursor:pointer;font-weight:600">↓ Download .docx</button>
+        <button onclick="downloadTailoredTxt('${type}','${jobId}')" style="padding:6px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">↓ .txt</button>
+        <button onclick="saveToJobDocuments('${type}','${jobId}')" style="padding:6px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">+ Save to Documents</button>
+        <button onclick="retailor('${type}','${jobId}')" style="padding:6px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;margin-left:auto">↺ Re-tailor</button>
       </div>
-      <div id="${editorId}" class="wysiwyg-editor" style="min-height:200px;max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;background:var(--bg2);font-size:13px;line-height:1.7;color:var(--text);outline:none" contenteditable="true" oninput="saveTailoredEdit('${type}','${jobId}',this)">${displayContent}</div>
     </div>`;
 }
 
@@ -2029,14 +2031,16 @@ async function showDocumentsPage() {
 }
 
 function renderDocsPage() {
-  // Remove existing overlay if any
   document.getElementById('docs-overlay')?.remove();
-
   const overlay = document.createElement('div');
   overlay.id = 'docs-overlay';
   overlay.className = 'docs-overlay';
 
-  const filtered = docsFilter === 'all' ? allDocs : allDocs.filter(d => d.type === docsFilter);
+  const q = (window._docsSearchQuery || '').toLowerCase();
+  const filtered = allDocs.filter(d =>
+    (docsFilter === 'all' || d.type === docsFilter) &&
+    (!q || d.name.toLowerCase().includes(q))
+  );
 
   overlay.innerHTML = `
     <div class="docs-header">
@@ -2044,42 +2048,39 @@ function renderDocsPage() {
       <div class="docs-title">Document Library</div>
       <label class="tailor-btn" style="cursor:pointer;padding:7px 14px">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v8M3 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Upload document
+        Upload
         <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadToLibrary(event)">
       </label>
       <button onclick="createBlankDoc()" class="tailor-btn" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">+ New blank</button>
       <button onclick="closeDocsPage()" style="width:32px;height:32px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center">×</button>
     </div>
-    <div class="docs-body">
-      <div class="docs-sidebar">
-        <div style="font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:0.5px;padding:4px 12px 8px;font-weight:600">FILTER</div>
-        <button class="docs-filter${docsFilter==='all'?' active':''}" onclick="setDocsFilter('all')">All documents (${allDocs.length})</button>
-        <button class="docs-filter${docsFilter==='resume'?' active':''}" onclick="setDocsFilter('resume')">Resumes (${allDocs.filter(d=>d.type==='resume').length})</button>
-        <button class="docs-filter${docsFilter==='cover'?' active':''}" onclick="setDocsFilter('cover')">Cover letters (${allDocs.filter(d=>d.type==='cover').length})</button>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;gap:10px">
+      <input id="docs-search-input" value="${esc(window._docsSearchQuery||'')}" oninput="window._docsSearchQuery=this.value;renderDocsPage()" placeholder="Search documents..." style="flex:1;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none">
+      <div style="display:flex;gap:6px">
+        ${['all','resume','cover'].map(f => `<button onclick="setDocsFilter('${f}')" style="padding:5px 12px;border-radius:100px;border:1px solid ${docsFilter===f?'var(--border2)':'var(--border)'};background:${docsFilter===f?'var(--bg4)':'transparent'};font-family:var(--font);font-size:12px;color:${docsFilter===f?'var(--text)':'var(--text2)'};cursor:pointer;font-weight:${docsFilter===f?'600':'400'}">${f==='all'?`All (${allDocs.length})`:f==='resume'?`Resumes (${allDocs.filter(d=>d.type==='resume').length})`:`Cover letters (${allDocs.filter(d=>d.type==='cover').length})`}</button>`).join('')}
       </div>
-      <div class="docs-main">
-        ${filtered.length === 0 ? `
-          <div class="docs-upload-zone" onclick="document.querySelector('#docs-overlay input[type=file]').click()">
-            <div style="font-size:32px;margin-bottom:12px">📄</div>
-            <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No documents yet</div>
-            <div style="font-size:13px;color:var(--text3)">Upload a PDF, DOCX, or TXT file to get started</div>
-          </div>` : `
-          <div class="docs-grid">
-            ${filtered.map(d => `
-              <div class="doc-card" onclick="openDocEditor('${d.id}')">
-                <div class="doc-card-actions">
-                  <button class="doc-card-btn" onclick="event.stopPropagation();downloadDoc('${d.id}')">↓</button>
-                  <button class="doc-card-btn danger" onclick="event.stopPropagation();deleteDoc('${d.id}')">✕</button>
-                </div>
-                <div class="doc-card-icon">${d.type === 'resume' ? '📄' : '✉️'}</div>
-                <div class="doc-card-name">${esc(d.name)}</div>
-                <div class="doc-card-meta">${d.type} · ${Math.round(d.size/100)/10}kb · ${new Date(d.createdAt).toLocaleDateString()}</div>
-              </div>`).join('')}
-          </div>`}
-      </div>
+    </div>
+    <div class="docs-main">
+      ${filtered.length === 0 ? `
+        <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
+          ${q ? `No documents matching "${esc(q)}"` : 'No documents yet — upload one above'}
+        </div>` : `
+        <div class="docs-grid">
+          ${filtered.map(d => `
+            <div class="doc-card" onclick="openDocEditor('${d.id}')">
+              <div class="doc-card-actions">
+                <button class="doc-card-btn danger" onclick="event.stopPropagation();deleteDoc('${d.id}')">✕</button>
+              </div>
+              <div class="doc-card-icon">${d.type === 'resume' ? '📄' : '✉️'}</div>
+              <div class="doc-card-name">${esc(d.name)}</div>
+              <div class="doc-card-meta">${d.type} · ${Math.round(d.size/100)/10}kb · ${new Date(d.createdAt).toLocaleDateString()}</div>
+            </div>`).join('')}
+        </div>`}
     </div>`;
 
   document.body.appendChild(overlay);
+  // Focus search input
+  setTimeout(() => document.getElementById('docs-search-input')?.focus?.(), 50);
 }
 
 function closeDocsPage() {
@@ -2244,13 +2245,19 @@ async function handleFileUpload(event, type) {
 // ── AUTO-SAVE TAILORED DOC TO LIBRARY ──
 async function autoSaveToLibrary(j, docType, html, text) {
   try {
-    const name = `${j.company} - ${j.title} (Tailored ${docType === 'resume' ? 'Resume' : 'Cover Letter'})`;
-    await fetch(API + '/api/docs', {
+    const name = `${j.company} – ${j.title} (Tailored ${docType === 'resume' ? 'Resume' : 'Cover Letter'})`;
+    const res = await fetch(API + '/api/docs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify({ name, type: docType, content: text, html }),
     });
-    console.log('Auto-saved tailored doc to library:', name);
+    const libDoc = await res.json();
+    // Also add to job.documents
+    if (!j.documents) j.documents = [];
+    j.documents = j.documents.filter(d => !(d.source === 'tailored' && d.type === docType));
+    j.documents.unshift({ id: genId(), name, type: docType, docLibId: libDoc.id, source: 'tailored', createdAt: Date.now(), usedForApplication: false });
+    scheduleSave();
+    console.log('Auto-saved tailored doc to library + job documents:', name);
   } catch(e) { console.warn('Auto-save to library failed:', e.message); }
 }
 
@@ -2517,6 +2524,198 @@ async function checkAllPostings() {
   if (statusEl) statusEl.innerHTML = `<span style="color:var(--green)">✓ Done:</span> ${active} active · <span style="color:#f97316">${expiredCount} expired</span> · ${failed} unreachable`;
 }
 
+// ── JOB DOCUMENTS TAB ──
+function renderDocumentsTab(j) {
+  if (!j.documents) j.documents = [];
+  const docs = j.documents;
+  const usedDoc = docs.find(d => d.usedForApplication);
+
+  return `<div style="padding:20px;max-width:680px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600;color:var(--text)">Documents for this application</div>
+      <div style="display:flex;gap:8px">
+        <label style="padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v8M3 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Upload
+          <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadToJobDocuments(event,'${j.id}')">
+        </label>
+        <button onclick="pickFromLibraryForJob('${j.id}')" style="padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 2h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/></svg>
+          From Library
+        </button>
+      </div>
+    </div>
+
+    ${docs.length === 0 ? `
+      <div style="padding:40px 20px;text-align:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="font-size:32px;margin-bottom:12px">📂</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No documents yet</div>
+        <div style="font-size:13px;color:var(--text3)">Upload files or add from your Document Library.<br>Tailored documents are saved here automatically.</div>
+      </div>` : `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${docs.map(d => `
+          <div style="background:var(--bg2);border:1px solid ${d.usedForApplication?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);padding:12px 16px;display:flex;align-items:center;gap:12px;transition:border-color 0.15s">
+            <span style="font-size:18px;flex-shrink:0">${d.type==='resume'?'📄':d.type==='cover'?'✉️':'📎'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</div>
+              <div style="font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;gap:8px;margin-top:2px">
+                <span>${d.type}</span>
+                <span>·</span>
+                <span>${d.source||'uploaded'}</span>
+                <span>·</span>
+                <span>${fmtDate(d.createdAt)}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              ${d.usedForApplication ? `
+                <span style="padding:3px 8px;background:rgba(16,185,129,0.1);color:var(--green);border:1px solid rgba(16,185,129,0.2);border-radius:100px;font-size:11px;font-family:var(--mono);font-weight:600">✓ USED</span>` : `
+                <button onclick="tagJobDocument('${j.id}','${d.id}')" style="padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:100px;font-size:11px;font-family:var(--font);color:var(--text3);cursor:pointer">Mark as used</button>`}
+              ${d.docLibId ? `<button onclick="openDocEditor('${d.docLibId}')" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">View</button>` : ''}
+              <button onclick="removeJobDocument('${j.id}','${d.id}')" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--red);cursor:pointer">✕</button>
+            </div>
+          </div>`).join('')}
+      </div>`}
+  </div>`;
+}
+
+// ── JOB DOCUMENT ACTIONS ──
+function tagJobDocument(jobId, docId) {
+  const j = jobs[jobId]; if (!j || !j.documents) return;
+  // Clear all then set this one
+  j.documents.forEach(d => d.usedForApplication = false);
+  const doc = j.documents.find(d => d.id === docId);
+  if (doc) doc.usedForApplication = true;
+  scheduleSave(); renderDetail();
+}
+
+function removeJobDocument(jobId, docId) {
+  const j = jobs[jobId]; if (!j || !j.documents) return;
+  j.documents = j.documents.filter(d => d.id !== docId);
+  scheduleSave(); renderDetail();
+}
+
+async function uploadToJobDocuments(event, jobId) {
+  const file = event.target.files[0]; if (!file) return;
+  const j = jobs[jobId]; if (!j) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  const ext = file.name.split('.').pop().toLowerCase();
+  const type = file.name.toLowerCase().includes('cover') ? 'cover' : 'resume';
+  formData.append('type', type);
+  try {
+    // Upload to library first
+    const res = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ name: file.name, type, content: '' }),
+    });
+    const libDoc = await res.json();
+    // Also parse the file
+    const parseForm = new FormData();
+    parseForm.append('file', file);
+    const parseRes = await fetch(API + '/api/parse-file', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: parseForm,
+    });
+    const parsed = parseRes.ok ? await parseRes.json() : {};
+    // Update library doc with content
+    await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ id: libDoc.id, name: file.name, type, content: parsed.text||'', html: parsed.html||null }),
+    });
+    // Add to job documents
+    if (!j.documents) j.documents = [];
+    j.documents.unshift({ id: genId(), name: file.name, type, docLibId: libDoc.id, source: 'uploaded', createdAt: Date.now(), usedForApplication: false });
+    scheduleSave(); renderDetail();
+  } catch(e) { alert('Upload failed: ' + e.message); }
+}
+
+async function pickFromLibraryForJob(jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  try {
+    const res = await fetch(API + '/api/docs', { headers: { Authorization: 'Bearer ' + token } });
+    libraryDocs = await res.json();
+  } catch(e) { libraryDocs = []; }
+  // Show picker with callback to add to job
+  showLibraryPickerForJob(jobId);
+}
+
+function showLibraryPickerForJob(jobId) {
+  const overlay = document.createElement('div');
+  overlay.id = 'lib-job-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:700;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:min(520px,92vw);max-height:72vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:600;color:var(--text);flex:1">Add from Library</div>
+        <input oninput="filterJobLibPicker(this.value)" placeholder="Search..." style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text);outline:none;width:160px">
+        <button onclick="document.getElementById('lib-job-picker-overlay').remove()" style="width:28px;height:28px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:16px;color:var(--text2)">×</button>
+      </div>
+      <div id="lib-job-picker-list" style="flex:1;overflow-y:auto;padding:12px">
+        ${renderLibPickerItems(libraryDocs, jobId)}
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function filterJobLibPicker(q) {
+  const list = document.getElementById('lib-job-picker-list');
+  if (!list) return;
+  const jobId = list.dataset.jobId;
+  const filtered = libraryDocs.filter(d => d.name.toLowerCase().includes(q.toLowerCase()));
+  list.innerHTML = renderLibPickerItems(filtered, list.dataset.jobid);
+}
+
+function renderLibPickerItems(docs, jobId) {
+  if (!docs.length) return '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No documents found</div>';
+  return docs.map(d => `
+    <div onclick="addLibDocToJob('${jobId}','${d.id}')" style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.12s;display:flex;align-items:center;gap:10px" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <span style="font-size:16px">${d.type==='resume'?'📄':'✉️'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${d.type} · ${new Date(d.createdAt).toLocaleDateString()}</div>
+      </div>
+      <span style="font-size:12px;color:var(--blue)">Add →</span>
+    </div>`).join('');
+}
+
+function addLibDocToJob(jobId, docLibId) {
+  document.getElementById('lib-job-picker-overlay')?.remove();
+  const j = jobs[jobId]; if (!j) return;
+  const libDoc = libraryDocs.find(d => d.id === docLibId); if (!libDoc) return;
+  if (!j.documents) j.documents = [];
+  // Don't add duplicates
+  if (j.documents.some(d => d.docLibId === docLibId)) {
+    alert('This document is already in the list.'); return;
+  }
+  j.documents.unshift({ id: genId(), name: libDoc.name, type: libDoc.type, docLibId, source: 'library', createdAt: Date.now(), usedForApplication: false });
+  scheduleSave(); renderDetail();
+}
+
+async function saveToJobDocuments(type, jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  const text = type === 'resume' ? j.tailoredResume : j.tailoredCover;
+  const html = type === 'resume' ? j.tailoredResumeHtml : j.tailoredCoverHtml;
+  if (!text && !html) return;
+  const name = `${j.company} – ${j.title} (Tailored ${type === 'resume' ? 'Resume' : 'Cover Letter'})`;
+  try {
+    const res = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ name, type, content: text||'', html: html||null }),
+    });
+    const libDoc = await res.json();
+    if (!j.documents) j.documents = [];
+    // Remove existing tailored doc of same type if present
+    j.documents = j.documents.filter(d => !(d.source === 'tailored' && d.type === type));
+    j.documents.unshift({ id: genId(), name, type, docLibId: libDoc.id, source: 'tailored', createdAt: Date.now(), usedForApplication: false });
+    scheduleSave(); renderDetail();
+    // Switch to documents tab to show result
+    switchTab('documents');
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
 async function checkAIProviders() {
   const el = document.getElementById('ai-provider-status');
   if (el) el.textContent = 'Checking...';
@@ -2533,25 +2732,42 @@ async function checkAIProviders() {
   }
 }
 
-function openSettings() {
+function openSettings(section) {
   const overlay = document.getElementById('settings-overlay');
   overlay.style.display = 'flex';
-  // Populate
+  // Populate user info
   document.getElementById('s-avatar').textContent = (currentUser||'?').slice(0,2).toUpperCase();
   document.getElementById('s-username').textContent = currentUser;
   document.getElementById('s-job-count').textContent = Object.keys(jobs).length + ' applications';
   document.getElementById('s-finnhub-key').value = localStorage.getItem('finnhub_key') || '';
-  // Clear fields
+  // Clear form fields
   ['s-pw-current','s-pw-new','s-pw-confirm','s-delete-confirm'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   ['pw-status','finnhub-status','export-status','delete-status'].forEach(id => {
     const el = document.getElementById(id); if (el) { el.className = 'settings-status'; el.textContent = ''; }
   });
+  showSettingsSection(section || 'account');
 }
 
 function closeSettings() {
   document.getElementById('settings-overlay').style.display = 'none';
+}
+
+function showSettingsSection(id) {
+  // Hide all panes
+  document.querySelectorAll('.settings-pane').forEach(p => p.style.display = 'none');
+  // Show selected
+  const pane = document.getElementById('spane-' + id);
+  if (pane) pane.style.display = 'block';
+  // Update nav active state
+  document.querySelectorAll('[id^="snav-"]').forEach(btn => {
+    const active = btn.id === 'snav-' + id;
+    btn.style.background = active ? 'var(--bg4)' : 'transparent';
+    btn.style.color = active ? 'var(--text)' : 'var(--text2)';
+    btn.style.borderLeftColor = active ? 'var(--accent)' : 'transparent';
+    btn.style.fontWeight = active ? '500' : '400';
+  });
 }
 
 function setSettingsStatus(id, type, msg) {
@@ -2660,111 +2876,269 @@ setInterval(() => {
   if (el) el.textContent = new Date().toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
 }, 1000);
 </script>
-<!-- SETTINGS PANEL -->
-<div class="settings-overlay" id="settings-overlay" style="display:none" onclick="if(event.target===this)closeSettings()">
-  <div class="settings-panel">
-    <div class="settings-header">
-      <div class="settings-title">Settings</div>
-      <button class="settings-close" onclick="closeSettings()">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="settings-body">
+<!-- SETTINGS PANEL — full overlay with sidebar nav -->
+<div id="settings-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:800;align-items:center;justify-content:center" onclick="if(event.target===this)closeSettings()">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:min(860px,96vw);height:min(88vh,700px);display:flex;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.4)">
 
-      <!-- Account info -->
-      <div class="settings-section">
-        <div class="settings-section-title">ACCOUNT</div>
-        <div class="settings-user-info">
-          <div class="settings-avatar" id="s-avatar">?</div>
+    <!-- Sidebar nav -->
+    <div style="width:200px;flex-shrink:0;background:var(--bg3);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 0">
+      <div style="padding:0 16px 16px;border-bottom:1px solid var(--border);margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="user-avatar" id="s-avatar" style="width:32px;height:32px;font-size:13px;flex-shrink:0">?</div>
           <div>
-            <div class="settings-user-name" id="s-username"></div>
-            <div class="settings-user-meta" id="s-job-count"></div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)" id="s-username"></div>
+            <div style="font-size:11px;color:var(--text3)" id="s-job-count"></div>
           </div>
         </div>
-        <div class="settings-section-body">
-          <div class="settings-status" id="pw-status"></div>
-          <div class="settings-field"><label>CURRENT PASSWORD</label><input type="password" id="s-pw-current" placeholder="Enter current password" autocomplete="current-password"></div>
-          <div class="settings-field"><label>NEW PASSWORD</label><input type="password" id="s-pw-new" placeholder="At least 6 characters" autocomplete="new-password"></div>
-          <div class="settings-field"><label>CONFIRM NEW PASSWORD</label><input type="password" id="s-pw-confirm" placeholder="Repeat new password" autocomplete="new-password"></div>
-          <button class="settings-btn primary" onclick="changePassword()">Update password</button>
+      </div>
+      ${['account','ai','financial','extension','help','data','danger'].map(s => {
+        const labels = {account:'Account',ai:'AI Providers',financial:'Financial Data',extension:'Chrome Extension',help:'Help & Support',data:'Data & Export',danger:'Danger Zone'};
+        const icons = {
+          account:'<path d="M7 7a3 3 0 100-6 3 3 0 000 6zM1 14s-.5-5 6-5 6 5 6 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+          ai:'<path d="M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>',
+          financial:'<path d="M7 1v2M7 11v2M3.2 3.2l1.4 1.4M9.4 9.4l1.4 1.4M1 7h2M11 7h2M3.2 10.8l1.4-1.4M9.4 4.6l1.4-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+          extension:'<rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M9 5V2M9 12v-3M5 9H2M12 9H9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+          help:'<circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 5.5a1.5 1.5 0 013 .5c0 1-1.5 1.5-1.5 2.5M7 10.5h.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+          data:'<path d="M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1M7 1v8M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+          danger:'<path d="M7 5v3M7 10h.01M2.7 11.3L7 2l4.3 9.3a1 1 0 01-.9 1.4H3.6a1 1 0 01-.9-1.4z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+        };
+        return '';
+      }).join('')}
+      <div id="settings-nav" style="flex:1;overflow-y:auto">
+        ${[
+          {id:'account',label:'Account',icon:'M7 7a3 3 0 100-6 3 3 0 000 6zM1 14s-.5-5 6-5 6 5 6 5'},
+          {id:'ai',label:'AI Providers',icon:'M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z'},
+          {id:'financial',label:'Financial Data',icon:'M7 1v2M7 11v2M3.2 3.2l1.4 1.4M9.4 9.4l1.4 1.4M1 7h2M11 7h2'},
+          {id:'extension',label:'Chrome Extension',icon:'M2 7h10M7 2v10'},
+          {id:'help',label:'Help & Support',icon:'M7 5.5v1.5l1 1M7 11.5h.01'},
+          {id:'data',label:'Data & Export',icon:'M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1M7 1v8'},
+          {id:'danger',label:'Danger Zone',icon:'M7 5v3M7 10h.01'},
+        ].map(item => `
+          <button onclick="showSettingsSection('${item.id}')" id="snav-${item.id}" style="width:100%;padding:9px 16px;background:transparent;border:none;border-radius:0;font-family:var(--font);font-size:13px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left;transition:all 0.12s;border-left:2px solid transparent">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><path d="${item.icon}" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            ${item.label}
+          </button>`).join('')}
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--border)">
+        <button onclick="closeSettings()" style="width:100%;padding:7px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text3);cursor:pointer">Close</button>
+      </div>
+    </div>
+
+    <!-- Settings content area -->
+    <div style="flex:1;overflow-y:auto;padding:32px" id="settings-content">
+
+      <!-- ACCOUNT -->
+      <div class="settings-pane" id="spane-account">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px">Account</div>
+        <div class="settings-section">
+          <div class="settings-section-title">CHANGE PASSWORD</div>
+          <div class="settings-section-body">
+            <div class="settings-status" id="pw-status"></div>
+            <div class="settings-field"><label>CURRENT PASSWORD</label><input type="password" id="s-pw-current" placeholder="Enter current password" autocomplete="current-password"></div>
+            <div class="settings-field"><label>NEW PASSWORD</label><input type="password" id="s-pw-new" placeholder="At least 6 characters" autocomplete="new-password"></div>
+            <div class="settings-field"><label>CONFIRM NEW PASSWORD</label><input type="password" id="s-pw-confirm" placeholder="Repeat new password" autocomplete="new-password"></div>
+            <button class="settings-btn primary" onclick="changePassword()">Update password</button>
+          </div>
         </div>
       </div>
 
-      <!-- AI providers -->
-      <div class="settings-section">
-        <div class="settings-section-title">AI PROVIDERS</div>
-        <div class="settings-section-body">
-          <div class="settings-status" id="ai-status"></div>
-          <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:4px">
-            <strong style="color:var(--text2)">Insights</strong> uses Groq → OpenRouter → Google.<br>
-            <strong style="color:var(--text2)">Documents</strong> uses OpenRouter → Groq → Google.<br>
-            All three providers are free. Get keys at:
-            <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> ·
-            <a href="https://openrouter.ai" target="_blank" style="color:var(--blue)">openrouter.ai</a> ·
-            <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com</a>
+      <!-- AI PROVIDERS -->
+      <div class="settings-pane" id="spane-ai" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px">AI Providers</div>
+        <div class="settings-section">
+          <div class="settings-section-title">PROVIDER STATUS</div>
+          <div class="settings-section-body">
+            <div style="font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:12px">
+              All providers are <strong style="color:var(--text2)">free to use</strong>. The app tries them in order and falls back automatically.<br><br>
+              <strong style="color:var(--text2)">Insights:</strong> Groq → OpenRouter → Google<br>
+              <strong style="color:var(--text2)">Documents:</strong> OpenRouter (4 free models) → Groq → Google
+            </div>
+            <div style="padding:10px 12px;background:var(--bg4);border-radius:var(--radius-sm);font-size:12px;color:var(--text3);margin-bottom:12px">
+              Set as environment variables on Render:<br>
+              <code style="color:var(--text2)">GROQ_API_KEY · OPENROUTER_API_KEY · GOOGLE_API_KEY</code>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+              <a href="https://console.groq.com" target="_blank" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--blue);text-decoration:none">Get Groq key ↗</a>
+              <a href="https://openrouter.ai/keys" target="_blank" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--blue);text-decoration:none">Get OpenRouter key ↗</a>
+              <a href="https://aistudio.google.com/apikey" target="_blank" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--blue);text-decoration:none">Get Google key ↗</a>
+            </div>
+            <button class="settings-btn" onclick="checkAIProviders()">Check provider status</button>
+            <div id="ai-provider-status" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
           </div>
-          <div class="settings-hint" style="display:block;margin-bottom:8px;padding:8px 10px;background:var(--bg4);border-radius:var(--radius-sm)">
-            ⚠️ Set as <strong>environment variables on Render</strong>: GROQ_API_KEY · OPENROUTER_API_KEY · GOOGLE_API_KEY
-          </div>
-          <button class="settings-btn" onclick="checkAIProviders()">Check provider status</button>
-          <div id="ai-provider-status" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
         </div>
       </div>
 
-      <!-- Finnhub API key -->
-      <div class="settings-section">
-        <div class="settings-section-title">FINANCIAL DATA (FINNHUB)</div>
-        <div class="settings-section-body">
-          <div class="settings-status" id="finnhub-status"></div>
-          <div class="settings-field">
-            <label>API KEY</label>
-            <input type="password" id="s-finnhub-key" placeholder="Paste your Finnhub API key">
-            <div class="settings-hint">Get a free key at <a href="https://finnhub.io/register" target="_blank" style="color:var(--blue)">finnhub.io/register</a>. Used to fetch live stock price, market cap and analyst ratings in the Insights tab.</div>
+      <!-- FINANCIAL DATA -->
+      <div class="settings-pane" id="spane-financial" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px">Financial Data</div>
+        <div class="settings-section">
+          <div class="settings-section-title">FINNHUB API KEY</div>
+          <div class="settings-section-body">
+            <div class="settings-status" id="finnhub-status"></div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Enables live stock price, market cap, P/E ratio and analyst targets in the Insights tab for publicly traded companies.</div>
+            <div class="settings-field"><label>API KEY</label><input type="password" id="s-finnhub-key" placeholder="Paste your Finnhub API key"></div>
+            <a href="https://finnhub.io/register" target="_blank" style="display:inline-block;font-size:12px;color:var(--blue);margin-bottom:12px">Get a free key at finnhub.io ↗</a>
+            <div style="display:flex;gap:8px">
+              <button class="settings-btn primary" onclick="saveFinnhubKeySetting()">Save key</button>
+              <button class="settings-btn" onclick="clearFinnhubKey()">Clear key</button>
+            </div>
           </div>
-          <button class="settings-btn primary" onclick="saveFinnhubKeySetting()">Save API key</button>
-          <button class="settings-btn" onclick="clearFinnhubKey()" style="margin-top:-4px">Clear key</button>
         </div>
       </div>
 
-      <!-- Data export -->
-      <div class="settings-section">
-        <div class="settings-section-title">DATA EXPORT</div>
-        <div class="settings-section-body">
-          <div class="settings-status" id="export-status"></div>
-          <div class="settings-hint" style="display:block;margin-bottom:4px">Download all your job applications as a zip file. Each job gets its own folder with metadata, notes, resume, cover letter, and tailored documents.</div>
-          <button class="settings-btn primary" id="export-btn" onclick="exportAllData()">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Download all data as zip
-          </button>
+      <!-- BROWSER EXTENSIONS -->
+      <div class="settings-pane" id="spane-extension" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px">Browser Extensions</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:20px">Add jobs to Applied in one click from any job site — LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.</div>
+
+        <!-- Download button -->
+        <div style="margin-bottom:20px">
+          <a href="/applied-extension.zip" download style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--accent-bg);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;color:#1a1917;text-decoration:none">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download Extension (.zip)
+          </a>
+          <div style="margin-top:6px;font-size:11px;color:var(--text3)">Contains files for both Chrome and Safari. Auto-detects job info from LinkedIn, Indeed, Greenhouse, Lever, and Workday.</div>
+        </div>
+
+        <!-- Two-column install cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Chrome -->
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="#4285f4"/><path d="M12 8h8.6A10 10 0 0112 2a10 10 0 00-8.6 5L7 13" stroke="none"/><circle cx="12" cy="12" r="10" stroke="#e0e0e0" stroke-width="1.5" fill="none"/><path d="M12 8h8.6M7 13l-4.6-8M17 13l-5 8.7" stroke="#555" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <div style="font-size:14px;font-weight:600;color:var(--text)">Chrome</div>
+            </div>
+            <ol style="font-size:12px;color:var(--text3);line-height:1.9;padding-left:16px;margin:0">
+              <li>Download and unzip the extension</li>
+              <li>Go to <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">chrome://extensions</code></li>
+              <li>Enable <strong style="color:var(--text2)">Developer Mode</strong> (top right)</li>
+              <li>Click <strong style="color:var(--text2)">Load unpacked</strong></li>
+              <li>Select the <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">applied-extension</code> folder</li>
+              <li>Sign in with your Applied credentials</li>
+            </ol>
+          </div>
+
+          <!-- Safari -->
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#0084ff" stroke-width="1.5"/><path d="M12 2v20M2 12h20" stroke="#0084ff" stroke-width="1" opacity=".3"/><path d="M17 7l-5 5-5 5M7 7l5 5" stroke="#0084ff" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <div style="font-size:14px;font-weight:600;color:var(--text)">Safari</div>
+              <span style="font-size:10px;padding:1px 6px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:100px;color:var(--blue);font-family:var(--mono)">Requires Xcode</span>
+            </div>
+            <ol style="font-size:12px;color:var(--text3);line-height:1.9;padding-left:16px;margin:0">
+              <li>Install <a href="https://apps.apple.com/app/xcode/id497799835" target="_blank" style="color:var(--blue)">Xcode</a> (free, Mac App Store)</li>
+              <li>Download and unzip the extension</li>
+              <li>Double-click <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">Install Applied Extension.app</code></li>
+              <li>Click <strong style="color:var(--text2)">Install</strong> — everything runs automatically</li>
+              <li>Enable <strong style="color:var(--text2)">Applied Job Tracker</strong> in Safari Extensions</li>
+            </ol>
+            <div style="margin-top:10px;padding:8px 10px;background:var(--bg4);border-radius:var(--radius-sm);font-size:11px;color:var(--text3)">
+              The installer handles conversion, compilation, and setup automatically. Xcode must be installed but you never need to open it. The companion app stays in your Dock while using the extension.
+            </div>
+          </div>
+        </div>
+
+        <!-- Supported sites -->
+        <div style="margin-top:16px;padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm)">
+          <div style="font-size:11px;font-family:var(--mono);color:var(--text3);margin-bottom:8px;font-weight:600">AUTO-DETECTED SITES</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${['LinkedIn','Indeed','Greenhouse','Lever','Workday','+ any site (title fallback)'].map(s =>
+              `<span style="padding:3px 8px;background:var(--bg4);border-radius:100px;font-size:11px;color:var(--text2);font-family:var(--mono)">${s}</span>`
+            ).join('')}
+          </div>
         </div>
       </div>
 
-      <!-- Danger zone -->
-      <div class="settings-section" style="border-color:rgba(192,57,43,0.25)">
-        <div class="settings-section-title" style="color:var(--red);background:rgba(192,57,43,0.05)">DANGER ZONE</div>
-        <div class="settings-section-body">
-          <div class="settings-status" id="delete-status"></div>
-          <div class="settings-hint" style="display:block;margin-bottom:4px">Permanently delete your account and all job data. This cannot be undone.</div>
-          <div class="settings-field"><label>TYPE YOUR USERNAME TO CONFIRM</label><input type="text" id="s-delete-confirm" placeholder="Type username to confirm"></div>
-          <button class="settings-btn danger" onclick="deleteAccount()">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M5 11V5M9 11V5M3 3.5l.5 8a1 1 0 001 .5h5a1 1 0 001-.5l.5-8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Delete account &amp; all data
-          </button>
+      <!-- HELP & SUPPORT -->
+      <div class="settings-pane" id="spane-help" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px">Help & Support</div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">USER GUIDE</div>
+          <div class="settings-section-body">
+            <div style="font-size:13px;color:var(--text2);line-height:1.8">
+              <strong style="color:var(--text)">Adding a job</strong><br>
+              Click <strong>+ Add application</strong> → paste a job URL and click <strong>Open</strong> to auto-parse the title, company, and location. Fill in Work Type and Location manually if needed, then click Save.<br><br>
+
+              <strong style="color:var(--text)">Tailoring tab</strong><br>
+              1. Select Resume or Cover Letter<br>
+              2. Upload a file or pick from your Document Library<br>
+              3. Add optional context (keywords, notes) → click <strong>Tailor</strong><br>
+              4. Edit the result → Download as .docx or .txt → Save to Documents<br><br>
+
+              <strong style="color:var(--text)">Documents tab (per job)</strong><br>
+              All documents for each application live here. Upload files, add from your Library, and mark one as <strong>Used for application</strong>. Everything syncs back to the Document Library.<br><br>
+
+              <strong style="color:var(--text)">Document Library</strong><br>
+              Access from the sidebar. Search and filter all your resumes and cover letters. Upload new files, create blank documents, or edit existing ones in the built-in editor.<br><br>
+
+              <strong style="color:var(--text)">Insights tab</strong><br>
+              Click <strong>Research this role</strong> on any job to get AI-powered company research — culture ratings, red/green flags, LinkedIn outreach strategy, recent news, and interview tips. Add a Finnhub API key in Settings to see live stock data.<br><br>
+
+              <strong style="color:var(--text)">Analytics dashboard</strong><br>
+              Click <strong>Analytics</strong> in the sidebar. See pipeline funnel, response rate, status breakdown, and work type distribution. Click any bar to filter, or click job titles to open them directly.<br><br>
+
+              <strong style="color:var(--text)">Check postings</strong><br>
+              In Analytics → click <strong>⟳ Check postings</strong>. The app fetches each active job URL and detects expiry signals. Expired jobs are tagged with an orange <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">expired</code> status and appear in the filter tab.<br><br>
+
+              <strong style="color:var(--text)">Chrome Extension</strong><br>
+              Install the extension (Settings → Chrome Extension) to add jobs directly from any job site in one click.
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">BUGS & FEATURE REQUESTS</div>
+          <div class="settings-section-body">
+            <div style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:14px">
+              Found a bug or have an idea? Submit it on GitHub — it's the fastest way to get it tracked and addressed.
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=bug&template=bug_report.md" target="_blank" style="padding:8px 16px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius-sm);font-size:13px;color:var(--red);text-decoration:none;display:flex;align-items:center;gap:6px">
+                🐛 Report a bug
+              </a>
+              <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=enhancement" target="_blank" style="padding:8px 16px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius-sm);font-size:13px;color:var(--blue);text-decoration:none;display:flex;align-items:center;gap:6px">
+                ✨ Request a feature
+              </a>
+              <a href="https://github.com/vramakanth/Job-Application-Tracker" target="_blank" style="padding:8px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text2);text-decoration:none;display:flex;align-items:center;gap:6px">
+                ☆ View on GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA & EXPORT -->
+      <div class="settings-pane" id="spane-data" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px">Data & Export</div>
+        <div class="settings-section">
+          <div class="settings-section-title">EXPORT ALL DATA</div>
+          <div class="settings-section-body">
+            <div class="settings-status" id="export-status"></div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Download all your job applications as a zip file. Each job gets its own folder with metadata, notes, resume, cover letter, and tailored documents.</div>
+            <button class="settings-btn primary" id="export-btn" onclick="exportAllData()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Download all data as zip
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DANGER ZONE -->
+      <div class="settings-pane" id="spane-danger" style="display:none">
+        <div style="font-size:18px;font-weight:600;color:var(--red);margin-bottom:20px">Danger Zone</div>
+        <div class="settings-section" style="border-color:rgba(192,57,43,0.25)">
+          <div class="settings-section-title" style="color:var(--red)">DELETE ACCOUNT</div>
+          <div class="settings-section-body">
+            <div class="settings-status" id="delete-status"></div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Permanently delete your account and all job data. This cannot be undone.</div>
+            <div class="settings-field"><label>TYPE YOUR USERNAME TO CONFIRM</label><input type="text" id="s-delete-confirm" placeholder="Type username to confirm"></div>
+            <button class="settings-btn danger" onclick="deleteAccount()">Delete account &amp; all data</button>
+          </div>
         </div>
       </div>
 
     </div>
   </div>
 </div>
-
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('SW registered:', reg.scope))
-          .catch(err => console.log('SW error:', err));
-      });
-    }
-  </script>
-</body>
-</html>
