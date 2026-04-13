@@ -724,34 +724,30 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
 
 // ── Document tailoring (OpenRouter → Groq → Anthropic) ──
 app.post('/api/tailor', authMiddleware, async (req, res) => {
-  const { company, title, location, salary, postingText, resume, cover, context, tailorResume, tailorCover } = req.body;
-  if (!tailorResume && !tailorCover) return res.status(400).json({ error: 'Select at least one document to tailor' });
-
-  const parts = [];
-  if (tailorResume && resume) parts.push('RESUME:\n' + resume);
-  if (tailorCover && cover) parts.push('COVER LETTER TEMPLATE:\n' + cover);
+  const { company, title, location, salary, postingText, content: docContent, docType, context } = req.body;
+  // docType: 'resume' or 'cover'
+  if (!docContent || !docType) return res.status(400).json({ error: 'content and docType required' });
 
   const jobCtx = postingText ? '\nJob posting content:\n' + postingText.slice(0, 3000) : '';
-  const systemPrompt = 'You are a professional career coach and resume writer. Tailor job application documents to be compelling, specific, and keyword-optimized.';
-  const userPrompt = `Tailor these documents for this role:
+  const docLabel = docType === 'resume' ? 'RESUME' : 'COVER LETTER';
+  const outputLabel = docType === 'resume' ? 'TAILORED RESUME' : 'TAILORED COVER LETTER';
+
+  const systemPrompt = 'You are a professional career coach and resume writer. Return ONLY the tailored document text, no preamble, no labels, no explanation.';
+  const userPrompt = `Tailor this ${docLabel} for the following role. Return ONLY the tailored ${docLabel} text with no labels or explanation.
 
 Company: ${company}
 Role: ${title}
 ${location ? 'Location: ' + location : ''}
-${salary ? 'Salary: ' + salary : ''}
-${context ? 'Extra context: ' + context : ''}
+${salary ? 'Target salary: ' + salary : ''}
+${context ? 'Additional context: ' + context : ''}
 ${jobCtx}
 
-Documents to tailor:
-
-${parts.join('\n\n')}
-
-Respond with clearly labeled sections: "TAILORED RESUME:" and/or "TAILORED COVER LETTER:". Make it compelling, specific, and keyword-optimized for this role.`;
+${docLabel} TO TAILOR:
+${docContent}`;
 
   try {
-    // OpenRouter first for documents, then Groq, then Anthropic
     const result = await callAI(['openrouter', 'groq', 'anthropic'], systemPrompt, userPrompt, 3000);
-    res.json({ result });
+    res.json({ result: result.trim(), docType });
   } catch (e) {
     console.error('Tailor error:', e.message);
     res.status(500).json({ error: e.message });
@@ -885,6 +881,95 @@ Return ONLY a valid JSON object with these exact fields (no markdown, no backtic
 });
 
 // Catch-all: serve frontend
+// ── Document Library ──
+// Each user has a docs file: DATA_DIR/docs/<userId>.json
+// Structure: { id, name, type ('resume'|'cover'), content, createdAt, updatedAt }
+
+const DOCS_DIR = path.join(DATA_DIR, 'docs');
+if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
+
+function loadUserDocs(userId) {
+  const f = path.join(DOCS_DIR, `${userId}.json`);
+  return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : [];
+}
+function saveUserDocs(userId, docs) {
+  fs.writeFileSync(path.join(DOCS_DIR, `${userId}.json`), JSON.stringify(docs));
+}
+function docId() { return Math.random().toString(36).slice(2, 10); }
+
+// GET /api/docs — list all docs
+app.get('/api/docs', authMiddleware, (req, res) => {
+  const docs = loadUserDocs(req.user.id);
+  // Return without content for list view (save bandwidth)
+  res.json(docs.map(d => ({ id: d.id, name: d.name, type: d.type, size: d.content?.length || 0, createdAt: d.createdAt, updatedAt: d.updatedAt })));
+});
+
+// GET /api/docs/:id — get full doc with content
+app.get('/api/docs/:id', authMiddleware, (req, res) => {
+  const docs = loadUserDocs(req.user.id);
+  const doc = docs.find(d => d.id === req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  res.json(doc);
+});
+
+// POST /api/docs — create or update a doc
+app.post('/api/docs', authMiddleware, (req, res) => {
+  const { id, name, type, content, html } = req.body;
+  if (!name || !type || !content) return res.status(400).json({ error: 'name, type, content required' });
+  const docs = loadUserDocs(req.user.id);
+  const now = Date.now();
+  if (id) {
+    // Update existing
+    const idx = docs.findIndex(d => d.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Not found' });
+    docs[idx] = { ...docs[idx], name, type, content, html, updatedAt: now };
+    saveUserDocs(req.user.id, docs);
+    res.json(docs[idx]);
+  } else {
+    // Create new
+    const doc = { id: docId(), name, type, content, html, createdAt: now, updatedAt: now };
+    docs.push(doc);
+    saveUserDocs(req.user.id, docs);
+    res.json(doc);
+  }
+});
+
+// DELETE /api/docs/:id — delete a doc
+app.delete('/api/docs/:id', authMiddleware, (req, res) => {
+  const docs = loadUserDocs(req.user.id);
+  const filtered = docs.filter(d => d.id !== req.params.id);
+  if (filtered.length === docs.length) return res.status(404).json({ error: 'Not found' });
+  saveUserDocs(req.user.id, filtered);
+  res.json({ ok: true });
+});
+
+// POST /api/docs/upload — upload a file and create a doc entry
+app.post('/api/docs/upload', authMiddleware, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  const { type = 'resume' } = req.body;
+  let content = '', html = '';
+  const ext = req.file.originalname.split('.').pop().toLowerCase();
+  try {
+    if (ext === 'pdf') {
+      const pdfData = await pdfParse(req.file.buffer);
+      content = pdfData.text;
+    } else if (ext === 'docx') {
+      const result = await mammoth.convertToHtml({ buffer: req.file.buffer });
+      html = result.value;
+      content = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    } else {
+      content = req.file.buffer.toString('utf8');
+    }
+  } catch(e) { content = req.file.buffer.toString('utf8'); }
+
+  const docs = loadUserDocs(req.user.id);
+  const now = Date.now();
+  const doc = { id: docId(), name: req.file.originalname, type, content, html, createdAt: now, updatedAt: now };
+  docs.push(doc);
+  saveUserDocs(req.user.id, docs);
+  res.json(doc);
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/public/index.html'));
 });

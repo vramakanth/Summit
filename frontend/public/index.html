@@ -275,6 +275,34 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .insight-tag.neutral { background: var(--bg3); color: var(--text2); }
 .star-rating { display: flex; gap: 2px; align-items: center; }
 .star { font-size: 16px; }
+/* ── DOCUMENTS PAGE ── */
+.docs-overlay { position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;flex-direction:column;overflow:hidden; }
+.docs-header { display:flex;align-items:center;gap:14px;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2); }
+.docs-title { font-size:16px;font-weight:600;color:var(--text);flex:1; }
+.docs-body { flex:1;display:flex;overflow:hidden; }
+.docs-sidebar { width:200px;flex-shrink:0;border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:4px;background:var(--bg2); }
+.docs-filter { padding:7px 12px;border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;border:none;background:transparent;width:100%;text-align:left;transition:all 0.12s; }
+.docs-filter:hover { background:var(--bg3); }
+.docs-filter.active { background:var(--bg3);color:var(--text);font-weight:500; }
+.docs-main { flex:1;overflow-y:auto;padding:20px 24px; }
+.docs-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:20px; }
+.doc-card { background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:all 0.15s;position:relative; }
+.doc-card:hover { border-color:var(--border2);box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+.doc-card-icon { width:36px;height:36px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;margin-bottom:10px;font-size:16px; }
+.doc-card-name { font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;word-break:break-word; }
+.doc-card-meta { font-size:11px;color:var(--text3);font-family:var(--mono); }
+.doc-card-actions { position:absolute;top:10px;right:10px;display:flex;gap:4px;opacity:0;transition:opacity 0.15s; }
+.doc-card:hover .doc-card-actions { opacity:1; }
+.doc-card-btn { padding:4px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;font-family:var(--font); }
+.doc-card-btn:hover { background:var(--bg4); }
+.doc-card-btn.danger:hover { color:var(--red);border-color:rgba(192,57,43,0.3); }
+.doc-editor-panel { position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:600;display:flex;align-items:center;justify-content:center; }
+.doc-editor-inner { background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:min(700px,95vw);height:min(80vh,700px);display:flex;flex-direction:column;overflow:hidden; }
+.doc-editor-toolbar { display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0; }
+.doc-editor-name-input { flex:1;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none; }
+.doc-editor-body { flex:1;overflow-y:auto;padding:20px;font-size:13px;line-height:1.7;color:var(--text);outline:none;white-space:pre-wrap; }
+.docs-upload-zone { border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:20px; }
+.docs-upload-zone:hover { border-color:var(--border2);background:var(--bg3); }
 
 /* ── NOTES ── */
 .notes-compose { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 20px; }
@@ -308,6 +336,19 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .file-action-btn.danger-btn { border-color: rgba(192,57,43,0.3); color: var(--red); }
 .file-action-btn.danger-btn:hover { background: rgba(192,57,43,0.07); }
 .tailor-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
+.tailor-wrap { padding: 20px; display: flex; flex-direction: column; gap: 0; }
+.files-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.file-slot { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: all 0.15s; min-height: 72px; }
+.file-slot:hover { border-color: var(--border2); background: var(--bg3); }
+.file-slot.empty { cursor: default; }
+.file-slot-icon { width: 36px; height: 36px; flex-shrink: 0; color: var(--text3); }
+.file-slot-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 2px; word-break: break-all; }
+.file-slot-meta { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.file-slot-info { flex: 1; min-width: 0; }
+.file-action-btn { padding: 4px 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--text2); cursor: pointer; transition: all 0.12s; }
+.file-action-btn:hover { background: var(--bg4); }
+.file-action-btn.danger:hover { color: var(--red); }
+.wysiwyg-editor { font-family: var(--font); }
 .tailor-heading { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; color: var(--text); }
 .tailor-sub { font-size: 12px; color: var(--text2); margin-bottom: 16px; line-height: 1.6; }
 .tailor-options { display: flex; gap: 8px; margin-bottom: 14px; }
@@ -482,6 +523,12 @@ input[type="file"] { display: none; }
       <div class="filter-tab" onclick="setFilter('rejected',this)">rejected</div>
     </div>
     <div class="job-list" id="job-list"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--border)">
+      <button onclick="showDocumentsPage()" style="width:100%;padding:7px 10px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 2h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v4h4" stroke="currentColor" stroke-width="1.3"/></svg>
+        Document Library
+      </button>
+    </div>
     <div class="user-bar">
       <div class="user-avatar" id="user-avatar">?</div>
       <div class="user-name" id="user-name-display"></div>
@@ -1105,81 +1152,121 @@ function fileSlotHtml(type, file, label, iconSvg, uploadLabel) {
   </div>`;
 }
 
+// ── FILES & TAILORING TAB ──
 function renderFilesTab(j) {
-  const resumeSlot = fileSlotHtml('resume', j.resume, 'RESUME',
-    `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M9 10h12M9 15h12M9 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-    'Upload resume');
-
-  const coverSlot = fileSlotHtml('cover', j.cover, 'COVER LETTER TEMPLATE',
-    `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="8" width="28" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 10l14 10 14-10" stroke="currentColor" stroke-width="1.5"/></svg>`,
-    'Upload template');
-
-  const tailored = (j.tailoredResume || j.tailoredCover) ? `
-    <div style="margin-top:20px">
-      <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:12px;letter-spacing:0.5px;font-weight:500">TAILORED VERSIONS</div>
-      ${j.tailoredResume ? `<div class="ai-result" style="margin-bottom:12px">
-        <div class="ai-result-header">
-          <span class="ai-result-label">Tailored resume</span>
-          <div class="ai-result-actions">
-            <button class="file-action-btn" onclick="downloadTailored('resume')">↓ download</button>
-            <button class="file-action-btn danger-btn" onclick="clearTailored('resume')">clear</button>
-          </div>
-        </div>
-        <div class="ai-text">${esc(j.tailoredResume)}</div>
-      </div>` : ''}
-      ${j.tailoredCover ? `<div class="ai-result">
-        <div class="ai-result-header">
-          <span class="ai-result-label">Tailored cover letter</span>
-          <div class="ai-result-actions">
-            <button class="file-action-btn" onclick="downloadTailored('cover')">↓ download</button>
-            <button class="file-action-btn danger-btn" onclick="clearTailored('cover')">clear</button>
-          </div>
-        </div>
-        <div class="ai-text">${esc(j.tailoredCover)}</div>
-      </div>` : ''}
-    </div>` : '';
-
   return `
-    <div class="files-grid">${resumeSlot}${coverSlot}</div>
-    ${tailored}
-    <div class="tailor-section">
-      <div class="tailor-heading">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5 3.5.5-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/></svg>
-        AI Tailoring
+    <div class="tailor-wrap">
+      <div class="files-row">
+        ${fileSlotHtml('resume', j.resume, 'RESUME', `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`)}
+        ${fileSlotHtml('cover', j.cover, 'COVER LETTER', `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="1.5"/></svg>`)}
       </div>
-      <div class="tailor-sub">Let AI rewrite your documents for this specific role. Supports PDF, Word, and text files. Uses the cached job posting for best results.</div>
-      <div class="tailor-options">
-        <button class="tailor-toggle${tailorFor.resume?' active':''}" id="tailor-resume-btn" onclick="toggleTailor('resume')">Resume</button>
-        <button class="tailor-toggle${tailorFor.cover?' active':''}" id="tailor-cover-btn" onclick="toggleTailor('cover')">Cover letter</button>
+
+      <div class="tailor-section">
+        <div class="tailor-heading">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+          AI Tailoring
+        </div>
+        <div class="tailor-sub">Tailor each document separately for this role. Extra context (interview notes, keywords) helps improve results.</div>
+        <textarea class="tailor-context" id="tailor-context" placeholder="Optional: add keywords, job requirements, or notes to guide tailoring..." rows="2"></textarea>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+            <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">RESUME</div>
+            ${j.resume
+              ? `<button class="tailor-btn" id="tailor-resume-btn" onclick="runTailoring('resume')" ${isGenerating?'disabled':''} style="width:100%;justify-content:center">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                  Tailor Resume
+                </button>
+                ${j.tailoredResume ? `<div style="margin-top:8px;font-size:11px;color:var(--green)">✓ Tailored version available</div>` : ''}`
+              : `<div style="font-size:12px;color:var(--text3)">Upload a resume first</div>`
+            }
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+            <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">COVER LETTER</div>
+            ${j.cover
+              ? `<button class="tailor-btn" id="tailor-cover-btn" onclick="runTailoring('cover')" ${isGenerating?'disabled':''} style="width:100%;justify-content:center">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                  Tailor Cover Letter
+                </button>
+                ${j.tailoredCover ? `<div style="margin-top:8px;font-size:11px;color:var(--green)">✓ Tailored version available</div>` : ''}`
+              : `<div style="font-size:12px;color:var(--text3)">Upload a cover letter first</div>`
+            }
+          </div>
+        </div>
+
+        <div id="ai-stream-output" style="margin-top:14px"></div>
       </div>
-      <textarea class="tailor-context" id="tailor-context" placeholder="Optional: skills to emphasize, specific requirements, preferred tone..."></textarea>
-      <button class="tailor-btn" id="tailor-btn" onclick="runTailoring()" ${isGenerating?'disabled':''}>
-        ${isGenerating
-          ? `${spinner()} Tailoring...`
-          : `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg> Tailor for this role`}
-      </button>
-      <div id="ai-stream-output"></div>
+
+      ${(j.tailoredResume || j.tailoredCover) ? `
+      <div class="tailor-section">
+        <div class="tailor-heading">Tailored Documents</div>
+        ${j.tailoredResume ? renderTailoredDoc('resume', j.tailoredResume, j.id) : ''}
+        ${j.tailoredCover ? renderTailoredDoc('cover', j.tailoredCover, j.id) : ''}
+      </div>` : ''}
     </div>`;
 }
 
-function toggleTailor(type) {
-  tailorFor[type] = !tailorFor[type];
-  document.getElementById('tailor-'+type+'-btn')?.classList.toggle('active', tailorFor[type]);
+function renderTailoredDoc(type, text, jobId) {
+  const label = type === 'resume' ? 'Tailored Resume' : 'Tailored Cover Letter';
+  const editorId = `wysiwyg-${type}`;
+  return `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${label}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="downloadTailored('${type}','${jobId}')" style="padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">↓ Download .docx</button>
+          <button onclick="retailor('${type}','${jobId}')" style="padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">↺ Re-tailor</button>
+        </div>
+      </div>
+      <div id="${editorId}" class="wysiwyg-editor" style="min-height:200px;max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;background:var(--bg2);font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;outline:none" contenteditable="true" oninput="saveTailoredEdit('${type}','${jobId}',this)">${esc(text)}</div>
+    </div>`;
 }
 
-async function runTailoring() {
+function removeFile(type, jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  j[type] = null;
+  if (type === 'resume') j.tailoredResume = null;
+  if (type === 'cover') j.tailoredCover = null;
+  scheduleSave(); renderDetail();
+}
+
+function saveTailoredEdit(type, jobId, el) {
+  const j = jobs[jobId]; if (!j) return;
+  if (type === 'resume') j.tailoredResume = el.innerText;
+  else j.tailoredCover = el.innerText;
+  scheduleSave();
+}
+
+function retailor(type, jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  if (type === 'resume') j.tailoredResume = null;
+  else j.tailoredCover = null;
+  scheduleSave(); renderDetail();
+}
+
+function downloadTailored(type, jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  const text = type === 'resume' ? j.tailoredResume : j.tailoredCover;
+  if (!text) return;
+  const label = type === 'resume' ? 'resume' : 'cover-letter';
+  const filename = `${(j.company||'tailored').replace(/[^a-z0-9]/gi,'_')}_${label}_tailored.txt`;
+  const blob = new Blob([text], {type: 'text/plain'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+
+async function runTailoring(docType) {
   const j = jobs[currentJobId]; if (!j) return;
-  if (!tailorFor.resume && !tailorFor.cover) { alert('Select Resume or Cover letter to tailor.'); return; }
-  if (tailorFor.resume && !j.resume) { alert('Upload a resume first.'); return; }
-  if (tailorFor.cover && !j.cover) { alert('Upload a cover letter template first.'); return; }
+  const doc = docType === 'resume' ? j.resume : j.cover;
+  if (!doc) { alert(`Upload a ${docType} first.`); return; }
 
   isGenerating = true;
-  const btn = document.getElementById('tailor-btn');
+  const btn = document.getElementById(`tailor-${docType}-btn`);
   if (btn) { btn.disabled = true; btn.textContent = 'Tailoring...'; }
 
   const ctx = document.getElementById('tailor-context')?.value || '';
   const out = document.getElementById('ai-stream-output');
-  if (out) out.innerHTML = '<div class="ai-result"><span class="ai-result-label">Generating...</span><div class="ai-text" id="stream-text"><span class="typing-cursor"></span></div></div>';
+  if (out) out.innerHTML = '<div class="ai-result"><div class="ai-text" id="stream-text"><span class="typing-cursor"></span></div></div>';
 
   try {
     const res = await fetch(API + '/api/tailor', {
@@ -1189,162 +1276,106 @@ async function runTailoring() {
         company: j.company, title: j.title,
         location: j.location || '', salary: j.salary || '',
         postingText: j.postingText || '',
-        resume: tailorFor.resume ? (j.resume.content || j.resume.name) : null,
-        cover: tailorFor.cover ? (j.cover.content || j.cover.name) : null,
-        context: ctx,
-        tailorResume: tailorFor.resume,
-        tailorCover: tailorFor.cover,
+        content: doc.content || doc.name,
+        docType, context: ctx,
       })
     });
-
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Server error'); }
-    const { result: fullText } = await res.json();
-
+    const { result } = await res.json();
     const streamEl = document.getElementById('stream-text');
-    if (streamEl) streamEl.innerHTML = esc(fullText);
+    if (streamEl) streamEl.innerHTML = '';
+    if (out) out.innerHTML = '';
 
-    if (tailorFor.resume && fullText.includes('TAILORED RESUME:')) {
-      const m = fullText.match(/TAILORED RESUME:([\s\S]*?)(?=TAILORED COVER LETTER:|$)/i);
-      if (m) j.tailoredResume = m[1].trim();
-    }
-    if (tailorFor.cover && fullText.includes('TAILORED COVER LETTER:')) {
-      const m = fullText.match(/TAILORED COVER LETTER:([\s\S]*?)$/i);
-      if (m) j.tailoredCover = m[1].trim();
-    }
-    if (!j.tailoredResume && !j.tailoredCover && fullText) {
-      if (tailorFor.resume) j.tailoredResume = fullText;
-      else j.tailoredCover = fullText;
-    }
+    if (docType === 'resume') j.tailoredResume = result;
+    else j.tailoredCover = result;
     scheduleSave();
+    renderDetail();
   } catch(e) {
-    const out2 = document.getElementById('ai-stream-output');
-    if (out2) out2.innerHTML = `<div class="ai-result" style="border-color:rgba(192,57,43,0.3)"><div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div></div>`;
+    if (out) out.innerHTML = `<div class="ai-result" style="border-color:rgba(192,57,43,0.3)"><div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div></div>`;
   }
 
   isGenerating = false;
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg> Tailor again`;
-  }
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg> Tailor ${docType === 'resume' ? 'Resume' : 'Cover Letter'}`; }
 }
 
-// ── FILE OPS ──
-async function handleFileUpload(type, event) {
-  const file = event.target.files[0]; if (!file) return;
-  const j = jobs[currentJobId]; if (!j) return;
-  event.target.value = '';
+// ── DOCUMENT LIBRARY PICKER ──
+let libraryDocs = [];
+let libraryPickTarget = null;
 
-  // Show uploading state
-  j[type] = { name: file.name, size: file.size, content: null, uploading: true, uploadedAt: Date.now() };
-  renderDetail();
-
+async function pickFromLibrary(targetType) {
+  libraryPickTarget = targetType;
+  // Load docs
   try {
-    const formData = new FormData();
-    formData.append('file', file);
+    const res = await fetch(API + '/api/docs', { headers: { Authorization: 'Bearer ' + token } });
+    libraryDocs = await res.json();
+  } catch(e) { libraryDocs = []; }
+  showLibraryPicker();
+}
 
-    const res = await fetch(API + '/api/parse-file', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token },
-      body: formData,
-    });
+function showLibraryPicker() {
+  const typeLabel = libraryPickTarget === 'resume' ? 'Resume' : 'Cover Letter';
+  const filtered = libraryDocs.filter(d => d.type === libraryPickTarget);
+  const overlay = document.createElement('div');
+  overlay.id = 'lib-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:700;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:min(480px,90vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:600;color:var(--text)">Pick ${typeLabel} from Library</div>
+        <button onclick="closeLibraryPicker()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px">×</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:12px">
+        ${filtered.length === 0
+          ? `<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No ${typeLabel.toLowerCase()}s in library yet.<br>Upload one above or visit the Documents tab.</div>`
+          : filtered.map(d => `
+            <div onclick="selectFromLibrary('${d.id}')" style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.12s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+              <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(d.name)}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)">${Math.round(d.size/100)/10}kb · ${new Date(d.createdAt).toLocaleDateString()}</div>
+            </div>`).join('')
+        }
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeLibraryPicker(); });
+  document.body.appendChild(overlay);
+}
 
-    if (!res.ok) {
-      const err = await res.json();
-      alert('Could not read file: ' + (err.error || 'Unknown error'));
-      j[type] = null;
-      renderDetail();
-      return;
-    }
+function closeLibraryPicker() {
+  document.getElementById('lib-picker-overlay')?.remove();
+}
 
-    const data = await res.json();
-    j[type] = { name: data.name, size: data.size, content: data.text, uploadedAt: Date.now() };
-    scheduleSave();
-    renderDetail();
-  } catch(e) {
-    alert('Upload failed: ' + e.message);
-    j[type] = null;
-    renderDetail();
+async function selectFromLibrary(docId) {
+  closeLibraryPicker();
+  try {
+    const res = await fetch(API + '/api/docs/' + docId, { headers: { Authorization: 'Bearer ' + token } });
+    const doc = await res.json();
+    const j = jobs[currentJobId]; if (!j) return;
+    j[libraryPickTarget] = { name: doc.name, content: doc.content, html: doc.html, fromLibrary: docId };
+    scheduleSave(); renderDetail();
+  } catch(e) { alert('Failed to load document: ' + e.message); }
+}
+
+// ── CITATION STRIPPING ──
+function stripCitations(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/gi, '$1')
+    .replace(/<parameter[^>]*\/?>/gi, '')
+    .replace(/<\/[a-z]+>/gi, '')
+    .replace(/<[a-z][^>]*>/gi, '')
+    .trim();
+}
+
+function deepStripCitations(obj) {
+  if (typeof obj === 'string') return stripCitations(obj);
+  if (Array.isArray(obj)) return obj.map(deepStripCitations);
+  if (obj && typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = deepStripCitations(v);
+    return out;
   }
+  return obj;
 }
 
-function downloadFile(type) {
-  const j = jobs[currentJobId]; if (!j || !j[type]) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([j[type].content||''], {type:'text/plain'}));
-  a.download = j[type].name; a.click();
-}
-
-function downloadTailored(type) {
-  const j = jobs[currentJobId];
-  const c = type==='resume' ? j.tailoredResume : j.tailoredCover; if (!c) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([c], {type:'text/plain'}));
-  a.download = `${j.company}_${j.title}_${type}_tailored.txt`; a.click();
-}
-
-function clearTailored(type) {
-  const j = jobs[currentJobId];
-  if (type==='resume') j.tailoredResume = null; else j.tailoredCover = null;
-  scheduleSave(); renderDetail();
-}
-
-function removeFile(type) {
-  const j = jobs[currentJobId]; if (!j) return;
-  j[type] = null;
-  if (type==='resume') j.tailoredResume = null;
-  if (type==='cover') j.tailoredCover = null;
-  scheduleSave(); renderDetail();
-}
-
-// ── MISC ──
-function updateStatus(id, val) {
-  jobs[id].status = val; scheduleSave(); renderJobList();
-  const s = document.querySelector('.status-select'); if (s) s.style.color = statusColor(val);
-}
-
-function saveNote(jobId) {
-  const input = document.getElementById('note-input');
-  const text = input?.value.trim(); if (!text) return;
-  const j = jobs[jobId]; if (!j) return;
-  if (!j.notes) j.notes = [];
-  j.notes.unshift({id:genId(), text, ts:Date.now()});
-  scheduleSave(); renderDetail();
-}
-
-function deleteNote(jobId, noteId) {
-  const j = jobs[jobId]; if (!j) return;
-  j.notes = j.notes.filter(n => n.id !== noteId);
-  scheduleSave(); renderDetail();
-}
-
-function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-
-function statusColor(s) {
-  return {
-    applied:'#2563eb', screening:'#d97706', interviewing:'#7c3aed',
-    offer:'#16a34a', rejected:'#dc2626', ghosted:'#9ca3af', withdrawn:'#9ca3af'
-  }[s] || '#9ca3af';
-}
-
-function fmtDate(ts) {
-  return new Date(ts).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
-}
-
-function fmtDatetime(ts) {
-  const d = new Date(ts);
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-}
-
-function formatBytes(b) {
-  if (!b) return '';
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  return (b/1048576).toFixed(1) + ' MB';
-}
-
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 
 // ── INSIGHTS TAB ──
 let insightsLoading = false;
@@ -1352,18 +1383,21 @@ let insightsLoading = false;
 function renderInsightsTab(j) {
   const ins = j.insights;
   const hasFinnhub = !!localStorage.getItem('finnhub_key');
-
   return `<div class="insights-wrap" id="insights-wrap">
     <div class="insights-header">
       <div class="insights-header-left">
         <div class="insights-title">Company &amp; Role Intelligence</div>
         <div class="insights-subtitle">${esc(j.company)} · ${esc(j.title)}</div>
       </div>
-      <button class="insights-refresh-btn" id="insights-run-btn" onclick="runInsights('${j.id}')" ${insightsLoading?'disabled':''}>
-        ${insightsLoading
-          ? `<svg width="12" height="12" viewBox="0 0 12 12" style="animation:spin 0.8s linear infinite" fill="none"><circle cx="6" cy="6" r="4.5" stroke="rgba(26,25,23,0.3)" stroke-width="1.5"/><path d="M6 1.5A4.5 4.5 0 0110.5 6" stroke="#1a1917" stroke-width="1.5" stroke-linecap="round"/></svg> Researching...`
-          : `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> ${ins ? 'Refresh now' : 'Research this role'}`}
-      </button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        ${ins?.generatedAt ? `<div style="font-size:11px;color:var(--text3);font-family:var(--mono)">Last refreshed: ${timeSince(ins.generatedAt)}</div>` : ''}
+        ${ins?._lastError ? `<div style="font-size:11px;color:var(--red)">⚠ Last refresh failed — showing cached data</div>` : ''}
+        <button class="insights-refresh-btn" id="insights-run-btn" onclick="runInsights('${j.id}')" ${insightsLoading ? 'disabled' : ''}>
+          ${insightsLoading
+            ? `<svg width="12" height="12" viewBox="0 0 12 12" style="animation:spin 0.8s linear infinite" fill="none"><circle cx="6" cy="6" r="4.5" stroke="rgba(26,25,23,0.3)" stroke-width="1.5"/><path d="M6 1.5A4.5 4.5 0 0110.5 6" stroke="#1a1917" stroke-width="1.5" stroke-linecap="round"/></svg> Researching...`
+            : `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> ${ins ? 'Refresh now' : 'Research this role'}`}
+        </button>
+      </div>
     </div>
 
     <div class="insight-section">
@@ -1377,8 +1411,7 @@ function renderInsightsTab(j) {
           ? (ins && ins.stock
               ? renderStockData(ins.stock)
               : `<div style="font-size:12px;color:var(--text3)">Financial data loads when you click <strong style="color:var(--text)">Refresh now</strong>. Finnhub key is set — stock data will be fetched automatically.</div>`)
-          : `<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Add your Finnhub API key in <a href="#" onclick="openSettings();return false;" style="color:var(--blue)">Settings ⚙</a> to see live stock price, market cap and analyst ratings.</div>`
-        }
+          : `<div style="font-size:12px;color:var(--text2);margin-bottom:0">Add your Finnhub API key in <a href="#" onclick="openSettings();return false;" style="color:var(--blue)">Settings ⚙</a> to see live stock price, market cap and analyst ratings.</div>`}
       </div>
     </div>
 
@@ -1460,43 +1493,42 @@ function renderInsightsTab(j) {
     ` : `
     <div class="insight-empty">
       <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="26" stroke="currentColor" stroke-width="2"/><path d="M20 28h16M28 20v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <p>Click <strong>Research this role</strong> above to get AI-powered insights about ${esc(j.company)} and the ${esc(j.title)} position. This uses web search to pull live data.</p>
+      <p>Click <strong>Research this role</strong> to get AI-powered insights about ${esc(j.company)} and the ${esc(j.title)} position.</p>
     </div>`}
   </div>`;
 }
 
 function renderOverviewCards(ov) {
   const cards = [
-    { label: 'Founded', value: ov.founded || '—', sub: '' },
-    { label: 'Employees', value: ov.employees || '—', sub: '' },
-    { label: 'Headquarters', value: ov.hq || '—', sub: '' },
-    { label: 'Industry', value: ov.industry || '—', sub: '' },
+    { label: 'Founded', value: ov.founded || '—' },
+    { label: 'Employees', value: ov.employees || '—' },
+    { label: 'Headquarters', value: ov.hq || '—' },
+    { label: 'Industry', value: ov.industry || '—' },
   ].filter(c => c.value !== '—');
   return cards.map(c => `
     <div class="insight-card">
       <div class="insight-card-label">${c.label}</div>
       <div class="insight-card-value" style="font-size:16px">${esc(String(c.value))}</div>
-      ${c.sub ? `<div class="insight-card-sub">${esc(c.sub)}</div>` : ''}
     </div>`).join('');
 }
 
 function renderStockData(s) {
-  if (!s || s.error) return `<div style="font-size:12px;color:var(--text3);margin-top:12px">${s && s.error ? esc(s.error) : 'No stock data available (private company or not found).'}</div>`;
+  if (!s || s.error) return `<div style="font-size:12px;color:var(--text3);margin-top:4px">${s && s.error ? esc(s.error) : 'No stock data available (private company or not found).'}</div>`;
   const change = parseFloat(s.change || 0);
   const changeColor = change >= 0 ? 'var(--green)' : 'var(--red)';
-  const changeSign = change >= 0 ? '+' : '';
+  const sign = change >= 0 ? '+' : '';
   return `
-    <div class="insights-grid" style="margin-top:14px">
+    <div class="insights-grid" style="margin-top:10px">
       <div class="insight-card">
-        <div class="insight-card-label">Stock price (${esc(s.ticker||'')})</div>
+        <div class="insight-card-label">Stock (${esc(s.ticker||'')})</div>
         <div class="insight-card-value">$${parseFloat(s.price||0).toFixed(2)}</div>
-        <div class="insight-card-sub" style="color:${changeColor}">${changeSign}${parseFloat(s.change||0).toFixed(2)} (${changeSign}${parseFloat(s.changePct||0).toFixed(2)}%)</div>
+        <div class="insight-card-sub" style="color:${changeColor}">${sign}${parseFloat(s.change||0).toFixed(2)} (${sign}${parseFloat(s.changePct||0).toFixed(2)}%)</div>
       </div>
       ${s.marketCap ? `<div class="insight-card"><div class="insight-card-label">Market cap</div><div class="insight-card-value">${formatLargeNum(s.marketCap)}</div></div>` : ''}
       ${s.peRatio ? `<div class="insight-card"><div class="insight-card-label">P/E ratio</div><div class="insight-card-value">${parseFloat(s.peRatio).toFixed(1)}</div></div>` : ''}
       ${s.week52High ? `<div class="insight-card"><div class="insight-card-label">52-week range</div><div class="insight-card-value" style="font-size:14px">$${parseFloat(s.week52Low||0).toFixed(0)}–$${parseFloat(s.week52High).toFixed(0)}</div></div>` : ''}
     </div>
-    ${s.analystTarget ? `<div style="margin-top:10px;font-size:12px;color:var(--text2)">Analyst price target: <strong style="color:var(--text)">$${parseFloat(s.analystTarget).toFixed(2)}</strong> · ${esc(s.recommendation||'')}</div>` : ''}`;
+    ${s.analystTarget ? `<div style="margin-top:8px;font-size:12px;color:var(--text2)">Analyst target: <strong style="color:var(--text)">$${parseFloat(s.analystTarget).toFixed(2)}</strong> · ${esc(s.recommendation||'')}</div>` : ''}`;
 }
 
 function renderCultureSection(culture) {
@@ -1508,17 +1540,15 @@ function renderCultureSection(culture) {
     { label: 'Compensation', score: culture.compensation },
     { label: 'Senior leadership', score: culture.leadership },
   ].filter(r => r.score);
-
   const stars = overall > 0 ? Math.round(overall * 2) / 2 : 0;
   const starHtml = overall > 0 ? `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
       <div style="font-size:28px;font-weight:700;color:var(--text);letter-spacing:-1px">${overall.toFixed(1)}</div>
       <div>
-        <div class="star-rating">${Array.from({length:5},(_,i)=>`<span class="star" style="color:${i<Math.floor(stars)?'#f59e0b':i<stars?'#f59e0b':'var(--bg4)'}">${i<Math.floor(stars)?'★':i<stars?'★':'☆'}</span>`).join('')}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Overall Glassdoor rating · ${culture.numRatings||''} reviews</div>
+        <div class="star-rating">${Array.from({length:5},(_,i)=>`<span class="star" style="color:${i<Math.floor(stars)?'#f59e0b':'var(--bg4)'}">${i<Math.floor(stars)?'★':'☆'}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Glassdoor · ${culture.numRatings||''} reviews</div>
       </div>
     </div>` : '';
-
   const barsHtml = ratings.map(r => {
     const pct = Math.min(100, (parseFloat(r.score)/5)*100);
     return `<div class="insight-rating-row">
@@ -1527,63 +1557,57 @@ function renderCultureSection(culture) {
       <div class="insight-rating-score">${parseFloat(r.score).toFixed(1)}</div>
     </div>`;
   }).join('');
-
-  const ceoApproval = culture.ceoApproval ? `<div style="font-size:12px;color:var(--text2);margin-top:12px">CEO approval: <strong style="color:var(--text)">${culture.ceoApproval}%</strong></div>` : '';
-  const recommend = culture.recommend ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">Would recommend to a friend: <strong style="color:var(--text)">${culture.recommend}%</strong></div>` : '';
   const summary = culture.summary ? `<div class="insight-ai-text" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">${formatAiText(culture.summary)}</div>` : '';
-
-  return `${starHtml}${barsHtml}${ceoApproval}${recommend}${summary}`;
+  const extras = [
+    culture.ceoApproval ? `CEO approval: <strong style="color:var(--text)">${culture.ceoApproval}%</strong>` : '',
+    culture.recommend ? `Would recommend: <strong style="color:var(--text)">${culture.recommend}%</strong>` : '',
+  ].filter(Boolean).join(' · ');
+  return `${starHtml}${barsHtml}${extras ? `<div style="font-size:12px;color:var(--text2);margin-top:10px">${extras}</div>` : ''}${summary}`;
 }
 
 function renderFlags(flags) {
-  const green = (flags.green || []);
-  const red = (flags.red || []);
-  return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div>
-        <div style="font-size:11px;font-family:var(--mono);color:var(--green);font-weight:600;margin-bottom:8px">GREEN FLAGS</div>
-        ${green.map(f => `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--green);flex-shrink:0">✓</span><span style="font-size:13px;color:var(--text2)">${esc(f)}</span></div>`).join('') || '<div style="font-size:13px;color:var(--text3)">None identified</div>'}
-      </div>
-      <div>
-        <div style="font-size:11px;font-family:var(--mono);color:var(--red);font-weight:600;margin-bottom:8px">RED FLAGS</div>
-        ${red.map(f => `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--red);flex-shrink:0">✗</span><span style="font-size:13px;color:var(--text2)">${esc(f)}</span></div>`).join('') || '<div style="font-size:13px;color:var(--text3)">None identified</div>'}
-      </div>
-    </div>`;
+  const green = flags.green || [], red = flags.red || [];
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div style="font-size:11px;font-family:var(--mono);color:var(--green);font-weight:600;margin-bottom:8px">GREEN FLAGS</div>
+      ${green.map(f=>`<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:var(--green);flex-shrink:0">✓</span><span style="font-size:13px;color:var(--text2)">${esc(f)}</span></div>`).join('') || '<div style="font-size:13px;color:var(--text3)">None identified</div>'}
+    </div>
+    <div>
+      <div style="font-size:11px;font-family:var(--mono);color:var(--red);font-weight:600;margin-bottom:8px">RED FLAGS</div>
+      ${red.map(f=>`<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:var(--red);flex-shrink:0">✗</span><span style="font-size:13px;color:var(--text2)">${esc(f)}</span></div>`).join('') || '<div style="font-size:13px;color:var(--text3)">None identified</div>'}
+    </div>
+  </div>`;
 }
 
 function renderLinkedinSection(li) {
-  const contacts = li.suggestedContacts || [];
-  const tip = li.outreachTip || '';
-  const template = li.messageTemplate || '';
+  const contacts = li.suggestedContacts || [], tip = li.outreachTip || '', template = li.messageTemplate || '';
   return `
     ${contacts.length ? `
       <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:10px;font-weight:500">WHO TO REACH OUT TO</div>
-      ${contacts.map(c => `
+      ${contacts.map(c=>`
         <div class="insight-contact-item">
           <div class="insight-contact-avatar">${(c.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('')}</div>
           <div class="insight-contact-info">
             <div class="insight-contact-name">${esc(c.name||'')}</div>
             <div class="insight-contact-role">${esc(c.role||'')}</div>
-            ${c.tip ? `<div class="insight-contact-tip">${esc(c.tip)}</div>` : ''}
+            ${c.tip?`<div class="insight-contact-tip">${esc(c.tip)}</div>`:''}
           </div>
           <a href="https://www.linkedin.com/search/results/people/?company=${encodeURIComponent(c.company||'')}&keywords=${encodeURIComponent(c.role||'')}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;flex-shrink:0;padding-top:2px">Search ↗</a>
-        </div>`).join('')}
-      <div style="border-top:1px solid var(--border);margin-top:4px"></div>` : ''}
-    ${tip ? `<div style="padding:${contacts.length?'14px 0 0':0}"><div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">STRATEGY</div><div class="insight-ai-text">${formatAiText(tip)}</div></div>` : ''}
+        </div>`).join('')}` : ''}
+    ${tip ? `<div style="margin-top:${contacts.length?'14px':'0'}"><div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">STRATEGY</div><div class="insight-ai-text">${formatAiText(tip)}</div></div>` : ''}
     ${template ? `
       <div style="margin-top:14px">
         <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">MESSAGE TEMPLATE</div>
         <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap;position:relative">
           ${esc(template)}
-          <button onclick="copyTemplate()" style="position:absolute;top:8px;right:8px;padding:4px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;font-family:var(--font)">Copy</button>
+          <button onclick="navigator.clipboard.writeText(${JSON.stringify(template)}).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})" style="position:absolute;top:8px;right:8px;padding:4px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;font-family:var(--font)">Copy</button>
         </div>
       </div>` : ''}`;
 }
 
 function renderNews(newsItems) {
-  return newsItems.slice(0, 6).map(n => {
-    const sentiment = n.sentiment || 'neutral';
-    const dotColor = sentiment === 'positive' ? 'var(--green)' : sentiment === 'negative' ? 'var(--red)' : 'var(--text3)';
+  return newsItems.slice(0,6).map(n => {
+    const dotColor = n.sentiment==='positive'?'var(--green)':n.sentiment==='negative'?'var(--red)':'var(--text3)';
     return `<a href="${esc(n.url||'#')}" target="_blank" class="insight-news-item">
       <div class="insight-news-dot" style="background:${dotColor}"></div>
       <div class="insight-news-content">
@@ -1596,18 +1620,9 @@ function renderNews(newsItems) {
 
 function formatAiText(text) {
   if (!text) return '';
-  // Strip citation tags and any other HTML the AI response might contain
-  // before we do our own safe HTML rendering
-  const stripped = text
-    .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/gi, '$1')  // unwrap <cite> → keep inner text
-    .replace(/<parameter[^>]*\/?>/gi, '')                  // strip <parameter> tags
-    .replace(/<\/[a-z]+>/gi, '')                        // strip any other closing tags
-    .replace(/<[a-z][^>]*>/gi, '');                     // strip any other opening tags
-
-  // Now safely escape and convert to HTML
-  const html = esc(stripped)
+  const html = esc(text)
     .replace(/\*\*([^*<]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/^(\s*)[•\-\*] /gm, '$1· ')
+    .replace(/^(\s*)[\u2022\-\*] /gm, '$1\u00b7 ')
     .replace(/\n\n+/g, '</p><p>')
     .replace(/\n/g, '<br>');
   return '<p>' + html + '</p>';
@@ -1636,42 +1651,6 @@ function relativeDate(dateStr) {
   } catch { return String(dateStr); }
 }
 
-function saveFinnhubKey() {
-  const key = document.getElementById('finnhub-key-input')?.value.trim();
-  if (!key) { localStorage.removeItem('finnhub_key'); }
-  else { localStorage.setItem('finnhub_key', key); }
-  renderDetail();
-}
-
-function copyTemplate() {
-  const j = jobs[currentJobId];
-  const tmpl = j?.insights?.linkedin?.messageTemplate;
-  if (tmpl) navigator.clipboard.writeText(tmpl).then(() => {
-    const btn = document.querySelector('[onclick="copyTemplate()"]');
-    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
-  });
-}
-
-function stripCitations(text) {
-  if (typeof text !== 'string') return text;
-  return text
-    .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/gi, '$1')
-    .replace(/<parameter[^>]*\/?>/gi, '')
-    .replace(/<\/[a-z]+>/gi, '')
-    .replace(/<[a-z][^>]*>/gi, '')
-    .trim();
-}
-
-function deepStripCitations(obj) {
-  if (typeof obj === 'string') return stripCitations(obj);
-  if (Array.isArray(obj)) return obj.map(deepStripCitations);
-  if (obj && typeof obj === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = deepStripCitations(v);
-    return out;
-  }
-  return obj;
-}
 
 async function runInsights(jobId) {
   const j = jobs[jobId]; if (!j) return;
@@ -1707,20 +1686,26 @@ async function runInsights(jobId) {
     scheduleSave();
   } catch(e) {
     console.error('Insights error:', e);
-    // Show the actual error prominently so it's debuggable
     const errMsg = e.message || String(e);
-    j.insights = {
-      generatedAt: Date.now(),
-      stock: null,
-      _error: errMsg,
-      companyOverview: '⚠️ Research failed\n\nError: ' + errMsg + '\n\nCheck that:\n• ANTHROPIC_API_KEY is set in Render environment variables\n• Your Render service has redeployed after adding the key\n• Check Render logs for details',
-      culture: null,
-      roleIntel: '',
-      flags: { green: [], red: [] },
-      linkedin: { suggestedContacts: [], outreachTip: '', messageTemplate: '' },
-      news: [],
-      interviewTips: '',
-    };
+    // Preserve previous successful data — only update error state
+    if (j.insights && j.insights.companyOverview && !j.insights._error) {
+      // Keep old data, just mark the failed refresh attempt
+      j.insights._lastError = errMsg;
+      j.insights._lastErrorAt = Date.now();
+    } else {
+      // No previous data — show error state
+      j.insights = {
+        generatedAt: j.insights?.generatedAt || null,
+        _error: errMsg,
+        _lastErrorAt: Date.now(),
+        stock: j.insights?.stock || null,
+        companyOverview: '',
+        culture: null, roleIntel: '',
+        flags: { green: [], red: [] },
+        linkedin: { suggestedContacts: [], outreachTip: '', messageTemplate: '' },
+        news: [], interviewTips: '',
+      };
+    }
     scheduleSave();
   }
 
@@ -1824,6 +1809,225 @@ document.addEventListener('keydown', e => {
 });
 
 // ── SETTINGS ──
+// ── DOCUMENTS PAGE ──
+let docsFilter = 'all';
+let allDocs = [];
+let editingDoc = null;
+
+async function showDocumentsPage() {
+  // Load docs
+  try {
+    const res = await fetch(API + '/api/docs', { headers: { Authorization: 'Bearer ' + token } });
+    allDocs = await res.json();
+  } catch(e) { allDocs = []; }
+
+  renderDocsPage();
+}
+
+function renderDocsPage() {
+  // Remove existing overlay if any
+  document.getElementById('docs-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'docs-overlay';
+  overlay.className = 'docs-overlay';
+
+  const filtered = docsFilter === 'all' ? allDocs : allDocs.filter(d => d.type === docsFilter);
+
+  overlay.innerHTML = `
+    <div class="docs-header">
+      <svg width="18" height="18" viewBox="0 0 14 14" fill="none"><path d="M2 2h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v4h4" stroke="currentColor" stroke-width="1.3"/></svg>
+      <div class="docs-title">Document Library</div>
+      <label class="tailor-btn" style="cursor:pointer;padding:7px 14px">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v8M3 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Upload document
+        <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadToLibrary(event)">
+      </label>
+      <button onclick="createBlankDoc()" class="tailor-btn" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">+ New blank</button>
+      <button onclick="closeDocsPage()" style="width:32px;height:32px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center">×</button>
+    </div>
+    <div class="docs-body">
+      <div class="docs-sidebar">
+        <div style="font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:0.5px;padding:4px 12px 8px;font-weight:600">FILTER</div>
+        <button class="docs-filter${docsFilter==='all'?' active':''}" onclick="setDocsFilter('all')">All documents (${allDocs.length})</button>
+        <button class="docs-filter${docsFilter==='resume'?' active':''}" onclick="setDocsFilter('resume')">Resumes (${allDocs.filter(d=>d.type==='resume').length})</button>
+        <button class="docs-filter${docsFilter==='cover'?' active':''}" onclick="setDocsFilter('cover')">Cover letters (${allDocs.filter(d=>d.type==='cover').length})</button>
+      </div>
+      <div class="docs-main">
+        ${filtered.length === 0 ? `
+          <div class="docs-upload-zone" onclick="document.querySelector('#docs-overlay input[type=file]').click()">
+            <div style="font-size:32px;margin-bottom:12px">📄</div>
+            <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No documents yet</div>
+            <div style="font-size:13px;color:var(--text3)">Upload a PDF, DOCX, or TXT file to get started</div>
+          </div>` : `
+          <div class="docs-grid">
+            ${filtered.map(d => `
+              <div class="doc-card" onclick="openDocEditor('${d.id}')">
+                <div class="doc-card-actions">
+                  <button class="doc-card-btn" onclick="event.stopPropagation();downloadDoc('${d.id}')">↓</button>
+                  <button class="doc-card-btn danger" onclick="event.stopPropagation();deleteDoc('${d.id}')">✕</button>
+                </div>
+                <div class="doc-card-icon">${d.type === 'resume' ? '📄' : '✉️'}</div>
+                <div class="doc-card-name">${esc(d.name)}</div>
+                <div class="doc-card-meta">${d.type} · ${Math.round(d.size/100)/10}kb · ${new Date(d.createdAt).toLocaleDateString()}</div>
+              </div>`).join('')}
+          </div>`}
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+function closeDocsPage() {
+  document.getElementById('docs-overlay')?.remove();
+}
+
+function setDocsFilter(f) {
+  docsFilter = f;
+  renderDocsPage();
+}
+
+async function uploadToLibrary(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const type = file.name.toLowerCase().includes('cover') ? 'cover' : 'resume';
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
+  try {
+    const res = await fetch(API + '/api/docs/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Upload failed');
+    const doc = await res.json();
+    allDocs.unshift(doc);
+    renderDocsPage();
+    openDocEditor(doc.id);
+  } catch(e) { alert('Upload failed: ' + e.message); }
+}
+
+async function createBlankDoc() {
+  const name = prompt('Document name:', 'My Resume');
+  if (!name) return;
+  const type = name.toLowerCase().includes('cover') ? 'cover' : 'resume';
+  try {
+    const res = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ name, type, content: '' }),
+    });
+    const doc = await res.json();
+    allDocs.unshift({ ...doc, size: 0 });
+    renderDocsPage();
+    openDocEditor(doc.id);
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function openDocEditor(docId) {
+  // Load full doc with content
+  try {
+    const res = await fetch(API + '/api/docs/' + docId, { headers: { Authorization: 'Bearer ' + token } });
+    editingDoc = await res.json();
+  } catch(e) { alert('Failed to load: ' + e.message); return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'doc-editor-panel';
+  panel.className = 'doc-editor-panel';
+  panel.innerHTML = `
+    <div class="doc-editor-inner">
+      <div class="doc-editor-toolbar">
+        <select id="doc-type-select" style="padding:5px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text);outline:none">
+          <option value="resume"${editingDoc.type==='resume'?' selected':''}>Resume</option>
+          <option value="cover"${editingDoc.type==='cover'?' selected':''}>Cover Letter</option>
+        </select>
+        <input id="doc-name-input" class="doc-editor-name-input" value="${esc(editingDoc.name)}" placeholder="Document name">
+        <button onclick="saveDocEdits()" class="tailor-btn" style="padding:6px 14px">Save</button>
+        <button onclick="downloadDocContent()" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">↓ Download</button>
+        <button onclick="closeDocEditor()" style="width:28px;height:28px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:16px;color:var(--text2);display:flex;align-items:center;justify-content:center">×</button>
+      </div>
+      <div id="doc-editor-body" class="doc-editor-body" contenteditable="true">${editingDoc.html ? editingDoc.html : esc(editingDoc.content || '')}</div>
+    </div>`;
+  panel.addEventListener('click', e => { if (e.target === panel) closeDocEditor(); });
+  document.body.appendChild(panel);
+}
+
+function closeDocEditor() {
+  document.getElementById('doc-editor-panel')?.remove();
+  editingDoc = null;
+}
+
+async function saveDocEdits() {
+  if (!editingDoc) return;
+  const body = document.getElementById('doc-editor-body');
+  const name = document.getElementById('doc-name-input').value.trim() || editingDoc.name;
+  const type = document.getElementById('doc-type-select').value;
+  const html = body.innerHTML;
+  const content = body.innerText;
+  try {
+    const res = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ id: editingDoc.id, name, type, content, html }),
+    });
+    const updated = await res.json();
+    editingDoc = updated;
+    // Update local list
+    const idx = allDocs.findIndex(d => d.id === editingDoc.id);
+    if (idx >= 0) allDocs[idx] = { ...updated, size: content.length };
+    renderDocsPage();
+    document.getElementById('doc-editor-panel') && closeDocEditor();
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+function downloadDocContent() {
+  if (!editingDoc) return;
+  const body = document.getElementById('doc-editor-body');
+  const text = body?.innerText || editingDoc.content || '';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = editingDoc.name.replace(/\.docx?|\.pdf/i, '') + '.txt';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function downloadDoc(docId) {
+  const doc = allDocs.find(d => d.id === docId); if (!doc) return;
+  // Need full content - open editor first
+  openDocEditor(docId);
+}
+
+async function deleteDoc(docId) {
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  try {
+    await fetch(API + '/api/docs/' + docId, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    allDocs = allDocs.filter(d => d.id !== docId);
+    renderDocsPage();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+async function handleFileUpload(event, type) {
+  const file = event.target.files[0]; if (!file) return;
+  const j = jobs[currentJobId]; if (!j) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch(API + '/api/parse-file', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Upload failed');
+    const data = await res.json();
+    j[type] = { name: file.name, content: data.text || '' };
+    scheduleSave(); renderDetail();
+  } catch(e) { alert('Upload failed: ' + e.message); }
+}
+
 async function checkAIProviders() {
   const el = document.getElementById('ai-provider-status');
   if (el) el.textContent = 'Checking...';
