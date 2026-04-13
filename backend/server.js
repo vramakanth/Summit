@@ -10,6 +10,103 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 
 const app = express();
+
+// ── AI Provider Configuration ──
+// Insights: Groq (free, fast) → fallback OpenRouter → fallback Anthropic
+// Documents: OpenRouter (free) → fallback Groq → fallback Anthropic
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const ANTHROPIC_API_KEY_ENV = process.env.ANTHROPIC_API_KEY || '';
+
+const PROVIDERS = {
+  groq: {
+    baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
+    key: GROQ_API_KEY,
+    model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    headers: (key) => ({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+    }),
+  },
+  openrouter: {
+    baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    key: OPENROUTER_API_KEY,
+    model: process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+    headers: (key) => ({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer': 'https://job-application-tracker-hf1f.onrender.com',
+      'X-Title': 'Applied Job Tracker',
+    }),
+  },
+};
+
+// Call an OpenAI-compatible provider
+async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) {
+  const cfg = PROVIDERS[provider];
+  if (!cfg.key) throw new Error(`${provider} API key not configured`);
+  const res = await fetchWithTimeout(cfg.baseUrl, {
+    method: 'POST',
+    headers: cfg.headers(cfg.key),
+    body: JSON.stringify({
+      model: cfg.model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.3,
+    }),
+  }, 90000);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${provider} error ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// Call Anthropic (fallback, no web search)
+async function callAnthropic(systemPrompt, userPrompt, maxTokens = 4000) {
+  if (!ANTHROPIC_API_KEY_ENV) throw new Error('ANTHROPIC_API_KEY not configured');
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY_ENV,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  }, 90000);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic error ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
+}
+
+// Try providers in order, return first success
+async function callAI(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000) {
+  const errors = [];
+  for (const provider of preferredOrder) {
+    try {
+      if (provider === 'anthropic') {
+        return await callAnthropic(systemPrompt, userPrompt, maxTokens);
+      }
+      return await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
+    } catch (e) {
+      console.warn(`${provider} failed: ${e.message}`);
+      errors.push(`${provider}: ${e.message}`);
+    }
+  }
+  throw new Error('All AI providers failed: ' + errors.join(' | '));
+}
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production-please';
 // DATA_DIR: controlled by environment variable so disk mount path is explicit.
@@ -596,6 +693,71 @@ app.delete('/api/delete-account', authMiddleware, (req, res) => {
   }
 });
 
+// ── AI provider status check ──
+app.get('/api/ai-status', authMiddleware, (req, res) => {
+  res.json({
+    groq: !!GROQ_API_KEY,
+    openrouter: !!OPENROUTER_API_KEY,
+    anthropic: !!ANTHROPIC_API_KEY_ENV,
+  });
+});
+
+// ── Extract job fields from page text (OpenRouter → Groq → Anthropic) ──
+app.post('/api/extract-fields', authMiddleware, async (req, res) => {
+  const { url, text } = req.body;
+  if (!text) return res.json(null);
+  try {
+    const result = await callAI(
+      ['openrouter', 'groq', 'anthropic'],
+      'Extract job details. Respond ONLY with valid JSON, no markdown. Fields: title, company, location, salary, remote (boolean). Use null if not found.',
+      `URL: ${url}\n\nPage text:\n${text}`,
+      300
+    );
+    const clean = result.replace(/```json|```/g, '').trim();
+    const match = clean.match(/\{[\s\S]*\}/);
+    res.json(match ? JSON.parse(match[0]) : null);
+  } catch(e) {
+    console.warn('extract-fields failed:', e.message);
+    res.json(null);
+  }
+});
+
+// ── Document tailoring (OpenRouter → Groq → Anthropic) ──
+app.post('/api/tailor', authMiddleware, async (req, res) => {
+  const { company, title, location, salary, postingText, resume, cover, context, tailorResume, tailorCover } = req.body;
+  if (!tailorResume && !tailorCover) return res.status(400).json({ error: 'Select at least one document to tailor' });
+
+  const parts = [];
+  if (tailorResume && resume) parts.push('RESUME:\n' + resume);
+  if (tailorCover && cover) parts.push('COVER LETTER TEMPLATE:\n' + cover);
+
+  const jobCtx = postingText ? '\nJob posting content:\n' + postingText.slice(0, 3000) : '';
+  const systemPrompt = 'You are a professional career coach and resume writer. Tailor job application documents to be compelling, specific, and keyword-optimized.';
+  const userPrompt = `Tailor these documents for this role:
+
+Company: ${company}
+Role: ${title}
+${location ? 'Location: ' + location : ''}
+${salary ? 'Salary: ' + salary : ''}
+${context ? 'Extra context: ' + context : ''}
+${jobCtx}
+
+Documents to tailor:
+
+${parts.join('\n\n')}
+
+Respond with clearly labeled sections: "TAILORED RESUME:" and/or "TAILORED COVER LETTER:". Make it compelling, specific, and keyword-optimized for this role.`;
+
+  try {
+    // OpenRouter first for documents, then Groq, then Anthropic
+    const result = await callAI(['openrouter', 'groq', 'anthropic'], systemPrompt, userPrompt, 3000);
+    res.json({ result });
+  } catch (e) {
+    console.error('Tailor error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Insights research endpoint ──
 // Calls Anthropic API server-side with web_search tool, handles multi-turn tool loop
 app.post('/api/insights', authMiddleware, async (req, res) => {
@@ -644,12 +806,9 @@ app.post('/api/insights', authMiddleware, async (req, res) => {
     }
   }
 
-  // ── 2. Call Anthropic API server-side with web_search, handle tool loop ──
+  // ── 2. Call AI (Groq → OpenRouter → Anthropic fallback) ──
   const today = new Date().toISOString().split('T')[0];
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set on server' });
-
-  const systemPrompt = `You are a career research assistant. Today is ${today}. Use web search to find current, accurate information about companies and roles. Always return valid JSON.`;
+  const systemPrompt = `You are a career research assistant. Today is ${today}. You have strong knowledge of companies, industry trends, Glassdoor ratings, and job markets. Always return valid JSON only with no markdown.`;
 
   const userPrompt = `Research this job for a candidate who has applied:
 
@@ -701,113 +860,18 @@ Return ONLY a valid JSON object with these exact fields (no markdown, no backtic
 }`;
 
   try {
-    // The Anthropic web_search tool is fully server-executed:
-    // Claude emits tool_use blocks → Anthropic runs the search → results come back
-    // as tool_result blocks in the NEXT response. We just keep passing the full
-    // message history back until we get stop_reason === 'end_turn'.
-    const messages = [{ role: 'user', content: userPrompt }];
-    let finalText = '';
-    let iterations = 0;
-    const MAX_ITERATIONS = 10;
-
-    while (iterations < MAX_ITERATIONS) {
-      iterations++;
-      console.log(`Insights iteration ${iterations}...`);
-
-      // Retry on rate limit with exponential backoff
-      let apiRes, attempt = 0;
-      while (true) {
-        apiRes = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ANTHROPIC_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-beta': 'web-search-2025-03-05',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 5000,
-            system: systemPrompt,
-            tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-            messages,
-          }),
-        }, 90000);
-
-        if (apiRes.status === 429 && attempt < 3) {
-          attempt++;
-          const retryAfter = parseInt(apiRes.headers.get('retry-after') || '60', 10);
-          const wait = Math.min(retryAfter, 60) * 1000;
-          console.log(`Rate limited, retrying in ${wait/1000}s (attempt ${attempt})...`);
-          await new Promise(r => setTimeout(r, wait));
-          continue;
-        }
-        break;
-      }
-
-      if (!apiRes.ok) {
-        const errText = await apiRes.text();
-        console.error('Anthropic error:', apiRes.status, errText.slice(0, 400));
-        throw new Error(`Anthropic API error ${apiRes.status}: ${errText.slice(0, 200)}`);
-      }
-
-      const apiData = await apiRes.json();
-      const { content: responseContent, stop_reason } = apiData;
-
-      console.log(`Stop reason: ${stop_reason}, blocks: ${responseContent.map(b => b.type).join(', ')}`);
-
-      // Always add the full assistant response to message history
-      messages.push({ role: 'assistant', content: responseContent });
-
-      if (stop_reason === 'end_turn') {
-        // Collect all text blocks from this final response
-        finalText = responseContent
-          .filter(b => b.type === 'text')
-          .map(b => b.text)
-          .join('');
-        console.log(`Final text length: ${finalText.length}`);
-        break;
-      }
-
-      if (stop_reason === 'tool_use') {
-        // web_search is server-executed — Anthropic handles it automatically.
-        // We don't send back tool_result — instead we send an empty user turn
-        // to signal "continue", which prompts Anthropic to process the search
-        // results and continue generating.
-        // NOTE: Some versions of the API need a tool_result per tool_use block.
-        // Build tool_result blocks acknowledging each tool_use.
-        const toolResultBlocks = responseContent
-          .filter(b => b.type === 'tool_use')
-          .map(b => ({
-            type: 'tool_result',
-            tool_use_id: b.id,
-            // Leave content empty — the actual search results are handled server-side
-            // by Anthropic and will appear in the next response automatically.
-            content: '',
-          }));
-
-        if (toolResultBlocks.length > 0) {
-          messages.push({ role: 'user', content: toolResultBlocks });
-        } else {
-          // No tool_use blocks found despite tool_use stop_reason — just continue
-          messages.push({ role: 'user', content: 'Please continue.' });
-        }
-      } else {
-        // max_tokens or other stop — grab whatever text we have
-        finalText = responseContent.filter(b => b.type === 'text').map(b => b.text).join('');
-        console.log(`Non-end_turn stop (${stop_reason}), text length: ${finalText.length}`);
-        break;
-      }
-    }
-
-    // Parse JSON from the final response
-    if (!finalText) throw new Error('Empty response from AI after ' + iterations + ' iterations');
-    console.log('Raw finalText (first 500):', finalText.slice(0, 500));
+    const finalText = await callAI(
+      ['groq', 'openrouter', 'anthropic'],  // Insights: Groq first
+      systemPrompt,
+      userPrompt,
+      5000
+    );
+    console.log('Insights response length:', finalText.length);
+    if (!finalText) throw new Error('Empty response from AI');
     const cleaned = finalText.replace(/```json|```/g, '').trim();
-    // Find the outermost JSON object
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON found in response. Got: ' + finalText.slice(0, 200));
+    if (start === -1 || end === -1) throw new Error('No JSON in response. Got: ' + finalText.slice(0, 200));
     const jsonStr = cleaned.slice(start, end + 1);
     const insights = JSON.parse(jsonStr);
     insights.generatedAt = Date.now();

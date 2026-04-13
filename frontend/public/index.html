@@ -335,11 +335,11 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .settings-title { font-size: 16px; font-weight: 600; color: var(--text); flex: 1; }
 .settings-close { width: 32px; height: 32px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text2); transition: all 0.15s; }
 .settings-close:hover { background: var(--bg4); color: var(--text); }
-.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; max-height: calc(100vh - 65px); }
+.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; }
 .settings-body::-webkit-scrollbar { width: 4px; }
 .settings-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
-.settings-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.settings-section-title { font-size: 11px; font-family: var(--mono); color: var(--text2); font-weight: 600; letter-spacing: 0.5px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.settings-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); }
+.settings-section-title { font-size: 11px; font-family: var(--mono); color: var(--text2); font-weight: 600; letter-spacing: 0.5px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); background: var(--bg2); border-radius: var(--radius) var(--radius) 0 0; }
 .settings-section-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .settings-field label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 6px; letter-spacing: 0.4px; }
 .settings-field input { width: 100%; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text); outline: none; transition: border-color 0.15s; }
@@ -717,20 +717,15 @@ async function parseJobUrl() {
     if (!hasFields && text) {
       statusEl.innerHTML = spinner() + ' Extracting details with AI...';
       try {
-        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        const aiRes = await fetch(API + '/api/extract-fields', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 300,
-            system: 'Extract job details. Respond ONLY with valid JSON, no markdown. Fields: title, company, location, salary, remote (boolean). Use null if not found.',
-            messages: [{ role: 'user', content: `URL: ${url}\n\nPage text:\n${text.slice(0, 5000)}` }]
-          })
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ url, text: text.slice(0, 5000) })
         });
-        const aiData = await aiRes.json();
-        const raw = (aiData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) finalFields = { ...finalFields, ...JSON.parse(match[0]) };
+        if (aiRes.ok) {
+          const extracted = await aiRes.json();
+          if (extracted) finalFields = { ...finalFields, ...extracted };
+        }
       } catch(e) {}
     }
 
@@ -1180,47 +1175,32 @@ async function runTailoring() {
 
   isGenerating = true;
   const btn = document.getElementById('tailor-btn');
-  if (btn) { btn.disabled=true; btn.textContent='Tailoring...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Tailoring...'; }
 
   const ctx = document.getElementById('tailor-context')?.value || '';
   const out = document.getElementById('ai-stream-output');
-  if (out) out.innerHTML = '';
-
-  const parts = [];
-  if (tailorFor.resume) parts.push('RESUME:\n' + (j.resume.content || j.resume.name));
-  if (tailorFor.cover)  parts.push('COVER LETTER TEMPLATE:\n' + (j.cover.content || j.cover.name));
-
-  const jobCtx = j.postingText ? '\nJob posting content:\n' + j.postingText.slice(0, 3000) : '';
-  const prompt = `You are a professional career coach and resume writer. Tailor these job application documents specifically for this role:\n\nCompany: ${j.company}\nRole: ${j.title}\n${j.location?'Location: '+j.location+'\n':''}${j.salary?'Salary: '+j.salary+'\n':''}${ctx?'Extra context: '+ctx+'\n':''}${jobCtx}\n\nDocuments to tailor:\n\n${parts.join('\n\n')}\n\nRespond with clearly labeled sections: "TAILORED RESUME:" and/or "TAILORED COVER LETTER:". Make it compelling, specific, and keyword-optimized for this role.`;
+  if (out) out.innerHTML = '<div class="ai-result"><span class="ai-result-label">Generating...</span><div class="ai-text" id="stream-text"><span class="typing-cursor"></span></div></div>';
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(API + '/api/tailor', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:2000, stream:true, messages:[{role:'user',content:prompt}]})
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({
+        company: j.company, title: j.title,
+        location: j.location || '', salary: j.salary || '',
+        postingText: j.postingText || '',
+        resume: tailorFor.resume ? (j.resume.content || j.resume.name) : null,
+        cover: tailorFor.cover ? (j.cover.content || j.cover.name) : null,
+        context: ctx,
+        tailorResume: tailorFor.resume,
+        tailorCover: tailorFor.cover,
+      })
     });
 
-    let fullText = '';
-    if (out) out.innerHTML = '<div class="ai-result"><span class="ai-result-label">Generating...</span><div class="ai-text" id="stream-text"><span class="typing-cursor"></span></div></div>';
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Server error'); }
+    const { result: fullText } = await res.json();
+
     const streamEl = document.getElementById('stream-text');
-    const reader = response.body.getReader();
-    const dec = new TextDecoder();
-
-    while (true) {
-      const {done, value} = await reader.read(); if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const d = line.slice(6).trim(); if (d==='[DONE]') continue;
-        try {
-          const p = JSON.parse(d);
-          if (p.type==='content_block_delta' && p.delta?.text) {
-            fullText += p.delta.text;
-            if (streamEl) streamEl.innerHTML = esc(fullText) + '<span class="typing-cursor"></span>';
-          }
-        } catch(e) {}
-      }
-    }
-
     if (streamEl) streamEl.innerHTML = esc(fullText);
 
     if (tailorFor.resume && fullText.includes('TAILORED RESUME:')) {
@@ -1235,10 +1215,10 @@ async function runTailoring() {
       if (tailorFor.resume) j.tailoredResume = fullText;
       else j.tailoredCover = fullText;
     }
-
     scheduleSave();
   } catch(e) {
-    if (out) out.innerHTML = `<div class="ai-result" style="border-color:rgba(192,57,43,0.3)"><div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div></div>`;
+    const out2 = document.getElementById('ai-stream-output');
+    if (out2) out2.innerHTML = `<div class="ai-result" style="border-color:rgba(192,57,43,0.3)"><div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div></div>`;
   }
 
   isGenerating = false;
@@ -1844,6 +1824,22 @@ document.addEventListener('keydown', e => {
 });
 
 // ── SETTINGS ──
+async function checkAIProviders() {
+  const el = document.getElementById('ai-provider-status');
+  if (el) el.textContent = 'Checking...';
+  try {
+    const res = await fetch(API + '/api/ai-status', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const data = await res.json();
+    if (el) el.innerHTML = Object.entries(data).map(([k,v]) =>
+      `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:4px;background:${v?'rgba(20,83,45,0.1)':'rgba(192,57,43,0.08)'};color:${v?'var(--green)':'var(--red)'};border:1px solid ${v?'rgba(20,83,45,0.2)':'rgba(192,57,43,0.2)'}">${k}: ${v?'✓ configured':'✗ not set'}</span>`
+    ).join('');
+  } catch(e) {
+    if (el) el.textContent = 'Error: ' + e.message;
+  }
+}
+
 function openSettings() {
   const overlay = document.getElementById('settings-overlay');
   overlay.style.display = 'flex';
@@ -1998,6 +1994,24 @@ setInterval(() => {
           <div class="settings-field"><label>NEW PASSWORD</label><input type="password" id="s-pw-new" placeholder="At least 6 characters" autocomplete="new-password"></div>
           <div class="settings-field"><label>CONFIRM NEW PASSWORD</label><input type="password" id="s-pw-confirm" placeholder="Repeat new password" autocomplete="new-password"></div>
           <button class="settings-btn primary" onclick="changePassword()">Update password</button>
+        </div>
+      </div>
+
+      <!-- AI providers -->
+      <div class="settings-section">
+        <div class="settings-section-title">AI PROVIDERS</div>
+        <div class="settings-section-body">
+          <div class="settings-status" id="ai-status"></div>
+          <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:4px">
+            <strong style="color:var(--text2)">Insights</strong> uses Groq → OpenRouter → Anthropic.<br>
+            <strong style="color:var(--text2)">Documents</strong> uses OpenRouter → Groq → Anthropic.<br>
+            Set at least one free key below. Get Groq free at <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> · OpenRouter free at <a href="https://openrouter.ai" target="_blank" style="color:var(--blue)">openrouter.ai</a>
+          </div>
+          <div class="settings-hint" style="display:block;margin-bottom:8px;padding:8px 10px;background:var(--bg4);border-radius:var(--radius-sm)">
+            ⚠️ These keys must be set as <strong>environment variables on Render</strong> (GROQ_API_KEY, OPENROUTER_API_KEY) — not stored here. This section shows their status only.
+          </div>
+          <button class="settings-btn" onclick="checkAIProviders()">Check provider status</button>
+          <div id="ai-provider-status" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
         </div>
       </div>
 
