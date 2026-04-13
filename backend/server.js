@@ -18,6 +18,9 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const ANTHROPIC_API_KEY_ENV = process.env.ANTHROPIC_API_KEY || '';
 
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+const GOOGLE_MODEL = process.env.GOOGLE_MODEL || 'gemini-2.0-flash';
+
 const PROVIDERS = {
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
@@ -41,7 +44,7 @@ const PROVIDERS = {
   },
 };
 
-// Call an OpenAI-compatible provider
+// Call an OpenAI-compatible provider (Groq, OpenRouter)
 async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) {
   const cfg = PROVIDERS[provider];
   if (!cfg.key) throw new Error(`${provider} API key not configured`);
@@ -66,39 +69,35 @@ async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) 
   return data.choices?.[0]?.message?.content || '';
 }
 
-// Call Anthropic (fallback, no web search)
-async function callAnthropic(systemPrompt, userPrompt, maxTokens = 4000) {
-  if (!ANTHROPIC_API_KEY_ENV) throw new Error('ANTHROPIC_API_KEY not configured');
-  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+// Call Google Gemini (free tier — gemini-2.0-flash)
+// Get free key at: https://aistudio.google.com/apikey
+async function callGoogle(systemPrompt, userPrompt, maxTokens = 4000) {
+  if (!GOOGLE_API_KEY) throw new Error('GOOGLE_API_KEY not configured');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`;
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY_ENV,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.3 },
     }),
   }, 90000);
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Anthropic error ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Google error ${res.status}: ${err.slice(0, 200)}`);
   }
   const data = await res.json();
-  return data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // Try providers in order, return first success
+// Order: Groq → OpenRouter → Google (all free)
 async function callAI(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000) {
   const errors = [];
   for (const provider of preferredOrder) {
     try {
-      if (provider === 'anthropic') {
-        return await callAnthropic(systemPrompt, userPrompt, maxTokens);
-      }
+      if (provider === 'google') return await callGoogle(systemPrompt, userPrompt, maxTokens);
       return await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
     } catch (e) {
       console.warn(`${provider} failed: ${e.message}`);
@@ -698,7 +697,7 @@ app.get('/api/ai-status', authMiddleware, (req, res) => {
   res.json({
     groq: !!GROQ_API_KEY,
     openrouter: !!OPENROUTER_API_KEY,
-    anthropic: !!ANTHROPIC_API_KEY_ENV,
+    google: !!GOOGLE_API_KEY,
   });
 });
 
@@ -708,7 +707,7 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
   if (!text) return res.json(null);
   try {
     const result = await callAI(
-      ['openrouter', 'groq', 'anthropic'],
+      ['openrouter', 'groq', 'google'],
       'Extract job details. Respond ONLY with valid JSON, no markdown. Fields: title, company, location, salary, remote (boolean). Use null if not found.',
       `URL: ${url}\n\nPage text:\n${text}`,
       300
@@ -746,7 +745,7 @@ ${docLabel} TO TAILOR:
 ${docContent}`;
 
   try {
-    const result = await callAI(['openrouter', 'groq', 'anthropic'], systemPrompt, userPrompt, 3000);
+    const result = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 3000);
     res.json({ result: result.trim(), docType });
   } catch (e) {
     console.error('Tailor error:', e.message);
@@ -857,7 +856,7 @@ Return ONLY a valid JSON object with these exact fields (no markdown, no backtic
 
   try {
     const finalText = await callAI(
-      ['groq', 'openrouter', 'anthropic'],  // Insights: Groq first
+      ['groq', 'openrouter', 'google'],  // Insights: Groq first
       systemPrompt,
       userPrompt,
       5000

@@ -630,6 +630,20 @@ let tailorFor = {resume:false, cover:false}, isGenerating = false, saveTimer = n
 let pendingHtml = null, pendingText = null;
 const STATUSES = ['applied','screening','interviewing','offer','rejected','ghosted','withdrawn'];
 
+// ── UTILITIES ──
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function genId() { return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+function fmtDate(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+function statusColor(s) {
+  return {applied:'#3b82f6',screening:'#8b5cf6',interviewing:'#f59e0b',offer:'#10b981',rejected:'#ef4444',ghosted:'#6b7280',withdrawn:'#9ca3af'}[s] || '#6b7280';
+}
+
+
 // ── INIT ──
 window.addEventListener('DOMContentLoaded', () => {
   if (token && currentUser) { showApp(); loadJobs(); }
@@ -2207,12 +2221,15 @@ setInterval(() => {
         <div class="settings-section-body">
           <div class="settings-status" id="ai-status"></div>
           <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:4px">
-            <strong style="color:var(--text2)">Insights</strong> uses Groq → OpenRouter → Anthropic.<br>
-            <strong style="color:var(--text2)">Documents</strong> uses OpenRouter → Groq → Anthropic.<br>
-            Set at least one free key below. Get Groq free at <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> · OpenRouter free at <a href="https://openrouter.ai" target="_blank" style="color:var(--blue)">openrouter.ai</a>
+            <strong style="color:var(--text2)">Insights</strong> uses Groq → OpenRouter → Google.<br>
+            <strong style="color:var(--text2)">Documents</strong> uses OpenRouter → Groq → Google.<br>
+            All three providers are free. Get keys at:
+            <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> ·
+            <a href="https://openrouter.ai" target="_blank" style="color:var(--blue)">openrouter.ai</a> ·
+            <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com</a>
           </div>
           <div class="settings-hint" style="display:block;margin-bottom:8px;padding:8px 10px;background:var(--bg4);border-radius:var(--radius-sm)">
-            ⚠️ These keys must be set as <strong>environment variables on Render</strong> (GROQ_API_KEY, OPENROUTER_API_KEY) — not stored here. This section shows their status only.
+            ⚠️ Set as <strong>environment variables on Render</strong>: GROQ_API_KEY · OPENROUTER_API_KEY · GOOGLE_API_KEY
           </div>
           <button class="settings-btn" onclick="checkAIProviders()">Check provider status</button>
           <div id="ai-provider-status" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
