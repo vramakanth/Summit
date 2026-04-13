@@ -44,29 +44,68 @@ const PROVIDERS = {
   },
 };
 
+// OpenRouter free models to rotate through when rate limited
+const OPENROUTER_FALLBACK_MODELS = [
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemma-2-9b-it:free',
+  'mistralai/mistral-7b-instruct:free',
+  'qwen/qwen-2.5-7b-instruct:free',
+];
+
 // Call an OpenAI-compatible provider (Groq, OpenRouter)
 async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) {
   const cfg = PROVIDERS[provider];
   if (!cfg.key) throw new Error(`${provider} API key not configured`);
-  const res = await fetchWithTimeout(cfg.baseUrl, {
-    method: 'POST',
-    headers: cfg.headers(cfg.key),
-    body: JSON.stringify({
-      model: cfg.model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
-    }),
-  }, 90000);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${provider} error ${res.status}: ${err.slice(0, 200)}`);
+
+  // For OpenRouter: try primary model then rotate through fallbacks on rate limit
+  const modelsToTry = provider === 'openrouter'
+    ? [cfg.model, ...OPENROUTER_FALLBACK_MODELS.filter(m => m !== cfg.model)]
+    : [cfg.model];
+
+  let lastErr = null;
+  for (const model of modelsToTry) {
+    try {
+      const res = await fetchWithTimeout(cfg.baseUrl, {
+        method: 'POST',
+        headers: cfg.headers(cfg.key),
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+        }),
+      }, 90000);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        // Rate limited or model quota — try next model
+        if (res.status === 429 || res.status === 402 || errText.includes('rate limit') || errText.includes('quota')) {
+          console.warn(`${provider} model ${model} rate limited, trying next...`);
+          lastErr = new Error(`${provider}/${model} rate limited (${res.status})`);
+          continue;
+        }
+        throw new Error(`${provider} error ${res.status}: ${errText.slice(0, 200)}`);
+      }
+
+      const data = await res.json();
+      const result = data.choices?.[0]?.message?.content || '';
+      if (result) {
+        console.log(`${provider} success with model: ${model}`);
+        return result;
+      }
+      lastErr = new Error(`${provider}/${model} returned empty response`);
+    } catch(e) {
+      if (e.message.includes('rate limit') || e.message.includes('quota')) {
+        lastErr = e;
+        continue;
+      }
+      throw e; // non-rate-limit errors bubble up immediately
+    }
   }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  throw lastErr || new Error(`${provider}: all models exhausted`);
 }
 
 // Call Google Gemini (free tier — gemini-2.0-flash)
@@ -97,10 +136,16 @@ async function callAI(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000
   const errors = [];
   for (const provider of preferredOrder) {
     try {
-      if (provider === 'google') return await callGoogle(systemPrompt, userPrompt, maxTokens);
-      return await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
+      let result;
+      if (provider === 'google') {
+        result = await callGoogle(systemPrompt, userPrompt, maxTokens);
+      } else {
+        result = await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
+      }
+      console.log(`callAI: success via ${provider}`);
+      return result;
     } catch (e) {
-      console.warn(`${provider} failed: ${e.message}`);
+      console.warn(`callAI: ${provider} failed — ${e.message}`);
       errors.push(`${provider}: ${e.message}`);
     }
   }
@@ -972,6 +1017,219 @@ app.post('/api/docs/upload', authMiddleware, upload.single('file'), async (req, 
   docs.push(doc);
   saveUserDocs(req.user.id, docs);
   res.json(doc);
+});
+
+// ── Download tailored doc as DOCX ──
+app.post('/api/download-docx', authMiddleware, async (req, res) => {
+  const { html, text, filename } = req.body;
+  if (!html && !text) return res.status(400).json({ error: 'No content provided' });
+  try {
+    const HTMLtoDOCX = require('html-to-docx');
+    const htmlContent = html || `<html><body>${(text||'').split('\n').map(l => `<p>${l}</p>`).join('')}</body></html>`;
+    const docxBuffer = await HTMLtoDOCX(htmlContent, null, {
+      table: { row: { cantSplit: true } },
+      footer: false,
+      pageNumber: false,
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${(filename || 'document').replace(/[^a-z0-9_-]/gi, '_')}.docx"`);
+    res.send(docxBuffer);
+  } catch(e) {
+    console.error('DOCX generation error:', e);
+    res.status(500).json({ error: 'Failed to generate DOCX: ' + e.message });
+  }
+});
+
+// ── Download tailored doc as DOCX ──
+app.post('/api/download-docx', authMiddleware, async (req, res) => {
+  const { content: htmlContent, filename = 'tailored-document' } = req.body;
+  if (!htmlContent) return res.status(400).json({ error: 'No content provided' });
+
+  try {
+    const HTMLtoDOCX = require('html-to-docx');
+    // Wrap in a full HTML structure if not already
+    const fullHtml = htmlContent.trim().startsWith('<!DOCTYPE') ? htmlContent :
+      `<!DOCTYPE html><html><body>${htmlContent}</body></html>`;
+
+    const docxBuffer = await HTMLtoDOCX(fullHtml, null, {
+      table: { row: { cantSplit: true } },
+      footer: false,
+      pageNumber: false,
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.docx"`);
+    res.send(Buffer.from(docxBuffer));
+  } catch(e) {
+    console.error('Download DOCX error:', e.message);
+    // Fallback: send as plain text
+    const text = htmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.txt"`);
+    res.send(text);
+  }
+});
+
+// ── Check if job posting is still active ──
+app.post('/api/check-posting', authMiddleware, async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL required' });
+
+  try {
+    // Fetch the page with a realistic user agent
+    const pageRes = await fetchWithTimeout(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      }
+    }, 15000);
+
+    if (!pageRes.ok) {
+      // 404 = definitely gone
+      if (pageRes.status === 404) return res.json({ expired: true, reason: '404 Not Found' });
+      // 403/429 = blocked but likely still exists
+      return res.json({ expired: false, reason: `HTTP ${pageRes.status}` });
+    }
+
+    const html = await pageRes.text();
+    const lowerHtml = html.toLowerCase();
+
+    // Common signals that a job is closed/expired
+    const expiredSignals = [
+      'this job is no longer available',
+      'this job has expired',
+      'job no longer available',
+      'position has been filled',
+      'posting has expired',
+      'this position is no longer',
+      'no longer accepting applications',
+      'job listing has been removed',
+      'this listing is expired',
+      'requisition is closed',
+      'position is closed',
+      'job is closed',
+    ];
+
+    const expired = expiredSignals.some(s => lowerHtml.includes(s));
+    res.json({ expired, reason: expired ? 'Expired signals found' : 'Active' });
+  } catch(e) {
+    // Network error - can't determine
+    res.json({ expired: false, reason: 'Could not reach URL: ' + e.message });
+  }
+});
+
+// ── Template injection: tailor DOCX preserving all formatting ──
+// Strategy: paragraph-by-paragraph mapping so formatting is never disturbed
+app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
+  const { docxBase64, company, title, location, salary, postingText, docType, context } = req.body;
+  if (!docxBase64) return res.status(400).json({ error: 'DOCX data required' });
+
+  try {
+    const AdmZip = require('adm-zip');
+    const docxBuffer = Buffer.from(docxBase64, 'base64');
+    const zip = new AdmZip(docxBuffer);
+
+    const docXmlEntry = zip.getEntry('word/document.xml');
+    if (!docXmlEntry) return res.status(422).json({ error: 'Invalid DOCX file' });
+    let docXml = docXmlEntry.getData().toString('utf8');
+
+    // ── Step 1: Extract all non-empty paragraphs with their XML ──
+    const paraMatches = [...docXml.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)];
+    const paragraphs = paraMatches.map(m => {
+      // Get all text content (strip XML tags)
+      const text = m[0]
+        .replace(/<w:t[^>]*\/>/g, '')  // empty self-closing tags
+        .replace(/<\/w:t>/g, '\u0001') // mark end of each run text
+        .replace(/<[^>]+>/g, '')
+        .replace(/\u0001/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ').trim();
+      return { xml: m[0], text, index: m.index };
+    }).filter(p => p.text.length > 0);
+
+    if (paragraphs.length === 0) return res.status(422).json({ error: 'No text found in document' });
+
+    // ── Step 2: Send numbered paragraphs to AI ──
+    const numberedInput = paragraphs.map((p, i) => `[${i}] ${p.text}`).join('\n');
+    const jobCtx = postingText ? '\nJob posting:\n' + postingText.slice(0, 2000) : '';
+    const docLabel = docType === 'resume' ? 'resume' : 'cover letter';
+
+    const systemPrompt = `You are a professional career coach tailoring a ${docLabel}. You will receive numbered paragraphs from the original document. Return ONLY the same numbered paragraphs with updated content tailored for the job. Keep EVERY paragraph number — same count, same order. Do not merge, split, add or remove paragraphs. Only change the words.`;
+    const userPrompt = `Tailor for:\nCompany: ${company}\nRole: ${title}\n${location ? 'Location: ' + location : ''}\n${salary ? 'Salary: ' + salary : ''}\n${context ? 'Notes: ' + context : ''}${jobCtx}\n\nPARAGRAPHS:\n${numberedInput}`;
+
+    const tailoredRaw = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 4000);
+
+    // ── Step 3: Parse AI response back to paragraph array ──
+    const newParas = {};
+    const lineRegex = /^\[(\d+)\]\s*([\s\S]*?)(?=^\[\d+\]|\s*$)/gm;
+    let lm;
+    while ((lm = lineRegex.exec(tailoredRaw + '\n')) !== null) {
+      newParas[parseInt(lm[1])] = lm[2].trim();
+    }
+    // Fallback: split by lines starting with [N]
+    if (Object.keys(newParas).length === 0) {
+      tailoredRaw.split('\n').forEach(line => {
+        const m = line.match(/^\[(\d+)\]\s*(.*)/);
+        if (m) newParas[parseInt(m[1])] = m[2].trim();
+      });
+    }
+
+    // ── Step 4: Replace text in each paragraph's runs ──
+    let modifiedXml = docXml;
+
+    for (let i = paragraphs.length - 1; i >= 0; i--) {
+      const para = paragraphs[i];
+      const newText = newParas[i];
+      if (!newText || !newText.trim()) continue;
+
+      const paraXml = para.xml;
+
+      // Get all <w:t> elements in this paragraph
+      const runMatches = [...paraXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+      if (runMatches.length === 0) continue;
+
+      // Distribute new text across runs proportionally by character count
+      const origRunTexts = runMatches.map(m => m[1]);
+      const totalOrigLen = origRunTexts.join('').length || 1;
+      const newWords = newText.split(' ');
+      let wordPos = 0;
+      let modifiedPara = paraXml;
+
+      for (let r = 0; r < runMatches.length; r++) {
+        const runMatch = runMatches[r];
+        const origLen = runMatch[1].length;
+        const proportion = origLen / totalOrigLen;
+        const wordCount = r === runMatches.length - 1
+          ? newWords.length - wordPos  // give remaining words to last run
+          : Math.max(1, Math.round(proportion * newWords.length));
+        const slice = newWords.slice(wordPos, wordPos + wordCount).join(' ');
+        wordPos = Math.min(wordPos + wordCount, newWords.length);
+
+        if (slice !== undefined) {
+          const escaped = slice.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          // Replace this specific run's text — use exact match
+          modifiedPara = modifiedPara.replace(runMatch[0], runMatch[0].replace(
+            '>' + runMatch[1] + '</w:t>',
+            '>' + escaped + '</w:t>'
+          ));
+        }
+      }
+
+      // Replace the paragraph in the full XML (work backwards so indices stay valid)
+      modifiedXml = modifiedXml.slice(0, para.index) + modifiedPara + modifiedXml.slice(para.index + para.xml.length);
+    }
+
+    // ── Step 5: Write back and send ──
+    zip.updateFile('word/document.xml', Buffer.from(modifiedXml, 'utf8'));
+    const outputBuffer = zip.toBuffer();
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="tailored-${docType}.docx"`);
+    res.send(outputBuffer);
+  } catch(e) {
+    console.error('DOCX template injection error:', e.message, e.stack);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Download tailored doc as DOCX ──

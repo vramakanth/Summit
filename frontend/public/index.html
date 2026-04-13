@@ -1337,8 +1337,15 @@ function renderTailoredDoc(type, text, jobId) {
 function removeFile(type, jobId) {
   const j = jobs[jobId]; if (!j) return;
   j[type] = null;
-  if (type === 'resume') j.tailoredResume = null;
-  if (type === 'cover') j.tailoredCover = null;
+  // Clear all downstream tailored data for this doc type
+  if (type === 'resume') {
+    j.tailoredResume = null;
+    j.tailoredResumeHtml = null;
+  }
+  if (type === 'cover') {
+    j.tailoredCover = null;
+    j.tailoredCoverHtml = null;
+  }
   scheduleSave(); renderDetail();
 }
 
