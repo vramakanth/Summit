@@ -655,6 +655,7 @@ let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
 let tailorFor = {resume:false, cover:false}, isGenerating = false, saveTimer = null;
+let activeTailorDoc = 'resume'; // which doc type is selected in tailoring UI
 let pendingHtml = null, pendingText = null;
 const STATUSES = ['applied','screening','interviewing','offer','rejected','ghosted','withdrawn','expired'];
 
@@ -997,6 +998,7 @@ function selectJob(id) {
   currentJobId = id;
   activeDetailTab = 'notes';
   tailorFor = {resume:false, cover:false};
+  activeTailorDoc = 'resume';
   renderJobList();
   renderDetail();
   document.getElementById('empty-state').style.display = 'none';
@@ -1220,7 +1222,7 @@ function fileSlotHtml(type, file, label, iconSvg, uploadLabel) {
       <div class="file-actions">
         <button class="file-action-btn primary-outline" style="border-color:var(--accent);color:var(--accent)" onclick="openFileEditor('${type}')">✎ view &amp; edit</button>
         <button class="file-action-btn" onclick="downloadFile('${type}')">↓ download</button>
-        <button class="file-action-btn danger-btn" onclick="removeFile('${type}')">remove</button>
+        <button class="file-action-btn danger-btn" onclick="removeFile('${type}','${jobs[currentJobId]?.id}')">remove</button>
       </div>
     </div>`;
   }
@@ -1235,63 +1237,82 @@ function fileSlotHtml(type, file, label, iconSvg, uploadLabel) {
 
 // ── FILES & TAILORING TAB ──
 function renderFilesTab(j) {
-  return `
-    <div class="tailor-wrap">
-      <div class="files-row">
-        ${fileSlotHtml('resume', j.resume, 'RESUME', `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`)}
-        ${fileSlotHtml('cover', j.cover, 'COVER LETTER', `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="1.5"/></svg>`)}
+  const doc = activeTailorDoc === 'resume' ? j.resume : j.cover;
+  const tailored = activeTailorDoc === 'resume' ? j.tailoredResume : j.tailoredCover;
+  const tailoredHtml = activeTailorDoc === 'resume' ? j.tailoredResumeHtml : j.tailoredCoverHtml;
+  const label = activeTailorDoc === 'resume' ? 'Resume' : 'Cover Letter';
+
+  return `<div class="tailor-wrap">
+
+    <!-- Doc type selector tabs -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
+      <button onclick="setActiveTailorDoc('resume')" style="flex:1;padding:11px 16px;background:${activeTailorDoc==='resume'?'var(--bg2)':'var(--bg3)'};border:none;border-right:1px solid var(--border);font-family:var(--font);font-size:13px;font-weight:${activeTailorDoc==='resume'?'600':'400'};color:${activeTailorDoc==='resume'?'var(--text)':'var(--text2)'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s">
+        <svg width="14" height="14" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Resume
+        ${j.resume ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>` : `<span style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>`}
+      </button>
+      <button onclick="setActiveTailorDoc('cover')" style="flex:1;padding:11px 16px;background:${activeTailorDoc==='cover'?'var(--bg2)':'var(--bg3)'};border:none;font-family:var(--font);font-size:13px;font-weight:${activeTailorDoc==='cover'?'600':'400'};color:${activeTailorDoc==='cover'?'var(--text)':'var(--text2)'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.15s">
+        <svg width="14" height="14" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="2"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="2"/></svg>
+        Cover Letter
+        ${j.cover ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>` : `<span style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>`}
+      </button>
+    </div>
+
+    <!-- File slot for active doc type -->
+    <div style="margin-bottom:16px">
+      ${fileSlotHtml(activeTailorDoc, doc, label.toUpperCase(), activeTailorDoc==='resume'
+        ? `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="4" y="2" width="22" height="28" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 10h16M10 15h16M10 20h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
+        : `<svg class="file-slot-icon" viewBox="0 0 36 36" fill="none"><rect x="2" y="6" width="32" height="24" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 10l16 11 16-11" stroke="currentColor" stroke-width="1.5"/></svg>`)}
+    </div>
+
+    <!-- Tailoring section - only shows if doc is uploaded -->
+    ${doc ? `
+    <div class="tailor-section">
+      <div class="tailor-heading">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        Tailor ${label}
+      </div>
+      <div class="tailor-sub">Add optional context to guide the AI — keywords, interview notes, or specific requirements.</div>
+      <textarea class="tailor-context" id="tailor-context" placeholder="Optional: keywords, job requirements, interview notes..." rows="2"></textarea>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="tailor-btn" id="tailor-main-btn" onclick="runTailoring('${activeTailorDoc}')" ${isGenerating?'disabled':''} style="justify-content:center">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+          ${isGenerating ? 'Tailoring...' : `Tailor ${label}`}
+        </button>
+        ${doc?.originalBase64 ? `
+        <button id="tailor-docx-btn" onclick="runTailoringDocx('${activeTailorDoc}')" style="padding:8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+          <span style="color:var(--accent);font-size:14px">✦</span>
+          Tailor with formatting preserved (.docx)
+        </button>` : ''}
       </div>
 
-      <div class="tailor-section">
-        <div class="tailor-heading">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.3 3 3 .5-2.2 2.1.5 3L7 8.3 4.2 9.5l.5-3L2 4.5l3-.5L7 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-          AI Tailoring
-        </div>
-        <div class="tailor-sub">Tailor each document separately for this role. Extra context (interview notes, keywords) helps improve results.</div>
-        <textarea class="tailor-context" id="tailor-context" placeholder="Optional: add keywords, job requirements, or notes to guide tailoring..." rows="2"></textarea>
+      <div id="ai-stream-output" style="margin-top:14px"></div>
+    </div>
+    ` : `
+    <div style="padding:32px 20px;text-align:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="font-size:28px;margin-bottom:12px">📄</div>
+      <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No ${label} uploaded</div>
+      <div style="font-size:13px;color:var(--text3)">Upload a file above or pick from your Document Library to start tailoring.</div>
+    </div>`}
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
-            <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">RESUME</div>
-            ${j.resume
-              ? `<div style="display:flex;flex-direction:column;gap:6px">
-                  <button class="tailor-btn" id="tailor-resume-btn" onclick="runTailoring('resume')" ${isGenerating?'disabled':''} style="width:100%;justify-content:center">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-                    Tailor Resume
-                  </button>
-                  ${j.resume?.originalBase64 ? `<button id="tailor-docx-resume-btn" onclick="runTailoringDocx('resume')" style="width:100%;padding:7px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px"><span style="color:var(--accent)">✦</span> Tailor with formatting (DOCX)</button>` : ''}
-                  ${j.tailoredResume ? `<div style="font-size:11px;color:var(--green)">✓ Tailored version available</div>` : ''}
-                </div>`
-              : `<div style="font-size:12px;color:var(--text3)">Upload a resume first</div>`
-            }
-          </div>
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
-            <div style="font-size:11px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;font-weight:500">COVER LETTER</div>
-            ${j.cover
-              ? `<div style="display:flex;flex-direction:column;gap:6px">
-                  <button class="tailor-btn" id="tailor-cover-btn" onclick="runTailoring('cover')" ${isGenerating?'disabled':''} style="width:100%;justify-content:center">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-                    Tailor Cover Letter
-                  </button>
-                  ${j.cover?.originalBase64 ? `<button id="tailor-docx-cover-btn" onclick="runTailoringDocx('cover')" style="width:100%;padding:7px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px"><span style="color:var(--accent)">✦</span> Tailor with formatting (DOCX)</button>` : ''}
-                  ${j.tailoredCover ? `<div style="font-size:11px;color:var(--green)">✓ Tailored version available</div>` : ''}
-                </div>`
-              : `<div style="font-size:12px;color:var(--text3)">Upload a cover letter first</div>`
-            }
-          </div>
-        </div>
+    <!-- Tailored result -->
+    ${tailored || tailoredHtml ? `
+    <div class="tailor-section" style="margin-top:16px">
+      <div class="tailor-heading">Tailored ${label}</div>
+      ${renderTailoredDoc(activeTailorDoc, tailored || '', j.id)}
+    </div>` : ''}
 
-        <div id="ai-stream-output" style="margin-top:14px"></div>
-      </div>
-
-      ${(j.tailoredResume || j.tailoredCover || j.tailoredResumeHtml || j.tailoredCoverHtml) ? `
-      <div class="tailor-section">
-        <div class="tailor-heading">Tailored Documents</div>
-        ${j.tailoredResume ? renderTailoredDoc('resume', j.tailoredResume, j.id) : ''}
-        ${j.tailoredCover ? renderTailoredDoc('cover', j.tailoredCover, j.id) : ''}
-      </div>` : ''}
-    </div>`;
+  </div>`;
 }
+
+function setActiveTailorDoc(type) {
+  activeTailorDoc = type;
+  renderDetail();
+  // Scroll to top of files pane
+  setTimeout(() => document.querySelector('.tailor-wrap')?.scrollTo?.(0, 0), 50);
+}
+
 
 function renderTailoredDoc(type, text, jobId) {
   const label = type === 'resume' ? 'Tailored Resume' : 'Tailored Cover Letter';
@@ -2311,7 +2332,27 @@ function renderAnalytics(overlay) {
             </div>
             <div style="font-size:11px;color:var(--text3);font-family:var(--mono);width:30px;text-align:right">${Math.round((v/total)*100)}%</div>
           </div>`).join('')}
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Click a bar to filter the job list to that status</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">Click a bar to jump to that status · Click a job title below to open it</div>
+      </div>
+
+      <!-- Job titles grouped by status — clickable -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text)">All applications</div>
+        ${STATUSES.filter(s => all.some(j => j.status === s)).map(s => {
+          const group = all.filter(j => j.status === s);
+          return `<div style="border-bottom:1px solid var(--border)">
+            <div style="padding:8px 20px;background:var(--bg3);display:flex;align-items:center;gap:8px">
+              <div style="width:8px;height:8px;border-radius:50%;background:${statusColors[s]||'#6b7280'};flex-shrink:0"></div>
+              <span style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text2)">${s.toUpperCase()}</span>
+              <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">(${group.length})</span>
+            </div>
+            ${group.map(j => `
+              <div onclick="openJobFromAnalytics('${j.id}')" style="padding:10px 20px 10px 36px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.12s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+                <div style="font-size:13px;font-weight:500;color:var(--blue);text-decoration:underline;text-underline-offset:2px">${esc(j.title)}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)">${esc(j.company)}${j.workType?' · '+esc(j.workType):''}${j.location?' · '+esc(j.location):''}</div>
+              </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
@@ -2383,12 +2424,21 @@ function renderAnalytics(overlay) {
 
 function filterAndClose(status) {
   closeAnalytics();
-  // Set the filter
   currentFilter = status;
   document.querySelectorAll('.filter-tab').forEach(t => {
     t.classList.toggle('active', t.textContent.trim() === status);
   });
   renderJobList();
+}
+
+function openJobFromAnalytics(jobId) {
+  closeAnalytics();
+  // Reset filter to all so the job is visible
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.trim() === 'all');
+  });
+  selectJob(jobId);
 }
 
 // ── JOB POSTING ACTIVE CHECK ──
