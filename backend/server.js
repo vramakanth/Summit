@@ -45,11 +45,14 @@ const PROVIDERS = {
 };
 
 // OpenRouter free models to rotate through when rate limited
+// Updated April 2026 — verified available via /api/v1/models
 const OPENROUTER_FALLBACK_MODELS = [
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-2-9b-it:free',
-  'mistralai/mistral-7b-instruct:free',
-  'qwen/qwen-2.5-7b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',     // primary — Llama 3.3 70B
+  'nvidia/nemotron-3-super-120b-a12b:free',      // 120B, 262K ctx
+  'qwen/qwen3-next-80b-a3b-instruct:free',       // 80B, 262K ctx
+  'google/gemma-4-31b-it:free',                  // 31B, 262K ctx
+  'google/gemma-3-27b-it:free',                  // 27B, 131K ctx
+  'openai/gpt-oss-20b:free',                     // 20B, 131K ctx (fallback)
 ];
 
 // Call an OpenAI-compatible provider (Groq, OpenRouter)
