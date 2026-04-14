@@ -366,6 +366,60 @@ async function parseJobFromUrl(url) {
   const parsed = new URL(url);
   const hostname = parsed.hostname;
 
+  // ── LinkedIn — extract job ID from URL, use public JSON endpoint ──
+  if (hostname.includes('linkedin.com') && parsed.pathname.includes('/jobs/view/')) {
+    const jobIdMatch = parsed.pathname.match(/\/jobs\/view\/(\d+)/);
+    const jobId = jobIdMatch ? jobIdMatch[1] : null;
+
+    // Try LinkedIn's public job posting page (sometimes accessible without login)
+    // and extract structured data from it
+    if (jobId) {
+      try {
+        const liUrl = `https://www.linkedin.com/jobs/view/${jobId}/`;
+        const liRes = await fetchWithTimeout(liUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+          }
+        }, 10000);
+
+        if (liRes.ok) {
+          const liHtml = await liRes.text();
+          // Extract from JSON-LD structured data
+          const structured = extractStructuredData(liHtml);
+          if (structured && structured.title) {
+            return {
+              fields: structured,
+              html: liHtml.slice(0, 50000),
+              text: stripHtml(liHtml).slice(0, 8000),
+            };
+          }
+          // Try meta tags
+          const titleMatch = liHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const ogTitle = liHtml.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+          const title = ogTitle?.[1] || titleMatch?.[1]?.split(' at ')?.[0]?.trim() || null;
+          const company = titleMatch?.[1]?.split(' at ')?.[1]?.split(' |')?.[0]?.trim() ||
+                          liHtml.match(/<meta[^>]+name="author"[^>]+content="([^"]+)"/i)?.[1] || null;
+          if (title) {
+            return {
+              fields: { title, company, location: null, salary: null, remote: null },
+              html: liHtml.slice(0, 50000),
+              text: stripHtml(liHtml).slice(0, 8000),
+            };
+          }
+        }
+      } catch(e) { /* fall through to generic */ }
+    }
+
+    // LinkedIn blocked — return what we can from the URL itself
+    return {
+      fields: { title: null, company: 'LinkedIn', location: null, salary: null, remote: null },
+      html: null, text: null,
+      _linkedinBlocked: true,
+    };
+  }
+
   // ── Eightfold / Dexcom-style ATS ──
   if (hostname.includes('eightfold') || /\/careers\/job\/(\d+)/.test(parsed.pathname)) {
     const match = parsed.pathname.match(/\/careers\/job\/(\d+)/);
@@ -1614,30 +1668,31 @@ app.get('/api/admin/status', adminMiddleware, (req, res) => {
 });
 
 // Serve admin panel
-// ── Serve Chrome Extension as a clean zip ──
+// ── Serve Chrome Extension as a clean zip with embedded tracker URL ──
 app.get('/extension.zip', (req, res) => {
   const AdmZip = require('adm-zip');
   const extDir = path.join(__dirname, '../extension');
 
   try {
     const zip = new AdmZip();
+    const trackerUrl = APP_URL;
 
-    // Add each extension file directly (no subfolder)
-    const files = ['manifest.json', 'popup.html', 'popup.js', 'content.js'];
-    for (const file of files) {
-      const filePath = path.join(extDir, file);
-      if (fs.existsSync(filePath)) {
-        zip.addLocalFile(filePath);
-      }
+    // popup.js — inject the live tracker URL
+    const popupJs = fs.readFileSync(path.join(extDir, 'popup.js'), 'utf8')
+      .replace(
+        /const TRACKER_URL = '[^']*';/,
+        `const TRACKER_URL = '${trackerUrl}';`
+      );
+    zip.addFile('popup.js', Buffer.from(popupJs, 'utf8'));
+
+    // Other files added as-is
+    for (const file of ['manifest.json', 'popup.html', 'content.js']) {
+      const fp = path.join(extDir, file);
+      if (fs.existsSync(fp)) zip.addLocalFile(fp);
     }
-
-    // Add placeholder icons if not present
-    const iconFiles = ['icon16.png', 'icon48.png', 'icon128.png'];
-    for (const icon of iconFiles) {
-      const iconPath = path.join(extDir, icon);
-      if (fs.existsSync(iconPath)) {
-        zip.addLocalFile(iconPath);
-      }
+    for (const icon of ['icon16.png', 'icon48.png', 'icon128.png']) {
+      const fp = path.join(extDir, icon);
+      if (fs.existsSync(fp)) zip.addLocalFile(fp);
     }
 
     const zipBuffer = zip.toBuffer();

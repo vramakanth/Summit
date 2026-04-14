@@ -10,12 +10,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ── LinkedIn ──
   if (hostname.includes('linkedin.com')) {
-    title = document.querySelector('.job-details-jobs-unified-top-card__job-title, h1.t-24')?.textContent?.trim() || '';
-    company = document.querySelector('.job-details-jobs-unified-top-card__company-name, a.ember-view .t-16')?.textContent?.trim() || '';
-    const meta = document.querySelector('.job-details-jobs-unified-top-card__primary-description-container')?.textContent || '';
-    if (meta.toLowerCase().includes('remote')) workType = 'Remote';
-    else if (meta.toLowerCase().includes('hybrid')) workType = 'Hybrid';
-    else if (meta.toLowerCase().includes('on-site')) workType = 'On-site';
+    // Job title — try multiple selector patterns across LinkedIn's changing UI
+    title = (
+      document.querySelector('.job-details-jobs-unified-top-card__job-title h1') ||
+      document.querySelector('.job-details-jobs-unified-top-card__job-title') ||
+      document.querySelector('.topcard__title') ||
+      document.querySelector('h1.t-24') ||
+      document.querySelector('h1[class*="title"]')
+    )?.textContent?.trim() || '';
+
+    // Company name
+    company = (
+      document.querySelector('.job-details-jobs-unified-top-card__company-name a') ||
+      document.querySelector('.job-details-jobs-unified-top-card__company-name') ||
+      document.querySelector('.topcard__org-name-link') ||
+      document.querySelector('a[data-tracking-control-name*="company"]')
+    )?.textContent?.trim() || '';
+
+    // Location — extract and split workType from it
+    const locationEl = (
+      document.querySelector('.job-details-jobs-unified-top-card__bullet') ||
+      document.querySelector('.topcard__flavor--bullet') ||
+      document.querySelector('[class*="location"]')
+    )?.textContent?.trim() || '';
+
+    // Work type pill (Remote / Hybrid / On-site)
+    const workTypePill = (
+      document.querySelector('.job-details-jobs-unified-top-card__workplace-type') ||
+      document.querySelector('[class*="workplace-type"]') ||
+      document.querySelector('.job-details-jobs-unified-top-card__job-insight span')
+    )?.textContent?.trim() || '';
+
+    if (workTypePill.toLowerCase().includes('remote')) workType = 'Remote';
+    else if (workTypePill.toLowerCase().includes('hybrid')) workType = 'Hybrid';
+    else if (workTypePill.toLowerCase().includes('on-site') || workTypePill.toLowerCase().includes('onsite')) workType = 'On-site';
+
+    // Clean location — remove workType from it if present
+    if (locationEl) {
+      location = locationEl
+        .replace(/\s*(Remote|Hybrid|On-site|Onsite)\s*/gi, '')
+        .replace(/·/g, '').trim();
+    }
+
+    // Salary — LinkedIn sometimes shows it in the insights section
+    const insights = Array.from(document.querySelectorAll('.job-details-jobs-unified-top-card__job-insight, [class*="insight"]'));
+    for (const el of insights) {
+      const txt = el.textContent || '';
+      const salaryMatch = txt.match(/\$[\d,.]+[kK]?\s*[-–to]+\s*\$[\d,.]+[kK]?/);
+      if (salaryMatch) { salary = salaryMatch[0].trim(); break; }
+    }
   }
 
   // ── Indeed ──

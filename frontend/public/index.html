@@ -887,7 +887,22 @@ async function parseJobUrl() {
       }
     }
 
-    if (filled > 0) {
+    // Clean tracking params from LinkedIn URLs before storing
+    const cleanUrl = (() => {
+      try {
+        const u = new URL(url);
+        if (u.hostname.includes('linkedin.com') && u.pathname.includes('/jobs/view/')) {
+          const jobId = u.pathname.match(/\/jobs\/view\/(\d+)/)?.[1];
+          return jobId ? `https://www.linkedin.com/jobs/view/${jobId}/` : url;
+        }
+      } catch(e) {}
+      return url;
+    })();
+    document.getElementById('job-url').value = cleanUrl;
+
+    if (data._linkedinBlocked) {
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> LinkedIn requires login to auto-fill. <strong>Use the Chrome/Safari extension</strong> while on LinkedIn, or fill in manually below.`;
+    } else if (filled > 0) {
       statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} — review and correct below`;
     } else {
       statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Could not auto-fill — this site may block scraping. Please fill in manually.`;

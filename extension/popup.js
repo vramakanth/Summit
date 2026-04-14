@@ -2,7 +2,8 @@
 const $ = id => document.getElementById(id);
 const setStatus = (el, type, msg) => { el.className = 'status ' + type; el.textContent = msg; };
 
-let apiUrl = '', token = '', currentTabUrl = '';
+const TRACKER_URL = 'https://job-application-tracker-hf1f.onrender.com';
+let apiUrl = TRACKER_URL, token = '', currentTabUrl = '';
 
 // ── INIT — runs on every popup open ──
 async function init() {
@@ -11,11 +12,11 @@ async function init() {
   currentTabUrl = tabs[0]?.url || '';
   $('detected-url').textContent = currentTabUrl || 'No URL detected';
 
-  // Check if already signed in
-  const stored = await chrome.storage.local.get(['apiUrl', 'token', 'username']);
-  if (stored.apiUrl && stored.token) {
-    apiUrl = stored.apiUrl;
+  // Check if already signed in — URL is always hardcoded to TRACKER_URL
+  const stored = await chrome.storage.local.get(['token', 'username']);
+  if (stored.token) {
     token = stored.token;
+    apiUrl = TRACKER_URL;
     // Verify token is still valid
     try {
       const r = await fetch(apiUrl + '/api/jobs', { headers: { Authorization: 'Bearer ' + token } });
@@ -31,10 +32,10 @@ async function init() {
 
 // ── LOGIN — only needed once, credentials saved permanently ──
 async function doLogin() {
-  const url = $('api-url').value.trim().replace(/\/+$/, '');
+  const url = TRACKER_URL;
   const user = $('username').value.trim();
   const pass = $('password').value;
-  if (!url || !user || !pass) { setStatus($('login-status'), 'error', 'Fill in all fields'); return; }
+  if (!user || !pass) { setStatus($('login-status'), 'error', 'Fill in all fields'); return; }
   $('login-btn').disabled = true;
   $('login-btn').textContent = 'Signing in...';
   try {
@@ -47,7 +48,7 @@ async function doLogin() {
     if (!res.ok) { setStatus($('login-status'), 'error', data.error || 'Login failed'); return; }
     apiUrl = url; token = data.token;
     // Save permanently — never need to log in again
-    await chrome.storage.local.set({ apiUrl: url, token: data.token, username: user });
+    await chrome.storage.local.set({ token: data.token, username: user });
     $('login-view').style.display = 'none';
     showMain();
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
