@@ -900,6 +900,38 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
 });
 
 // ── Document tailoring (OpenRouter → Groq → Anthropic) ──
+// POST /api/interview-questions — generate tailored interview questions
+app.post('/api/interview-questions', authMiddleware, async (req, res) => {
+  const { title, company, postingText } = req.body;
+  if (!title && !company) return res.status(400).json({ error: 'Job info required' });
+
+  const jobInfo = postingText ? 'Job Posting:\n' + postingText.slice(0, 3000) : '';
+  const prompt = 'Generate 15 interview preparation questions for this job.\n\n' +
+    'Job Title: ' + (title || 'Not specified') + '\n' +
+    'Company: ' + (company || 'Not specified') + '\n' +
+    jobInfo + '\n\n' +
+    'Return ONLY a valid JSON array with objects having "category" and "question" fields. ' +
+    'Categories: Behavioral, Technical, Culture Fit, Role-Specific, Questions to Ask. ' +
+    '3 questions per category. Make them specific to this role and company.';
+
+  try {
+    const result = await callAI(['groq', 'openrouter', 'google'],
+      'You are an expert interview coach. Return only valid JSON arrays, no markdown.',
+      prompt, 2000);
+    // Parse JSON from result
+    const clean = result.replace(/```json|```/g, '').trim();
+    let questions;
+    try { questions = JSON.parse(clean); }
+    catch(e) {
+      const match = clean.match(/\[[\s\S]*\]/);
+      questions = match ? JSON.parse(match[0]) : [];
+    }
+    res.json({ questions });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/tailor', authMiddleware, async (req, res) => {
   const { company, title, location, salary, postingText, content: docContent, docType, context } = req.body;
   // docType: 'resume' or 'cover'
@@ -1761,6 +1793,51 @@ app.get('/admin', (req, res) => {
 // Serve password reset page
 app.get('/reset-password', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/public/reset-password.html'));
+});
+
+// POST /api/forgot — recover username or send password reset link by email
+app.post('/api/forgot', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+  const users = loadUsers();
+  const normalEmail = email.toLowerCase().trim();
+
+  // Find user(s) with this email
+  const matches = Object.values(users).filter(u => u.email && u.email.toLowerCase() === normalEmail);
+
+  // Always return success regardless (prevents email enumeration)
+  const successMsg = "If an account exists with that email, we've sent recovery instructions.";
+
+  if (matches.length === 0) {
+    return res.json({ ok: true, message: successMsg });
+  }
+
+  const user = matches[0];
+  const crypto = require('crypto');
+
+  // Generate reset token
+  const token = crypto.randomBytes(32).toString('hex');
+  resetTokens[token] = { username: user.username.toLowerCase(), expires: Date.now() + 60 * 60 * 1000 };
+
+  const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+
+  const emailHtml = `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+      <h2 style="font-size:20px;font-weight:600;margin-bottom:8px">Recover your Pursuit account</h2>
+      <p style="color:#666;margin-bottom:16px">We received a request to recover access to your account.</p>
+      <div style="background:#f5f5f3;border-radius:8px;padding:16px;margin-bottom:16px">
+        <div style="font-size:12px;color:#888;margin-bottom:4px;font-family:monospace">YOUR USERNAME</div>
+        <div style="font-size:18px;font-weight:600">${user.username}</div>
+      </div>
+      <p style="color:#444;margin-bottom:16px">To reset your password, click the button below. This link expires in <strong>1 hour</strong>.</p>
+      <a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#a3e635;color:#1a1917;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Reset my password</a>
+      <p style="color:#888;font-size:12px;margin-top:20px">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+    </div>`;
+
+  await sendEmail(user.email, 'Recover your Pursuit account', emailHtml);
+
+  res.json({ ok: true, message: successMsg });
 });
 
 // ═══════════════════════════════════════════

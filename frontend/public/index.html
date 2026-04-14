@@ -531,6 +531,7 @@ input[type="file"] { display: none; }
     <div class="auth-field"><label>PASSWORD</label><input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="auth-btn" id="login-btn" onclick="doLogin()">Sign in</button>
     <div class="auth-switch">No account? <a onclick="showScreen('register')">Create one →</a></div>
+    <div class="auth-switch" style="margin-top:6px"><a onclick="showScreen('forgot')" style="color:var(--text3);font-size:12px">Forgot username or password?</a></div>
   </div>
 </div>
 
@@ -820,6 +821,30 @@ async function doLogin() {
     showApp(); loadJobs();
   } catch(e) { showErr(err,'Could not connect to server.'); }
   finally { btn.disabled=false; btn.textContent='Sign in'; }
+}
+
+async function doForgot() {
+  const email = document.getElementById('forgot-email').value.trim();
+  const err   = document.getElementById('forgot-error');
+  const succ  = document.getElementById('forgot-success');
+  const btn   = document.getElementById('forgot-btn');
+  err.classList.remove('show'); succ.style.display = 'none';
+  if (!email || !email.includes('@')) { showErr(err, 'Please enter a valid email address.'); return; }
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    const res = await fetch(API + '/api/forgot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showErr(err, data.error || 'Something went wrong.'); return; }
+    // Always show success regardless of whether email found (security)
+    succ.style.display = 'block';
+    succ.textContent = data.message || "If an account exists with that email, we've sent recovery instructions.";
+    document.getElementById('forgot-email').value = '';
+  } catch(e) { showErr(err, 'Could not connect. Please try again.'); }
+  finally { btn.disabled = false; btn.textContent = 'Send recovery email'; }
 }
 
 async function doRegister() {
@@ -1198,7 +1223,6 @@ function renderDetail() {
       <div class="detail-tab${activeDetailTab==='notes'?' active':''}"    onclick="switchTab('notes')">Notes</div>
       <div class="detail-tab${activeDetailTab==='insights'?' active':''}" onclick="switchTab('insights')">Insights</div>
       <div class="detail-tab${activeDetailTab==='posting'?' active':''}"  onclick="switchTab('posting')">Job Posting</div>
-      <div class="detail-tab${activeDetailTab==='files'?' active':''}"    onclick="switchTab('files')">Tailoring</div>
       <div class="detail-tab${activeDetailTab==='documents'?' active':''}"  onclick="switchTab('documents')">Documents${j.documents?.length ? ` <span style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:100px;border:1px solid var(--border)">${j.documents.length}</span>` : ''}</div>
       <div class="detail-tab${activeDetailTab==='contacts'?' active':''}"   onclick="switchTab('contacts')">Contacts${j.contacts?.length ? ` <span style="font-size:10px;padding:1px 5px;background:var(--bg3);border-radius:100px;border:1px solid var(--border)">${j.contacts.length}</span>` : ''}</div>
       <div class="detail-tab${activeDetailTab==='interview'?' active':''}"  onclick="switchTab('interview')">Interview Prep</div>
@@ -1213,7 +1237,7 @@ function renderDetail() {
             ? `<div class="tab-pane">${renderContactsTab(j)}</div>`
             : activeDetailTab === 'interview'
               ? `<div class="tab-pane">${renderInterviewTab(j)}</div>`
-              : `<div class="tab-pane">${activeDetailTab==='notes' ? renderNotesTab(j) : renderFilesTab(j)}</div>`
+              : `<div class="tab-pane">${activeDetailTab==='notes' ? renderNotesTab(j) : activeDetailTab==='files' ? renderFilesTab(j) : renderNotesTab(j)}</div>`
     }
   `;
 }
@@ -2710,57 +2734,301 @@ async function checkAllPostings() {
 function renderDocumentsTab(j) {
   if (!j.documents) j.documents = [];
   const docs = j.documents;
-  const usedDoc = docs.find(d => d.usedForApplication);
 
-  return `<div style="padding:20px;max-width:680px;margin:0 auto">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;color:var(--text)">Documents for this application</div>
+  return `<div style="max-width:720px;margin:0 auto">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:14px;font-weight:600;color:var(--text)">Documents</div>
       <div style="display:flex;gap:8px">
-        <label style="padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v8M3 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          Upload
-          <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadToJobDocuments(event,'${j.id}')">
+        <label style="padding:6px 12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3M1 10h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Upload document
+          <input type="file" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadAndTailor(event,'${j.id}')">
         </label>
-        <button onclick="pickFromLibraryForJob('${j.id}')" style="padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 2h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/></svg>
-          From Library
-        </button>
+        <button onclick="pickLibraryDocForTailor('${j.id}')" style="padding:6px 12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">From library</button>
       </div>
     </div>
 
+    <!-- Tailoring area — shows when a doc is selected -->
+    <div id="tailor-work-area-${j.id}" style="display:none;margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid var(--border)"></div>
+
+    <!-- Document list -->
     ${docs.length === 0 ? `
-      <div style="padding:40px 20px;text-align:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
-        <div style="font-size:32px;margin-bottom:12px">📂</div>
-        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px">No documents yet</div>
-        <div style="font-size:13px;color:var(--text3)">Upload files or add from your Document Library.<br>Tailored documents are saved here automatically.</div>
+      <div style="text-align:center;padding:48px 20px;color:var(--text3)">
+        <div style="font-size:32px;margin-bottom:12px">📄</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text2);margin-bottom:6px">No documents yet</div>
+        <div style="font-size:13px;line-height:1.6">Upload a resume or cover letter to tailor it for this role,<br>or pick one from your Document Library.</div>
       </div>` : `
-      <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;flex-direction:column;gap:0">
         ${docs.map(d => `
-          <div style="background:transparent;border:none;border-bottom:1px solid var(--border);padding:12px 0;display:flex;align-items:center;gap:12px;transition:all 0.15s" >
-            <span style="font-size:18px;flex-shrink:0">${d.type==='resume'?'📄':d.type==='cover'?'✉️':'📎'}</span>
+          <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+            <span style="font-size:20px;flex-shrink:0">${d.type==='resume'?'📄':d.type==='cover'?'✉️':'📎'}</span>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</div>
-              <div style="font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;gap:8px;margin-top:2px">
-                <span>${d.type}</span>
-                <span>·</span>
-                <span>${d.source||'uploaded'}</span>
-                <span>·</span>
-                <span>${fmtDate(d.createdAt)}</span>
+              <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;display:flex;gap:8px">
+                <span>${d.type}</span><span>·</span><span>${d.source||'uploaded'}</span><span>·</span><span>${fmtDate(d.createdAt)}</span>
               </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-              ${d.usedForApplication ? `
-                <span style="padding:3px 8px;background:rgba(16,185,129,0.1);color:var(--green);border:1px solid rgba(16,185,129,0.2);border-radius:100px;font-size:11px;font-family:var(--mono);font-weight:600">✓ USED</span>` : `
-                <button onclick="tagJobDocument('${j.id}','${d.id}')" style="padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:100px;font-size:11px;font-family:var(--font);color:var(--text3);cursor:pointer">Mark as used</button>`}
-              ${d.docLibId ? `<button onclick="openDocEditor('${d.docLibId}')" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--text2);cursor:pointer">View</button>` : ''}
-              <button onclick="removeJobDocument('${j.id}','${d.id}')" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;font-family:var(--font);color:var(--red);cursor:pointer">✕</button>
+              ${d.usedForApplication ? `<span style="padding:2px 8px;background:rgba(52,211,153,0.1);color:var(--green);border-radius:100px;font-size:11px;font-family:var(--mono)">✓ used</span>` :
+                `<button onclick="tagJobDocument('${j.id}','${d.id}')" style="padding:2px 8px;background:var(--bg3);border:none;border-radius:100px;font-size:11px;font-family:var(--font);color:var(--text3);cursor:pointer">Mark used</button>`}
+              <button onclick="openTailorForDoc('${j.id}','${d.id}')" style="padding:5px 12px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;font-family:var(--font);cursor:pointer">Tailor ✦</button>
+              ${d.docLibId ? `<button onclick="openDocEditor('${d.docLibId}')" style="padding:5px 10px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">View</button>` : ''}
+              <button onclick="removeJobDocument('${j.id}','${d.id}')" style="padding:5px 10px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--red);cursor:pointer">✕</button>
             </div>
           </div>`).join('')}
       </div>`}
   </div>`;
 }
 
-// ── JOB DOCUMENT ACTIONS ──
+// ── Classify doc type from filename ──
+function classifyDocType(filename) {
+  const name = filename.toLowerCase();
+  if (/cover.?letter|cl\b|coverletter/.test(name)) return 'cover';
+  if (/resume|cv\b|curriculum/.test(name)) return 'resume';
+  return null; // unknown — ask user
+}
+
+// ── Upload a doc and open the tailor workflow ──
+async function uploadAndTailor(event, jobId) {
+  const file = event.target.files[0]; if (!file) return;
+  const j = jobs[jobId]; if (!j) return;
+
+  // Detect type from filename
+  let type = classifyDocType(file.name);
+
+  // If can't detect, ask
+  if (!type) {
+    type = confirm(`Is "${file.name}" a Resume? Click OK for Resume, Cancel for Cover Letter.`) ? 'resume' : 'cover';
+  }
+
+  // Show uploading state
+  const area = document.getElementById('tailor-work-area-' + jobId);
+  if (area) { area.style.display = 'block'; area.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:12px 0">Uploading and parsing...</div>'; }
+
+  try {
+    // Parse file content
+    const formData = new FormData();
+    formData.append('file', file);
+    const parseRes = await fetch(API + '/api/parse-file', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: formData,
+    });
+    const parsed = parseRes.ok ? await parseRes.json() : {};
+
+    // Save to library
+    const libRes = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ name: file.name, type, content: parsed.text || '', html: parsed.html || null }),
+    });
+    const libDoc = await libRes.json();
+
+    // Add to job docs
+    if (!j.documents) j.documents = [];
+    const jobDoc = { id: genId(), name: file.name, type, docLibId: libDoc.id, source: 'uploaded', createdAt: Date.now(), usedForApplication: false, _content: parsed.text || '', _html: parsed.html || null };
+    j.documents.unshift(jobDoc);
+    scheduleSave();
+
+    // Open tailor workflow with this doc
+    openTailorWorkflow(jobId, jobDoc, j);
+  } catch(e) {
+    if (area) area.innerHTML = `<div style="font-size:13px;color:var(--red)">Upload failed: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── Pick from library and open tailor ──
+async function pickLibraryDocForTailor(jobId) {
+  const j = jobs[jobId]; if (!j) return;
+  try {
+    const res = await fetch(API + '/api/docs', { headers: { Authorization: 'Bearer ' + token } });
+    libraryDocs = await res.json();
+  } catch(e) { libraryDocs = []; }
+  showLibraryPickerForJob(jobId, (libDoc) => {
+    // Add to job docs and open tailor
+    if (!j.documents) j.documents = [];
+    const existing = j.documents.find(d => d.docLibId === libDoc.id);
+    const jobDoc = existing || { id: genId(), name: libDoc.name, type: libDoc.type, docLibId: libDoc.id, source: 'library', createdAt: Date.now(), usedForApplication: false };
+    if (!existing) j.documents.unshift(jobDoc);
+    jobDoc._content = libDoc.content || '';
+    jobDoc._html = libDoc.html || null;
+    scheduleSave();
+    renderDetail();
+    setTimeout(() => openTailorForDoc(jobId, jobDoc.id), 50);
+  });
+}
+
+// ── Open tailor for existing job doc ──
+async function openTailorForDoc(jobId, docId) {
+  const j = jobs[jobId]; if (!j) return;
+  const jobDoc = (j.documents || []).find(d => d.id === docId); if (!jobDoc) return;
+
+  // Load content if not cached
+  if (!jobDoc._content && jobDoc.docLibId) {
+    try {
+      const res = await fetch(API + '/api/docs/' + jobDoc.docLibId, { headers: { Authorization: 'Bearer ' + token } });
+      if (res.ok) { const d = await res.json(); jobDoc._content = d.content || ''; jobDoc._html = d.html || null; }
+    } catch(e) {}
+  }
+  openTailorWorkflow(jobId, jobDoc, j);
+}
+
+// ── The main tailor workflow UI ──
+function openTailorWorkflow(jobId, jobDoc, j) {
+  const area = document.getElementById('tailor-work-area-' + jobId);
+  if (!area) return;
+  area.style.display = 'block';
+
+  const label = jobDoc.type === 'resume' ? 'Resume' : 'Cover Letter';
+
+  area.innerHTML = `
+    <div style="background:var(--bg3);border-radius:var(--radius);padding:16px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:18px">${jobDoc.type === 'resume' ? '📄' : '✉️'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(jobDoc.name)}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${label} · Tailoring for ${esc(j.title)} at ${esc(j.company)}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <select id="tailor-doc-type-${jobDoc.id}" onchange="changeTailorDocType('${jobId}','${jobDoc.id}',this.value)" style="padding:4px 8px;background:var(--bg2);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">
+            <option value="resume"${jobDoc.type==='resume'?' selected':''}>Resume</option>
+            <option value="cover"${jobDoc.type==='cover'?' selected':''}>Cover Letter</option>
+          </select>
+          <button onclick="closeTailorArea('${jobId}')" style="padding:4px 10px;background:transparent;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1">×</button>
+        </div>
+      </div>
+      <textarea id="tailor-ctx-${jobDoc.id}" placeholder="Optional: add keywords, requirements, or notes to guide the AI..." rows="2" style="width:100%;padding:8px;background:var(--bg2);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;resize:none;line-height:1.5;margin-bottom:10px"></textarea>
+      <button onclick="runDocTailor('${jobId}','${jobDoc.id}')" id="tailor-doc-btn-${jobDoc.id}" style="width:100%;padding:10px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.3 3 3 .5-2.2 2.1.5 3L6.5 8.3l-2.8 1.3.5-3L2 4.5l3-.5L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        Tailor ${label} for this role
+      </button>
+      <div id="tailor-doc-stream-${jobDoc.id}" style="margin-top:10px"></div>
+    </div>
+    <div id="tailor-doc-result-${jobDoc.id}" style="display:none"></div>`;
+
+  area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function changeTailorDocType(jobId, docId, newType) {
+  const j = jobs[jobId]; if (!j) return;
+  const doc = (j.documents||[]).find(d => d.id === docId);
+  if (doc) { doc.type = newType; scheduleSave(); }
+}
+
+function closeTailorArea(jobId) {
+  const area = document.getElementById('tailor-work-area-' + jobId);
+  if (area) { area.style.display = 'none'; area.innerHTML = ''; }
+}
+
+// ── Run the tailor ──
+async function runDocTailor(jobId, docId) {
+  const j = jobs[jobId]; if (!j) return;
+  const jobDoc = (j.documents||[]).find(d => d.id === docId); if (!jobDoc) return;
+
+  const btn = document.getElementById('tailor-doc-btn-' + docId);
+  const stream = document.getElementById('tailor-doc-stream-' + docId);
+  const resultArea = document.getElementById('tailor-doc-result-' + docId);
+  const ctx = document.getElementById('tailor-ctx-' + docId)?.value || '';
+
+  if (!jobDoc._content) { if (stream) stream.innerHTML = '<span style="color:var(--red);font-size:13px">No document content to tailor. Try re-uploading.</span>'; return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Tailoring...'; }
+  if (stream) stream.innerHTML = '<span style="font-size:12px;color:var(--text3);animation:pulse 1s infinite">Generating tailored version...</span>';
+  if (resultArea) resultArea.style.display = 'none';
+
+  try {
+    const res = await fetch(API + '/api/tailor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({
+        company: j.company, title: j.title, location: j.location, salary: j.salary,
+        postingText: j.postingText || j.postingText,
+        content: jobDoc._content, docType: jobDoc.type, context: ctx,
+      }),
+    });
+    if (!res.ok) throw new Error('Request failed');
+    const data = await res.json();
+    const tailored = data.result || data.text || '';
+
+    if (stream) stream.innerHTML = '';
+    if (resultArea) {
+      resultArea.style.display = 'block';
+      resultArea.innerHTML = renderTailorResult(jobId, docId, tailored, jobDoc);
+    }
+    // Cache result on doc
+    jobDoc._tailored = tailored;
+  } catch(e) {
+    if (stream) stream.innerHTML = `<span style="color:var(--red);font-size:13px">Failed: ${esc(e.message)}</span>`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Re-tailor'; }
+}
+
+// ── Render the result with save options ──
+function renderTailorResult(jobId, docId, tailored, jobDoc) {
+  const label = jobDoc.type === 'resume' ? 'Resume' : 'Cover Letter';
+  return `
+    <div style="margin-top:4px">
+      <div style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.5px;margin-bottom:8px">TAILORED ${label.toUpperCase()}</div>
+      <div id="tailor-result-editor-${docId}" contenteditable="true" style="min-height:200px;max-height:500px;overflow-y:auto;padding:16px 0;font-size:13px;line-height:1.7;color:var(--text);outline:none;border-bottom:1px solid var(--border)">${esc(tailored).replace(/\n/g,'<br>')}</div>
+      <div style="display:flex;gap:8px;padding:10px 0;flex-wrap:wrap">
+        <button onclick="saveTailoredToLibrary('${jobId}','${docId}')" style="padding:6px 14px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;font-family:var(--font);cursor:pointer">Save to library</button>
+        <button onclick="downloadTailoredResult('${docId}','txt')" style="padding:6px 14px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">↓ .txt</button>
+        <button onclick="downloadTailoredResult('${docId}','docx')" style="padding:6px 14px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font);color:var(--text2);cursor:pointer">↓ .docx</button>
+      </div>
+    </div>`;
+}
+
+// ── Save tailored result to Document Library ──
+async function saveTailoredToLibrary(jobId, docId) {
+  const j = jobs[jobId]; if (!j) return;
+  const jobDoc = (j.documents||[]).find(d => d.id === docId); if (!jobDoc) return;
+  const editorEl = document.getElementById('tailor-result-editor-' + docId);
+  if (!editorEl) return;
+  const text = editorEl.innerText || editorEl.textContent || '';
+  const html = editorEl.innerHTML || '';
+  const name = j.company + ' – ' + j.title + ' (Tailored ' + (jobDoc.type === 'resume' ? 'Resume' : 'Cover Letter') + ')';
+
+  try {
+    const res = await fetch(API + '/api/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ name, type: jobDoc.type, content: text, html }),
+    });
+    const libDoc = await res.json();
+    // Add as a new job doc
+    if (!j.documents) j.documents = [];
+    j.documents = j.documents.filter(d => !(d.source === 'tailored' && d.type === jobDoc.type && d.name === name));
+    j.documents.unshift({ id: genId(), name, type: jobDoc.type, docLibId: libDoc.id, source: 'tailored', createdAt: Date.now(), usedForApplication: false });
+    scheduleSave();
+    // Show confirmation
+    const btn = editorEl.nextElementSibling?.querySelector('button');
+    alert('Saved to Document Library ✓');
+    renderDetail();
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+// ── Download tailored result ──
+function downloadTailoredResult(docId, format) {
+  const el = document.getElementById('tailor-result-editor-' + docId);
+  if (!el) return;
+  const text = el.innerText || el.textContent || '';
+  if (format === 'txt') {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'tailored-document.txt'; a.click();
+  } else {
+    // Use server docx generation
+    fetch(API + '/api/download-docx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ text, filename: 'tailored-document' }),
+    }).then(r => r.blob()).then(blob => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'tailored-document.docx'; a.click();
+    }).catch(e => alert('Download failed: ' + e.message));
+  }
+}
+
+
 function tagJobDocument(jobId, docId) {
   const j = jobs[jobId]; if (!j || !j.documents) return;
   // Clear all then set this one
@@ -2822,7 +3090,8 @@ async function pickFromLibraryForJob(jobId) {
   showLibraryPickerForJob(jobId);
 }
 
-function showLibraryPickerForJob(jobId) {
+function showLibraryPickerForJob(jobId, onSelect) {
+  _libPickerCallback = onSelect || null;
   const overlay = document.createElement('div');
   overlay.id = 'lib-job-picker-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:700;display:flex;align-items:center;justify-content:center';
@@ -2862,12 +3131,16 @@ function renderLibPickerItems(docs, jobId) {
     </div>`).join('');
 }
 
+let _libPickerCallback = null;
 function addLibDocToJob(jobId, docLibId) {
   document.getElementById('lib-job-picker-overlay')?.remove();
   const j = jobs[jobId]; if (!j) return;
   const libDoc = libraryDocs.find(d => d.id === docLibId); if (!libDoc) return;
+  if (_libPickerCallback) {
+    const cb = _libPickerCallback; _libPickerCallback = null;
+    cb(libDoc); return;
+  }
   if (!j.documents) j.documents = [];
-  // Don't add duplicates
   if (j.documents.some(d => d.docLibId === docLibId)) {
     alert('This document is already in the list.'); return;
   }
@@ -3149,7 +3422,7 @@ async function generateInterviewQuestions(jobId) {
 
   const context = `Job title: ${j.title}\nCompany: ${j.company}\nJob posting: ${(j.postingText||'').slice(0,3000)}`;
   try {
-    const result = await callAI(`You are an expert interview coach. Generate 15 interview questions for this job application.
+    const prompt = `You are an expert interview coach. Generate 15 interview questions for this job application.
 
 ${context}
 
@@ -3162,17 +3435,17 @@ Return ONLY a JSON array in this exact format, no other text:
   {"category": "Questions to Ask", "question": "..."}
 ]
 
-Include 3-4 questions per category. Make them specific to this role and company. For "Questions to Ask", generate thoughtful questions the candidate should ask the interviewer.`);
+Include 3-4 questions per category. Make them specific to this role and company. For "Questions to Ask", generate thoughtful questions the candidate should ask the interviewer.`;
 
-    let questions;
-    try {
-      const clean = result.replace(/```json|```/g,'').trim();
-      questions = JSON.parse(clean);
-    } catch(e) {
-      const match = result.match(/\[[\s\S]*\]/);
-      questions = match ? JSON.parse(match[0]) : [];
-    }
-
+    const res = await fetch(API + '/api/interview-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ title: j.title, company: j.company, postingText: j.postingText || j.postingText }),
+    });
+    if (!res.ok) throw new Error('AI request failed: ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const questions = data.questions || [];
     if (!j.interviews) j.interviews = [];
     questions.forEach(q => {
       if (q.question && q.category) {
@@ -3181,6 +3454,8 @@ Include 3-4 questions per category. Make them specific to this role and company.
     });
     scheduleSave(); renderDetail();
     if (status) status.innerHTML = '';
+    if (btn) { btn.disabled=false; btn.innerHTML='<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.1 2.6 2.6.4-1.9 1.8.5 2.6L6 7.2 3.7 8.4l.5-2.6L2.3 4l2.6-.4L6 1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg> Generate with AI'; }
+    return; // handled above
   } catch(e) {
     if (status) status.innerHTML = `<span style="font-size:12px;color:var(--red)">Failed: ${e.message}</span>`;
     if (btn) { btn.disabled=false; btn.innerHTML='<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.1 2.6 2.6.4-1.9 1.8.5 2.6L6 7.2 3.7 8.4l.5-2.6L2.3 4l2.6-.4L6 1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg> Generate with AI'; }
@@ -3538,6 +3813,25 @@ setInterval(() => {
     Settings
   </button>
 </div>
+
+<!-- FORGOT USERNAME / PASSWORD -->
+<div id="screen-forgot" class="auth-wrap" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark"><svg viewBox="0 0 16 16" fill="none"><path d="M3 13L13 3M13 3H7M13 3v6" stroke="#1a1917" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><div class="auth-title">Account Recovery</div><div class="auth-sub">Enter your email to recover access</div></div>
+    </div>
+    <div class="auth-error" id="forgot-error"></div>
+    <div class="auth-success" id="forgot-success" style="display:none;padding:10px 14px;background:rgba(52,211,153,0.1);color:var(--green);border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;line-height:1.5"></div>
+    <div class="auth-field">
+      <label>EMAIL ADDRESS</label>
+      <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')doForgot()">
+    </div>
+    <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
+    <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
+  </div>
+</div>
+
 
 <!-- SETTINGS PANEL — full overlay with sidebar nav -->
 <div id="settings-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:800;align-items:center;justify-content:center" onclick="if(event.target===this)closeSettings()">
