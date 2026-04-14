@@ -746,6 +746,13 @@ let pendingHtml = null, pendingText = null;
 const STATUSES = ['to apply','applied','screening','interviewing','offer','rejected','ghosted','withdrawn','expired'];
 
 // ── UTILITIES ──
+function stripHtml(html) {
+  if (!html) return '';
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return (d.innerText || d.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -2825,7 +2832,8 @@ async function uploadAndTailor(event, jobId) {
 
     // Add to job docs
     if (!j.documents) j.documents = [];
-    const jobDoc = { id: genId(), name: file.name, type, docLibId: libDoc.id, source: 'uploaded', createdAt: Date.now(), usedForApplication: false, _content: parsed.text || '', _html: parsed.html || null };
+    const rawText = parsed.text || '';
+    const jobDoc = { id: genId(), name: file.name, type, docLibId: libDoc.id, source: 'uploaded', createdAt: Date.now(), usedForApplication: false, _content: (rawText.includes('<') && rawText.includes('>')) ? stripHtml(rawText) : rawText, _html: parsed.html || null };
     j.documents.unshift(jobDoc);
     scheduleSave();
 
@@ -2866,7 +2874,13 @@ async function openTailorForDoc(jobId, docId) {
   if (!jobDoc._content && jobDoc.docLibId) {
     try {
       const res = await fetch(API + '/api/docs/' + jobDoc.docLibId, { headers: { Authorization: 'Bearer ' + token } });
-      if (res.ok) { const d = await res.json(); jobDoc._content = d.content || ''; jobDoc._html = d.html || null; }
+      if (res.ok) {
+      const d = await res.json();
+      const raw = d.content || '';
+      // Strip HTML if content field contains markup
+      jobDoc._content = (raw.includes('<') && raw.includes('>')) ? stripHtml(raw) : raw;
+      jobDoc._html = d.html || null;
+    }
     } catch(e) {}
   }
   openTailorWorkflow(jobId, jobDoc, j);

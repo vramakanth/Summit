@@ -63,15 +63,11 @@ const PROVIDERS = {
   },
 };
 
-// OpenRouter free models to rotate through when rate limited
-// Updated April 2026 — verified available via /api/v1/models
+// OpenRouter free models — best 3 only for fast fallback
 const OPENROUTER_FALLBACK_MODELS = [
-  'meta-llama/llama-3.3-70b-instruct:free',     // primary — Llama 3.3 70B
-  'nvidia/nemotron-3-super-120b-a12b:free',      // 120B, 262K ctx
-  'qwen/qwen3-next-80b-a3b-instruct:free',       // 80B, 262K ctx
-  'google/gemma-4-31b-it:free',                  // 31B, 262K ctx
-  'google/gemma-3-27b-it:free',                  // 27B, 131K ctx
-  'openai/gpt-oss-20b:free',                     // 20B, 131K ctx (fallback)
+  'meta-llama/llama-3.3-70b-instruct:free',  // primary
+  'nvidia/nemotron-3-super-120b-a12b:free',  // fallback 1
+  'google/gemma-4-31b-it:free',              // fallback 2
 ];
 
 // Call an OpenAI-compatible provider (Groq, OpenRouter)
@@ -99,7 +95,7 @@ async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) 
           ],
           temperature: 0.3,
         }),
-      }, 90000);
+      }, 30000);
 
       if (!res.ok) {
         const errText = await res.text();
@@ -143,7 +139,7 @@ async function callGoogle(systemPrompt, userPrompt, maxTokens = 4000) {
       contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
       generationConfig: { maxOutputTokens: maxTokens, temperature: 0.3 },
     }),
-  }, 90000);
+  }, 30000);
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Google error ${res.status}: ${err.slice(0, 200)}`);
@@ -172,6 +168,40 @@ async function callAI(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000
     }
   }
   throw new Error('All AI providers failed: ' + errors.join(' | '));
+}
+
+// Fast parallel race — fires all configured providers simultaneously, returns first success
+async function callAIFast(systemPrompt, userPrompt, maxTokens = 4000) {
+  const providers = [];
+  if (PROVIDERS.groq?.key)       providers.push('groq');
+  if (PROVIDERS.openrouter?.key) providers.push('openrouter');
+  if (PROVIDERS.google?.key)     providers.push('google');
+  if (providers.length === 0)    throw new Error('No AI providers configured');
+
+  // Race all providers — first to succeed wins
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let failures = 0;
+    const errors = [];
+    providers.forEach(provider => {
+      const call = provider === 'google'
+        ? callGoogle(systemPrompt, userPrompt, maxTokens)
+        : callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
+      call.then(result => {
+        if (!settled) {
+          settled = true;
+          console.log(`callAIFast: won via ${provider}`);
+          resolve(result);
+        }
+      }).catch(e => {
+        errors.push(`${provider}: ${e.message}`);
+        failures++;
+        if (failures === providers.length && !settled) {
+          reject(new Error('All providers failed: ' + errors.join(' | ')));
+        }
+      });
+    });
+  });
 }
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production-please';
@@ -884,8 +914,7 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
   const { url, text } = req.body;
   if (!text) return res.json(null);
   try {
-    const result = await callAI(
-      ['openrouter', 'groq', 'google'],
+    const result = await callAIFast(
       'Extract job details from this job posting. Respond ONLY with valid JSON, no markdown. Fields: title (string), company (string), location (physical city/state/country only, no work type), workType (one of: Remote, Hybrid, On-site, or null), salary (string), remote (boolean). Use null if not found.',
       `URL: ${url}\n\nPage text:\n${text}`,
       300
@@ -915,7 +944,7 @@ app.post('/api/interview-questions', authMiddleware, async (req, res) => {
     '3 questions per category. Make them specific to this role and company.';
 
   try {
-    const result = await callAI(['groq', 'openrouter', 'google'],
+    const result = await callAIFast(
       'You are an expert interview coach. Return only valid JSON arrays, no markdown.',
       prompt, 2000);
     // Parse JSON from result
@@ -933,9 +962,11 @@ app.post('/api/interview-questions', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/tailor', authMiddleware, async (req, res) => {
-  const { company, title, location, salary, postingText, content: docContent, docType, context } = req.body;
-  // docType: 'resume' or 'cover'
-  if (!docContent || !docType) return res.status(400).json({ error: 'content and docType required' });
+  const { company, title, location, salary, postingText, content: rawDocContent, docType, context } = req.body;
+  if (!rawDocContent || !docType) return res.status(400).json({ error: 'content and docType required' });
+  // Strip any HTML tags that may have been stored in the document
+  const hasHtml = rawDocContent.includes('<') && rawDocContent.includes('>');
+  const docContent = hasHtml ? stripHtml(rawDocContent) : rawDocContent;
 
   const jobCtx = postingText ? '\nJob posting content:\n' + postingText.slice(0, 3000) : '';
   const docLabel = docType === 'resume' ? 'RESUME' : 'COVER LETTER';
@@ -955,7 +986,7 @@ ${docLabel} TO TAILOR (may be HTML or plain text — preserve all structure and 
 ${docContent}`;
 
   try {
-    const result = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 3000);
+    const result = await callAIFast(systemPrompt, userPrompt, 3000);
     res.json({ result: result.trim(), docType });
   } catch (e) {
     console.error('Tailor error:', e.message);
@@ -1065,12 +1096,7 @@ Return ONLY a valid JSON object with these exact fields (no markdown, no backtic
 }`;
 
   try {
-    const finalText = await callAI(
-      ['groq', 'openrouter', 'google'],  // Insights: Groq first
-      systemPrompt,
-      userPrompt,
-      5000
-    );
+    const finalText = await callAIFast(systemPrompt, jobContext, 3000)
     console.log('Insights response length:', finalText.length);
     if (!finalText) throw new Error('Empty response from AI');
     const cleaned = finalText.replace(/```json|```/g, '').trim();
@@ -1353,7 +1379,7 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
     const systemPrompt = `You are a professional career coach tailoring a ${docLabel}. You will receive numbered paragraphs from the original document. Return ONLY the same numbered paragraphs with updated content tailored for the job. Keep EVERY paragraph number — same count, same order. Do not merge, split, add or remove paragraphs. Only change the words.`;
     const userPrompt = `Tailor for:\nCompany: ${company}\nRole: ${title}\n${location ? 'Location: ' + location : ''}\n${salary ? 'Salary: ' + salary : ''}\n${context ? 'Notes: ' + context : ''}${jobCtx}\n\nPARAGRAPHS:\n${numberedInput}`;
 
-    const tailoredRaw = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 4000);
+    const tailoredRaw = await callAIFast(systemPrompt, userPrompt, 4000);
 
     // ── Step 3: Parse AI response back to paragraph array ──
     const newParas = {};
@@ -1566,7 +1592,7 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
     const systemPrompt = 'You are a professional career coach. You will receive a document as plain text with section markers. Rewrite it to be tailored for the job, keeping the exact same structure and sections. Return ONLY the rewritten plain text - same sections, same order, nothing added or removed.';
     const userPrompt = `Tailor this ${docLabel} for:\nCompany: ${company}\nRole: ${title}\n${location?'Location: '+location:''}\n${salary?'Salary: '+salary:''}\n${context?'Notes: '+context:''}${jobCtx}\n\nDOCUMENT TO TAILOR:\n${rawText}`;
 
-    const tailoredText = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 3000);
+    const tailoredText = await callAIFast(systemPrompt, userPrompt, 3000);
 
     // Now do a paragraph-level replacement in the XML
     // Split both texts into lines for mapping
