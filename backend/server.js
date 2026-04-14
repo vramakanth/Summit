@@ -23,31 +23,13 @@ const GOOGLE_MODEL = process.env.GOOGLE_MODEL || 'gemini-2.0-flash';
 
 // ── Admin & Email config ──
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
-const SMTP_HOST     = process.env.SMTP_HOST || '';
-const SMTP_PORT     = parseInt(process.env.SMTP_PORT || '587');
-const SMTP_USER     = process.env.SMTP_USER || '';
-const SMTP_PASS     = process.env.SMTP_PASS || '';
-const SMTP_FROM     = process.env.SMTP_FROM || SMTP_USER;
+
 const APP_URL       = process.env.APP_URL || 'https://job-application-tracker-hf1f.onrender.com';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const FROM_EMAIL    = process.env.FROM_EMAIL || 'Applied <noreply@applied.app>';
 const resetTokens   = {};
 
-// Reset tokens store
-const TOKENS_FILE = path.join(DATA_DIR, 'reset-tokens.json');
-function loadTokens() { try { return JSON.parse(fs.readFileSync(TOKENS_FILE,'utf8')); } catch { return {}; } }
-function saveTokens(t) { fs.writeFileSync(TOKENS_FILE, JSON.stringify(t)); }
 
-// Nodemailer transporter (lazy — only created if SMTP configured)
-function getMailer() {
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  const nodemailer = require('nodemailer');
-  return nodemailer.createTransport({
-    host: SMTP_HOST, port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-}
 
 async function sendMail(to, subject, html) {
   const mailer = getMailer();
