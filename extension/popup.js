@@ -1,25 +1,35 @@
 // Applied Chrome Extension - popup.js
 const $ = id => document.getElementById(id);
-const setStatus = (el, type, msg) => {
-  el.className = 'status ' + type;
-  el.textContent = msg;
-};
+const setStatus = (el, type, msg) => { el.className = 'status ' + type; el.textContent = msg; };
 
-let apiUrl = '', token = '';
+let apiUrl = '', token = '', currentTabUrl = '';
 
+// ── INIT — runs on every popup open ──
 async function init() {
+  // Always grab the current tab URL immediately
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  currentTabUrl = tabs[0]?.url || '';
+  $('detected-url').textContent = currentTabUrl || 'No URL detected';
+
+  // Check if already signed in
   const stored = await chrome.storage.local.get(['apiUrl', 'token', 'username']);
   if (stored.apiUrl && stored.token) {
     apiUrl = stored.apiUrl;
     token = stored.token;
+    // Verify token is still valid
+    try {
+      const r = await fetch(apiUrl + '/api/jobs', { headers: { Authorization: 'Bearer ' + token } });
+      if (r.status === 401) { await signOut(); return; }
+    } catch(e) { /* offline — still show main */ }
     showMain();
-    detectJobInfo();
+    detectJobInfo(tabs[0]);
   } else {
     if (stored.apiUrl) $('api-url').value = stored.apiUrl;
     $('login-view').style.display = 'block';
   }
 }
 
+// ── LOGIN — only needed once, credentials saved permanently ──
 async function doLogin() {
   const url = $('api-url').value.trim().replace(/\/+$/, '');
   const user = $('username').value.trim();
@@ -35,83 +45,81 @@ async function doLogin() {
     });
     const data = await res.json();
     if (!res.ok) { setStatus($('login-status'), 'error', data.error || 'Login failed'); return; }
-    apiUrl = url;
-    token = data.token;
+    apiUrl = url; token = data.token;
+    // Save permanently — never need to log in again
     await chrome.storage.local.set({ apiUrl: url, token: data.token, username: user });
     $('login-view').style.display = 'none';
     showMain();
-    detectJobInfo();
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    detectJobInfo(tabs[0]);
   } catch(e) {
-    setStatus($('login-status'), 'error', 'Cannot connect to tracker: ' + e.message);
+    setStatus($('login-status'), 'error', 'Cannot connect: ' + e.message);
   }
   $('login-btn').disabled = false;
   $('login-btn').textContent = 'Sign in';
 }
 
+// ── SHOW MAIN VIEW ──
 function showMain() {
   $('main-view').style.display = 'block';
-  // Get current tab URL
-  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-    if (tabs[0]) $('detected-url').textContent = tabs[0].url;
+  // Show the live URL from address bar (updated in init)
+  $('detected-url').textContent = currentTabUrl || 'No URL detected';
+}
+
+// ── DETECT JOB INFO from page content ──
+function detectJobInfo(tab) {
+  if (!tab) return;
+  chrome.tabs.sendMessage(tab.id, { action: 'detectJob' }, resp => {
+    if (chrome.runtime.lastError || !resp) {
+      // Fallback: parse title from tab
+      const title = tab.title || '';
+      $('job-title').value = title.split(' - ')[0].split(' | ')[0].trim();
+      return;
+    }
+    if (resp.title)    { $('job-title').value = resp.title;    $('title-source').textContent = 'auto-detected'; }
+    if (resp.company)  { $('job-company').value = resp.company; $('company-source').textContent = 'auto-detected'; }
+    if (resp.location) $('job-location').value = resp.location;
+    if (resp.workType) $('job-worktype').value = resp.workType;
+    if (resp.salary)   $('job-salary').value = resp.salary;
   });
 }
 
-function detectJobInfo() {
-  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-    if (!tabs[0]) return;
-    chrome.tabs.sendMessage(tabs[0].id, { action: 'detectJob' }, resp => {
-      if (chrome.runtime.lastError || !resp) {
-        // Fallback: parse from page title
-        const title = tabs[0].title || '';
-        $('job-title').value = title.split(' - ')[0].split(' | ')[0].trim();
-        return;
-      }
-      if (resp.title) { $('job-title').value = resp.title; $('title-source').textContent = 'detected'; }
-      if (resp.company) { $('job-company').value = resp.company; $('company-source').textContent = 'detected'; }
-      if (resp.location) $('job-location').value = resp.location;
-      if (resp.workType) $('job-worktype').value = resp.workType;
-      if (resp.salary) $('job-salary').value = resp.salary;
-    });
-  });
-}
-
+// ── ADD JOB — uses currentTabUrl captured on open ──
 async function addJob() {
-  const title = $('job-title').value.trim();
+  const title   = $('job-title').value.trim();
   const company = $('job-company').value.trim();
-  if (!title || !company) { setStatus($('add-status'), 'error', 'Job title and company are required'); return; }
+  if (!title || !company) { setStatus($('add-status'), 'error', 'Title and company required'); return; }
 
   $('add-btn').disabled = true;
   $('add-btn').textContent = 'Adding...';
 
   try {
-    // First get current jobs
     const jobsRes = await fetch(apiUrl + '/api/jobs', { headers: { Authorization: 'Bearer ' + token } });
-    if (!jobsRes.ok) { doLogout(); return; }
+    if (jobsRes.status === 401) { await signOut(); return; }
     const jobs = await jobsRes.json();
 
-    // Create new job
     const id = Math.random().toString(36).slice(2,10) + Date.now().toString(36);
-    const url = $('detected-url').textContent;
     jobs[id] = {
       id, title, company,
-      url, status: 'applied',
+      url:      currentTabUrl,   // ← always from the address bar
+      status:   'to apply',
       location: $('job-location').value.trim(),
       workType: $('job-worktype').value,
-      salary: $('job-salary').value.trim(),
-      notes: [], createdAt: Date.now(),
+      salary:   $('job-salary').value.trim(),
+      notes:    [],
+      createdAt: Date.now(),
     };
 
-    // Save
     const saveRes = await fetch(apiUrl + '/api/jobs', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(jobs),
     });
-
     if (!saveRes.ok) throw new Error('Save failed');
-    setStatus($('add-status'), 'success', `✓ "${title}" added to Applied!`);
+
+    setStatus($('add-status'), 'success', `✓ "${title}" added!`);
     $('add-btn').textContent = '✓ Added!';
-    setTimeout(() => { $('add-btn').disabled = false; $('add-btn').textContent = '+ Add to Applied'; }, 2000);
+    setTimeout(() => { $('add-btn').disabled = false; $('add-btn').textContent = '+ Add to Applied'; }, 2500);
   } catch(e) {
     setStatus($('add-status'), 'error', 'Error: ' + e.message);
     $('add-btn').disabled = false;
@@ -119,15 +127,13 @@ async function addJob() {
   }
 }
 
-function openTracker() {
-  chrome.tabs.create({ url: apiUrl });
-}
+function openTracker() { chrome.tabs.create({ url: apiUrl }); }
 
-async function doLogout() {
+async function signOut() {
   await chrome.storage.local.clear();
+  token = ''; apiUrl = '';
   $('main-view').style.display = 'none';
   $('login-view').style.display = 'block';
-  token = ''; apiUrl = '';
 }
 
 document.addEventListener('DOMContentLoaded', init);
