@@ -581,70 +581,112 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 <!-- ═══ SCREENS ═══ -->
 
 <!-- LANDING -->
-<div id="screen-landing" style="display:block;position:fixed;top:0;right:0;bottom:0;left:0;z-index:900;overflow:hidden;font-family:var(--font)">
+<div id="screen-landing" style="display:block;position:fixed;top:0;right:0;bottom:0;left:0;z-index:900;overflow-y:auto;font-family:var(--font)">
 
-  <!-- Duotone mountain background (SVG) -->
-  <div style="position:absolute;inset:0;z-index:0;overflow:hidden">
-    <!-- Sky gradient -->
-    <div style="position:absolute;inset:0;background:linear-gradient(160deg,#0d1f35 0%,#1a2d4a 40%,#2d4a2a 100%)"></div>
-    <!-- Mountain SVG layers -->
-    <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice" style="position:absolute;inset:0;width:100%;height:100%">
-      <!-- Far range - dark teal -->
-      <polygon points="0,900 0,580 120,480 240,540 360,420 500,490 620,360 740,440 860,320 980,410 1100,300 1220,390 1340,280 1440,350 1440,900" fill="#0f2a1a" opacity="0.9"/>
-      <!-- Mid range - darker green-blue -->
-      <polygon points="0,900 0,660 100,580 220,620 340,520 460,570 560,480 680,530 800,440 920,500 1040,420 1160,480 1280,400 1440,460 1440,900" fill="#0a1e2e" opacity="0.95"/>
-      <!-- Foreground - near black -->
-      <polygon points="0,900 0,750 180,720 300,760 420,700 560,740 680,680 800,720 920,660 1060,700 1200,650 1320,690 1440,640 1440,900" fill="#060f1a" opacity="1"/>
-      <!-- Snow caps on far peaks -->
-      <polygon points="600,360 620,330 640,360" fill="rgba(200,230,255,0.6)"/>
-      <polygon points="840,320 860,285 880,320" fill="rgba(200,230,255,0.7)"/>
-      <polygon points="1080,300 1100,265 1120,300" fill="rgba(200,230,255,0.6)"/>
-      <polygon points="340,420 360,388 380,420" fill="rgba(200,230,255,0.4)"/>
-      <!-- Stars -->
-      <circle cx="200" cy="80" r="1.2" fill="rgba(255,255,255,0.6)"/>
-      <circle cx="450" cy="50" r="0.8" fill="rgba(255,255,255,0.5)"/>
-      <circle cx="700" cy="100" r="1.0" fill="rgba(255,255,255,0.7)"/>
-      <circle cx="950" cy="60" r="0.9" fill="rgba(255,255,255,0.5)"/>
-      <circle cx="1150" cy="90" r="1.1" fill="rgba(255,255,255,0.6)"/>
-      <circle cx="300" cy="140" r="0.7" fill="rgba(255,255,255,0.4)"/>
-      <circle cx="1300" cy="120" r="0.8" fill="rgba(255,255,255,0.5)"/>
-      <circle cx="100" cy="200" r="0.6" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="580" cy="170" r="0.9" fill="rgba(255,255,255,0.5)"/>
-      <circle cx="1050" cy="150" r="0.7" fill="rgba(255,255,255,0.4)"/>
-    </svg>
-    <!-- Subtle glow on horizon -->
-    <div style="position:absolute;bottom:35%;left:0;right:0;height:120px;background:linear-gradient(to top,rgba(45,130,80,0.12),transparent)"></div>
+  <!-- Full-bleed duotone mountain background -->
+  <div style="position:fixed;inset:0;z-index:0">
+    <!-- Real mountain photo (Himalayas) -->
+    <img
+      src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=85&auto=format&fit=crop"
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%;filter:grayscale(100%) contrast(1.05) brightness(0.9)"
+      alt=""
+    />
+    <!-- Split-tone: orange highlights, gray/charcoal shadows via multiply -->
+    <div style="position:absolute;inset:0;background:linear-gradient(175deg,#c8752a 0%,#7a4a1a 35%,#2a1a0a 65%,#0f0a05 100%);mix-blend-mode:multiply;opacity:0.82"></div>
+    <!-- Slight warm tint on top -->
+    <div style="position:absolute;inset:0;background:rgba(40,20,5,0.35)"></div>
+    <!-- Bottom fade to keep text readable -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:60%;background:linear-gradient(to top,rgba(20,10,3,0.92) 0%,rgba(20,10,3,0.4) 50%,transparent 100%)"></div>
   </div>
 
-  <!-- Content overlay -->
-  <div style="position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px">
+  <!-- Content: centered hero -->
+  <div style="position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column">
 
-    <!-- Logo + name -->
-    <div style="text-align:center;margin-bottom:48px">
-      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;background:rgba(195,240,96,0.15);border:1px solid rgba(195,240,96,0.25);border-radius:16px;margin-bottom:20px;backdrop-filter:blur(8px)">
-        <svg viewBox="0 0 20 20" fill="none" width="28" height="28"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#c3f060"/></svg>
+    <!-- Nav -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 40px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;background:rgba(200,117,42,0.25);border:1px solid rgba(200,117,42,0.4);border-radius:8px;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#e8a838"/></svg>
+        </div>
+        <span style="font-size:15px;font-weight:600;color:#f2ead8;letter-spacing:-0.3px">Summit</span>
       </div>
-      <div style="font-size:56px;font-weight:800;color:#ffffff;letter-spacing:-2px;line-height:1;margin-bottom:10px;text-shadow:0 2px 40px rgba(0,0,0,0.5)">Summit</div>
-      <div style="font-size:16px;color:rgba(195,240,96,0.8);letter-spacing:3px;text-transform:uppercase;font-weight:500">Job Tracker</div>
-      <div style="font-size:15px;color:rgba(255,255,255,0.5);margin-top:16px;max-width:320px;line-height:1.6">Track every application. Reach the top.</div>
+      <div style="display:flex;gap:10px">
+        <button onclick="showScreen('login')" style="padding:8px 18px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:8px;font-family:var(--font);font-size:13px;color:rgba(255,255,255,0.85);cursor:pointer;backdrop-filter:blur(8px)" onmouseover="this.style.background='rgba(255,255,255,0.18)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">Sign in</button>
+        <button onclick="showScreen('register')" style="padding:8px 18px;background:#e8a838;border:none;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:600;color:#1a0d00;cursor:pointer" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Get started</button>
+      </div>
     </div>
 
-    <!-- CTA buttons -->
-    <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px">
-      <button onclick="showScreen('register')" style="padding:14px 24px;background:#c3f060;color:#0d1f15;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:-0.2px;transition:all 0.15s;box-shadow:0 4px 24px rgba(195,240,96,0.25)" onmouseover="this.style.background='#d4f77a'" onmouseout="this.style.background='#c3f060'">
-        Get started free
-      </button>
-      <button onclick="showScreen('login')" style="padding:14px 24px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.15);border-radius:10px;font-family:var(--font);font-size:15px;font-weight:500;cursor:pointer;letter-spacing:-0.2px;backdrop-filter:blur(8px);transition:all 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.12)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
-        Sign in
-      </button>
+    <!-- Hero -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 24px 40px">
+      <div style="font-size:11px;font-family:var(--mono);letter-spacing:3px;color:#e8a838;text-transform:uppercase;margin-bottom:20px;opacity:0.9">Job Application Tracker</div>
+      <h1 style="font-size:clamp(52px,8vw,88px);font-weight:800;color:#f2ead8;letter-spacing:-3px;line-height:0.95;margin:0 0 20px">Summit</h1>
+      <p style="font-size:clamp(15px,2vw,19px);color:rgba(242,234,216,0.65);max-width:480px;line-height:1.55;margin:0 0 40px">Track every application. Tailor every resume.<br>Land the role you deserve.</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+        <button onclick="showScreen('register')" style="padding:14px 28px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer;box-shadow:0 0 40px rgba(232,168,56,0.3)" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Get started — it's free</button>
+        <button onclick="showScreen('login')" style="padding:14px 28px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;font-family:var(--font);font-size:15px;color:rgba(255,255,255,0.85);cursor:pointer;backdrop-filter:blur(8px)" onmouseover="this.style.background='rgba(255,255,255,0.18)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">Sign in</button>
+      </div>
     </div>
 
-    <!-- Footer -->
-    <div style="position:absolute;bottom:24px;font-size:11px;color:rgba(255,255,255,0.2);letter-spacing:0.5px">
-      jobsummit.app · v1.5.0
+    <!-- Feature cards -->
+    <div style="position:relative;z-index:1;padding:0 24px 60px;max-width:1100px;margin:0 auto;width:100%">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">📋</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">Pipeline tracking</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">Kanban-style status from wishlist to offer. See your full funnel at a glance.</div>
+          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+            <span style="padding:3px 8px;background:rgba(59,130,246,0.2);border-radius:4px;font-size:10px;color:#93c5fd;font-family:var(--mono)">applied</span>
+            <span style="padding:3px 8px;background:rgba(245,158,11,0.2);border-radius:4px;font-size:10px;color:#fcd34d;font-family:var(--mono)">interview</span>
+            <span style="padding:3px 8px;background:rgba(16,185,129,0.2);border-radius:4px;font-size:10px;color:#6ee7b7;font-family:var(--mono)">offer</span>
+          </div>
+        </div>
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">✦</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">AI resume tailoring</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">Instantly tailor your resume and cover letter to each role with AI.</div>
+          <div style="margin-top:12px;font-size:10px;color:rgba(232,168,56,0.7);font-family:var(--mono)">fastest available AI · auto-selected</div>
+        </div>
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">🏢</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">Company intelligence</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">Glassdoor ratings, salary ranges, culture analysis, and news — one click.</div>
+          <div style="margin-top:12px;font-size:11px;color:rgba(242,234,216,0.6)">$62.95 · <span style="color:#6ee7b7">+1.2%</span> · 24.2B mkt cap</div>
+        </div>
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">🎤</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">Interview prep</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">AI-generated role-specific questions. Track what you've practiced.</div>
+          <div style="margin-top:12px;font-size:11px;color:rgba(242,234,216,0.6)">12 / 15 practiced</div>
+        </div>
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">💰</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">Salary intelligence</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">P25–P90 bands, total comp breakdown, equity details, negotiation signals.</div>
+          <div style="margin-top:12px;font-size:10px;color:rgba(242,234,216,0.5);font-family:var(--mono)">P25 $180k · median $240k · P90 $380k</div>
+        </div>
+
+        <div style="background:rgba(26,13,0,0.7);border:1px solid rgba(232,168,56,0.15);border-radius:14px;padding:22px;backdrop-filter:blur(12px)">
+          <div style="font-size:18px;margin-bottom:10px">📚</div>
+          <div style="font-size:13px;font-weight:600;color:#f2ead8;margin-bottom:6px">Document library</div>
+          <div style="font-size:12px;color:rgba(242,234,216,0.5);line-height:1.5">Store all your resumes and cover letters. Pick and tailor per application.</div>
+          <div style="margin-top:12px;font-size:10px;color:rgba(232,168,56,0.6);font-family:var(--mono)">encrypted · private · yours</div>
+        </div>
+
+      </div>
+
+      <!-- Bottom CTA -->
+      <div style="text-align:center;margin-top:48px">
+        <button onclick="showScreen('register')" style="padding:14px 32px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Start tracking for free →</button>
+        <div style="margin-top:16px;font-size:11px;color:rgba(242,234,216,0.3);letter-spacing:0.5px">jobsummit.app · No credit card required</div>
+      </div>
     </div>
+
   </div>
-
 </div>
 
 

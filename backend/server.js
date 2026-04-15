@@ -233,14 +233,24 @@ app.post('/api/login', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const users = loadUsers();
   const uid = username.toLowerCase();
-  const user = users[uid];
+  // Support lookup by lowercase username key OR by 'id' field
+  let user = users[uid];
   if (!user) {
-    console.log(`Login failed: user '${uid}' not found. Known users: ${Object.keys(users).join(', ') || 'none'}`);
+    // fallback: search by username field
+    user = Object.values(users).find(u => (u.username||'').toLowerCase() === uid || (u.id||'').toLowerCase() === uid);
+  }
+  if (!user) {
+    console.log(`Login failed: user '${uid}' not found. Known users: ${Object.keys(users).join(', ')}`);
     return res.status(401).json({ error: 'Invalid username or password' });
   }
-  const hashField = user.passwordHash || user.password;
+  // Old server stored hash as 'password', new as 'passwordHash'
+  const hashField = user.password || user.passwordHash;
   if (!hashField || !(await bcrypt.compare(password, hashField)))
     return res.status(401).json({ error: 'Invalid username or password' });
+  // When saving future logins, normalise to passwordHash
+  if (user.password && !user.passwordHash) {
+    user.passwordHash = user.password;
+  }
   const payload = { id: username.toLowerCase(), username: user.username };
   if (user.wrappedKey) payload.wrappedKey = user.wrappedKey;
   res.json({ token: jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' }), username: user.username });
@@ -253,9 +263,11 @@ app.post('/api/change-password', authMiddleware, async (req, res) => {
   const users = loadUsers();
   const user  = users[req.user.id];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!(await bcrypt.compare(currentPassword, user.passwordHash)))
+  const existingHash = user.passwordHash || user.password;
+  if (!(await bcrypt.compare(currentPassword, existingHash)))
     return res.status(401).json({ error: 'Current password incorrect' });
   user.passwordHash = await bcrypt.hash(newPassword, 12);
+  delete user.password; // normalise field name
   saveUsers(users);
   res.json({ ok: true });
 });
