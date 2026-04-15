@@ -151,7 +151,7 @@ async function callOpenAI(provider, systemPrompt, userPrompt, maxTokens = 4000) 
       const result = data.choices?.[0]?.message?.content || '';
       if (result) {
         console.log(`${provider} success with model: ${model}`);
-        return result;
+        return { text: result, provider, model };
       }
       lastErr = new Error(`${provider}/${model} returned empty response`);
     } catch(e) {
@@ -184,7 +184,8 @@ async function callGoogle(systemPrompt, userPrompt, maxTokens = 4000) {
     throw new Error(`Google error ${res.status}: ${err.slice(0, 200)}`);
   }
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return { text, provider: 'google', model: GOOGLE_MODEL };
 }
 
 // Try providers in order, return first success
@@ -193,20 +194,23 @@ async function callAI(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000
   const errors = [];
   for (const provider of preferredOrder) {
     try {
-      let result;
-      if (provider === 'google') {
-        result = await callGoogle(systemPrompt, userPrompt, maxTokens);
-      } else {
-        result = await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
-      }
-      console.log(`callAI: success via ${provider}`);
-      return result;
+      const r = provider === 'google'
+        ? await callGoogle(systemPrompt, userPrompt, maxTokens)
+        : await callOpenAI(provider, systemPrompt, userPrompt, maxTokens);
+      console.log(`callAI: success via ${r.provider} / ${r.model}`);
+      return r; // {text, provider, model}
     } catch (e) {
       console.warn(`callAI: ${provider} failed — ${e.message}`);
       errors.push(`${provider}: ${e.message}`);
     }
   }
   throw new Error('All AI providers failed: ' + errors.join(' | '));
+}
+
+// Helper: call callAI and return just the text string (for routes that don't need model info)
+async function callAIText(preferredOrder, systemPrompt, userPrompt, maxTokens = 4000) {
+  const r = await callAI(preferredOrder, systemPrompt, userPrompt, maxTokens);
+  return r.text;
 }
 
 // Fast parallel race — fires all configured providers simultaneously, returns first success
@@ -229,7 +233,7 @@ async function callAIFast(systemPrompt, userPrompt, maxTokens = 4000) {
       call.then(result => {
         if (!settled) {
           settled = true;
-          console.log(`callAIFast: won via ${provider}`);
+          console.log(`callAIFast: won via ${result.provider} / ${result.model}`);
           resolve(result);
         }
       }).catch(e => {
@@ -1064,7 +1068,7 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
   const { url, text } = req.body;
   if (!text) return res.json(null);
   try {
-    const result = await callAIFast(
+    const { text: result } = await callAIFast(
       'Extract job details from this job posting. Respond ONLY with valid JSON, no markdown. Fields: title (string), company (string), location (physical city/state/country only, no work type), workType (one of: Remote, Hybrid, On-site, or null), salary (string), remote (boolean). Use null if not found.',
       `URL: ${url}\n\nPage text:\n${text}`,
       300
@@ -1096,7 +1100,7 @@ app.post('/api/outreach-targets', authMiddleware, async (req, res) => {
     '\nBe specific to this role and company. Make role titles realistic and searchable on LinkedIn.';
 
   try {
-    const raw = await callAIFast(systemPrompt, userPrompt, 1000);
+    const { text: raw } = await callAIFast(systemPrompt, userPrompt, 1000);
     let targets;
     try {
       const clean = raw.replace(/```json|```/g, '').trim();
@@ -1127,7 +1131,7 @@ app.post('/api/interview-questions', authMiddleware, async (req, res) => {
     '3 questions per category. Make them specific to this role and company.';
 
   try {
-    const result = await callAIFast(
+    const { text: result } = await callAIFast(
       'You are an expert interview coach. Return only valid JSON arrays, no markdown.',
       prompt, 2000);
     // Parse JSON from result
@@ -1166,11 +1170,17 @@ app.post('/api/tailor', authMiddleware, async (req, res) => {
     '\n\n' + docLabel + ' TO TAILOR:\n' + docContent;
 
   try {
-    const rawResult = await callAIFast(systemPrompt, userPrompt, 3000);
+    const aiResponse = await callAIFast(systemPrompt, userPrompt, 3000);
+    const rawResult = aiResponse.text || aiResponse; // handle both {text} and plain string
     // Strip any HTML the AI may have returned despite instructions
     const hasHtmlOutput = rawResult.includes('<') && rawResult.includes('>') && /<[a-z][\s\S]*>/i.test(rawResult);
     const result = hasHtmlOutput ? stripHtml(rawResult) : rawResult;
-    res.json({ result: result.trim(), docType });
+    res.json({
+      result: result.trim(),
+      docType,
+      provider: aiResponse.provider || 'unknown',
+      model: aiResponse.model || 'unknown',
+    });
   } catch (e) {
     console.error('Tailor error:', e.message);
     res.status(500).json({ error: e.message });
@@ -1229,21 +1239,18 @@ app.post('/api/insights', authMiddleware, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const systemPrompt = `You are a career research assistant. Today is ${today}. You have strong knowledge of companies, industry trends, Glassdoor ratings, and job markets. Always return valid JSON only with no markdown.`;
 
-  const userPrompt = `Research this job for a candidate who has applied:
+  const userPrompt = `Research this job application for a candidate:
 
 Company: ${company}
 Role: ${title}
 Location: ${location || 'Not specified'}
-Salary: ${salary || 'Not specified'}
-Job URL: ${url || 'Not provided'}
+Salary target: ${salary || 'Not specified'}
 ${postingText ? `Job posting excerpt:\n${postingText.slice(0, 1500)}` : ''}
-
-Search for: Glassdoor ratings, recent news, layoffs, funding, culture reviews, interview process, LinkedIn contacts to reach out to.
 
 Return ONLY a valid JSON object with these exact fields (no markdown, no backticks):
 {
-  "overview": { "founded": "year", "employees": "range e.g. 5,000-10,000", "hq": "city, country", "industry": "sector" },
-  "companyOverview": "3-4 paragraph overview: mission, business model, financial health, recent layoffs or growth, market position, key products. Use specific numbers.",
+  "overview": { "founded": "year or ~decade", "employees": "range e.g. 5,000-10,000", "hq": "city, country", "industry": "sector" },
+  "companyOverview": "3-4 paragraph overview: mission, business model, financial health, recent layoffs or growth, market position, key products. Use specific numbers and recent data.",
   "culture": {
     "overallRating": 3.8,
     "workLifeBalance": 3.5,
@@ -1256,38 +1263,97 @@ Return ONLY a valid JSON object with these exact fields (no markdown, no backtic
     "numRatings": "~2,400",
     "summary": "2-3 paragraphs on what employees say about culture, management, work-life balance, growth opportunities."
   },
-  "roleIntel": "3-4 paragraphs: how often this role has been posted (turnover signal?), typical day-to-day, career trajectory, interview difficulty, salary benchmarking.",
+  "roleIntel": "2-3 paragraphs: how often this role has been posted (turnover signal?), typical career trajectory from this role, what makes a strong candidate, level of seniority.",
   "flags": {
-    "green": ["4-6 genuine positives: financial stability, culture, growth, benefits"],
-    "red": ["3-5 genuine concerns: layoffs, glassdoor issues, role reposted frequently, management problems"]
+    "green": ["4-6 genuine positives: financial stability, culture, growth, benefits, mission"],
+    "red": ["3-5 genuine concerns: layoffs, glassdoor issues, role reposted frequently, management problems, runway"]
   },
-  "linkedin": {
-    "suggestedContacts": [
-      {"name": "Type of person e.g. Hiring Manager", "role": "Specific role title at ${company}", "company": "${company}", "tip": "Why contact them and what to say"},
-      {"name": "Type of person e.g. Recruiter", "role": "Technical Recruiter", "company": "${company}", "tip": "What to ask them"},
-      {"name": "Type of person e.g. Team Peer", "role": "Peer-level engineer/role", "company": "${company}", "tip": "What to learn from them"}
-    ],
-    "outreachTip": "Specific timing and strategy for LinkedIn outreach at this company.",
-    "messageTemplate": "Hi [Name],\\n\\nI recently applied for the ${title} role at ${company} and noticed your background — [specific observation].\\n\\nWould you be open to a quick 15-min chat about the team?\\n\\nThanks,\\n[Your name]"
+  "compensation": {
+    "currency": "USD",
+    "salaryRange": {
+      "p25": 90000,
+      "p50": 115000,
+      "p75": 145000,
+      "p90": 175000,
+      "note": "1-sentence source note e.g. 'Based on Levels.fyi, Glassdoor, and LinkedIn Salary data for ${title} roles in ${location || 'US'}'"
+    },
+    "totalComp": {
+      "p50": 145000,
+      "breakdown": {
+        "basePct": 72,
+        "equityPct": 18,
+        "bonusPct": 8,
+        "benefitsPct": 2
+      },
+      "note": "1-sentence explaining total comp context for this company tier"
+    },
+    "equity": {
+      "type": "RSU or Options or None (choose one)",
+      "vestingSchedule": "e.g. 4-year vest, 1-year cliff",
+      "typicalGrantUSD": 80000,
+      "refreshCycle": "e.g. Annual performance refreshes",
+      "note": "1-sentence context e.g. 'Pre-IPO options or public RSUs? Stage of company matters.'"
+    },
+    "geoContext": {
+      "multiplier": 1.15,
+      "description": "1 sentence: how ${location || 'this location'} affects pay vs. national average for this role. Include cost-of-living note if remote.",
+      "remotePremium": "hub-rate (choose: location-adjusted, hub-rate, or mixed)"
+    },
+    "companyTier": {
+      "tier": "above (choose: top, above, at, or below)",
+      "label": "e.g. Top-of-market (FAANG-tier) | Above market | At market | Below market",
+      "note": "1-2 sentences on why this company's pay lands where it does in the market"
+    },
+    "negotiationContext": {
+      "leverage": "high (choose: high, medium, or low)",
+      "signals": ["signal 1 e.g. Role has been open 3+ months", "signal 2 e.g. Competitive market for this skill set"],
+      "tactic": "1-2 sentences of specific negotiation advice for this role/company combination"
+    },
+    "benchmarkSources": ["Levels.fyi", "Glassdoor", "LinkedIn Salary"]
   },
   "news": [
     {"headline": "Real recent headline", "source": "Source name", "date": "YYYY-MM-DD", "url": "https://real-url.com", "sentiment": "positive"},
     {"headline": "...", "source": "...", "date": "...", "url": "...", "sentiment": "negative"},
     {"headline": "...", "source": "...", "date": "...", "url": "...", "sentiment": "neutral"}
-  ],
-  "interviewTips": "4-5 paragraphs: interview stages and format at this company, what they look for, common questions, how to stand out. Be specific to this company and role."
+  ]
 }`;
 
   try {
-    const finalText = await callAIFast(systemPrompt, jobContext, 3000)
-    console.log('Insights response length:', finalText.length);
+    const aiResponse = await callAIFast(systemPrompt, userPrompt, 4000);
+    const finalText = (aiResponse.text || aiResponse || '').trim();
+    console.log(`Insights: provider=${aiResponse.provider} model=${aiResponse.model} length=${finalText.length}`);
     if (!finalText) throw new Error('Empty response from AI');
-    const cleaned = finalText.replace(/```json|```/g, '').trim();
+
+    // Strip markdown fences and find outermost { }
+    const cleaned = finalText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
     const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON in response. Got: ' + finalText.slice(0, 200));
-    const jsonStr = cleaned.slice(start, end + 1);
-    const insights = JSON.parse(jsonStr);
+    const end   = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      console.error('Insights: no JSON braces. Raw response:', finalText.slice(0, 300));
+      throw new Error('AI did not return JSON. Got: ' + finalText.slice(0, 150));
+    }
+
+    let jsonStr = cleaned.slice(start, end + 1);
+
+    // Repair common truncation: if JSON is incomplete (no closing brace pair), try to close it
+    let insights;
+    try {
+      insights = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error('Insights: JSON parse failed:', parseErr.message);
+      console.error('Insights: raw snippet:', jsonStr.slice(-300));
+      // Try trimming to last complete top-level field
+      const lastComma = jsonStr.lastIndexOf('"');
+      if (lastComma > 0) {
+        try {
+          insights = JSON.parse(jsonStr.slice(0, lastComma + 1) + '}');
+        } catch(e2) {
+          throw new Error('JSON parse failed: ' + parseErr.message + '. Response may have been truncated at ' + finalText.length + ' chars.');
+        }
+      } else {
+        throw new Error('JSON parse failed: ' + parseErr.message);
+      }
+    }
     insights.generatedAt = Date.now();
     if (stockData) insights.stock = stockData;
 
@@ -1562,7 +1628,7 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
     const systemPrompt = `You are a professional career coach tailoring a ${docLabel}. You will receive numbered paragraphs from the original document. Return ONLY the same numbered paragraphs with updated content tailored for the job. Keep EVERY paragraph number — same count, same order. Do not merge, split, add or remove paragraphs. Only change the words.`;
     const userPrompt = `Tailor for:\nCompany: ${company}\nRole: ${title}\n${location ? 'Location: ' + location : ''}\n${salary ? 'Salary: ' + salary : ''}\n${context ? 'Notes: ' + context : ''}${jobCtx}\n\nPARAGRAPHS:\n${numberedInput}`;
 
-    const tailoredRaw = await callAIFast(systemPrompt, userPrompt, 4000);
+    const { text: tailoredRaw } = await callAIFast(systemPrompt, userPrompt, 4000);
 
     // ── Step 3: Parse AI response back to paragraph array ──
     const newParas = {};
@@ -1775,7 +1841,7 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
     const systemPrompt = 'You are a professional career coach. You will receive a document as plain text with section markers. Rewrite it to be tailored for the job, keeping the exact same structure and sections. Return ONLY the rewritten plain text - same sections, same order, nothing added or removed.';
     const userPrompt = `Tailor this ${docLabel} for:\nCompany: ${company}\nRole: ${title}\n${location?'Location: '+location:''}\n${salary?'Salary: '+salary:''}\n${context?'Notes: '+context:''}${jobCtx}\n\nDOCUMENT TO TAILOR:\n${rawText}`;
 
-    const tailoredText = await callAIFast(systemPrompt, userPrompt, 3000);
+    const { text: tailoredText } = await callAIFast(systemPrompt, userPrompt, 3000);
 
     // Now do a paragraph-level replacement in the XML
     // Split both texts into lines for mapping
@@ -2533,7 +2599,7 @@ Return ONLY this JSON:
 }`;
 
   try {
-    const raw = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 1500);
+    const { text: raw } = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 1500);
     const clean = raw.replace(/```json|```/g, '').trim();
     res.json(JSON.parse(clean));
   } catch(e) {
@@ -2558,9 +2624,9 @@ app.post('/api/email-template', authMiddleware, async (req, res) => {
 
   const systemPrompt = 'You are a professional career coach who writes authentic, human-sounding emails. Never use generic AI phrases. Return only the email body text, no subject line.';
   try {
-    const body = await callAI(['openrouter', 'groq', 'google'], systemPrompt, templates[type], 500);
+    const { text: body } = await callAI(['openrouter', 'groq', 'google'], systemPrompt, templates[type], 500);
     // Generate subject line too
-    const subject = await callAI(['groq', 'openrouter', 'google'], 'Write only a concise email subject line, no quotes.', `Type: ${type}, Company: ${company}, Role: ${title}`, 80);
+    const { text: subject } = await callAI(['groq', 'openrouter', 'google'], 'Write only a concise email subject line, no quotes.', `Type: ${type}, Company: ${company}, Role: ${title}`, 80);
     res.json({ subject: subject.trim(), body: body.trim() });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -2595,7 +2661,7 @@ Return ONLY this JSON (use realistic current market data):
 }`;
 
   try {
-    const raw = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 800);
+    const { text: raw } = await callAI(['openrouter', 'groq', 'google'], systemPrompt, userPrompt, 800);
     const clean = raw.replace(/```json|```/g, '').trim();
     res.json(JSON.parse(clean));
   } catch(e) {
@@ -2604,71 +2670,6 @@ Return ONLY this JSON (use realistic current market data):
 });
 
 // ══════════════════════════════════════════
-// FEATURE: Public Status Page Token
-// ══════════════════════════════════════════
-const STATUS_TOKENS_FILE = path.join(DATA_DIR, 'status-tokens.json');
-function loadStatusTokens() {
-  return fs.existsSync(STATUS_TOKENS_FILE) ? JSON.parse(fs.readFileSync(STATUS_TOKENS_FILE,'utf8')) : {};
-}
-function saveStatusTokens(t) { fs.writeFileSync(STATUS_TOKENS_FILE, JSON.stringify(t)); }
-
-app.post('/api/status-page/generate', authMiddleware, (req, res) => {
-  const { available, headline, availableFrom, note } = req.body;
-  const tokens = loadStatusTokens();
-  // Revoke old token if exists
-  Object.keys(tokens).forEach(k => { if (tokens[k].userId === req.user.id) delete tokens[k]; });
-  const token = require('crypto').randomBytes(16).toString('hex');
-  tokens[token] = { userId: req.user.id, username: req.user.username, available: !!available, headline: (headline||'').slice(0,200), availableFrom: availableFrom||'', note: (note||'').slice(0,500), createdAt: Date.now() };
-  saveStatusTokens(tokens);
-  res.json({ token, url: `/status/${token}` });
-});
-
-app.delete('/api/status-page', authMiddleware, (req, res) => {
-  const tokens = loadStatusTokens();
-  Object.keys(tokens).forEach(k => { if (tokens[k].userId === req.user.id) delete tokens[k]; });
-  saveStatusTokens(tokens);
-  res.json({ ok: true });
-});
-
-app.get('/api/status-page', authMiddleware, (req, res) => {
-  const tokens = loadStatusTokens();
-  const entry = Object.entries(tokens).find(([,v]) => v.userId === req.user.id);
-  if (!entry) return res.json({ active: false });
-  res.json({ active: true, token: entry[0], ...entry[1] });
-});
-
-app.get('/status/:token', (req, res) => {
-  const tokens = loadStatusTokens();
-  const page = tokens[req.params.token];
-  if (!page) return res.status(404).send('<h1>Status page not found</h1>');
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${page.username} — Job Search Status</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f4ef;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-  .card{background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:16px;padding:40px;max-width:440px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.08)}
-  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:100px;font-size:13px;font-weight:600;margin-bottom:24px}
-  .badge.open{background:#dcfce7;color:#166534}.badge.closed{background:#fee2e2;color:#991b1b}
-  .dot{width:8px;height:8px;border-radius:50%;animation:pulse 2s infinite}
-  .dot.open{background:#22c55e}.dot.closed{background:#ef4444}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  h1{font-size:26px;font-weight:700;letter-spacing:-0.5px;margin-bottom:6px}
-  .sub{color:#6b6863;font-size:15px;margin-bottom:24px}
-  .note{background:#f7f4ef;border-radius:10px;padding:16px;font-size:14px;color:#444;line-height:1.6;margin-bottom:24px}
-  .footer{font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:16px;margin-top:8px}
-  a{color:#c05e00;text-decoration:none}
-</style>
-</head><body><div class="card">
-  <div class="badge ${page.available ? 'open' : 'closed'}"><div class="dot ${page.available ? 'open' : 'closed'}"></div>${page.available ? 'Open to opportunities' : 'Not currently looking'}</div>
-  <h1>${page.username}</h1>
-  <div class="sub">${page.headline || (page.available ? 'Actively interviewing & open to new roles' : 'Not currently seeking new opportunities')}</div>
-  ${page.availableFrom ? `<div style="font-size:13px;color:#888;margin-bottom:16px">Available from: <strong>${page.availableFrom}</strong></div>` : ''}
-  ${page.note ? `<div class="note">${page.note.replace(/\n/g,'<br>')}</div>` : ''}
-  <div class="footer">Powered by <a href="/">Applied</a> · Updated ${new Date(page.createdAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-</div></body></html>`;
-  res.send(html);
-});
-
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/public/index.html'));
 });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'applied-v2';
+const CACHE_NAME = 'applied-v3';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
