@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Pursuit — Job Tracker</title>
+<title>Summit — Job Tracker</title>
 
 <!-- PWA manifest -->
 <link rel="manifest" href="/manifest.json">
@@ -11,7 +11,7 @@
 <!-- iOS PWA meta tags -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Pursuit">
+<meta name="apple-mobile-web-app-title" content="Summit">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png">
@@ -589,7 +589,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div style="width:30px;height:30px;background:#e8a838;border-radius:7px;display:-webkit-flex;display:flex;align-items:center;justify-content:center">
         <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1714"/></svg>
       </div>
-      <span style="font-size:16px;font-weight:600;color:#f2ead8;letter-spacing:-0.3px">Pursuit</span>
+      <span style="font-size:16px;font-weight:600;color:#f2ead8;letter-spacing:-0.3px">Summit</span>
     </div>
     <div style="display:-webkit-flex;display:flex;align-items:center;gap:10px">
       <button onclick="showScreen('login')" style="padding:7px 16px;background:transparent;color:#b8a888;border:1px solid rgba(255,235,180,0.15);border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit">Sign in</button>
@@ -695,7 +695,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div style="width:18px;height:18px;background:#e8a838;border-radius:4px;display:-webkit-flex;display:flex;align-items:center;justify-content:center">
         <svg viewBox="0 0 20 20" fill="none" width="10" height="10"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1714"/></svg>
       </div>
-      <span style="font-size:13px;color:#6b5f50">Pursuit · Job Tracker</span>
+      <span style="font-size:13px;color:#6b5f50">Summit · Job Tracker</span>
     </div>
     <div style="font-size:11px;color:#4a3f30;font-family:monospace">v1.4.0 · private beta</div>
   </div>
@@ -710,7 +710,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
       </div>
       <div>
-        <div class="auth-logo-text">Pursuit</div>
+        <div class="auth-logo-text">Summit</div>
         <div class="auth-logo-sub">job tracker</div>
       </div>
     </div>
@@ -742,7 +742,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
       </div>
       <div>
-        <div class="auth-logo-text">Pursuit</div>
+        <div class="auth-logo-text">Summit</div>
         <div class="auth-logo-sub">job tracker</div>
       </div>
     </div>
@@ -798,13 +798,13 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
           <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="currentColor"/></svg>
         </div>
         <div>
-          <div class="logo-text">Pursuit</div>
+          <div class="logo-text">Summit</div>
           <div class="logo-sub">job tracker</div>
         </div>
       </div>
       <button class="add-btn" onclick="openAddModal()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        Add application
+        Add job
       </button>
     </div>
 
@@ -831,10 +831,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         Documents
       </button>
-      <button class="sidebar-action-btn" onclick="showWatchlist()" data-section="watchlist" title="Watchlist">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        Watchlist
-      </button>
+
       <button class="sidebar-action-btn" onclick="showReferralPipeline()" data-section="referrals" title="Referral pipeline">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
         Referrals
@@ -857,6 +854,9 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       </div>
       <button class="user-bar-settings" onclick="openSettings()" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+      <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
       </button>
     </div>
 
@@ -883,9 +883,9 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <!-- ADD APPLICATION MODAL -->
 <div id="add-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAddModal()">
-  <div class="modal">
-    <div class="modal-title">Add application</div>
-    <div class="modal-sub">Paste a job URL to auto-fill, or enter details manually.</div>
+  <div class="modal" style="max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
+    <div class="modal-title">Add job</div>
+    <div class="modal-sub">Paste the job listing URL — we'll fill in the details automatically.</div>
     <div class="url-parse-box">
       <div class="url-parse-row">
         <input id="job-url" class="url-parse-input" type="url" placeholder="https://jobs.company.com/role..." onkeydown="if(event.key==='Enter')parseJobUrl()">
@@ -896,7 +896,11 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       </div>
       <div id="parse-status" class="parse-status" style="display:none"></div>
     </div>
-    <div class="divider"><div class="divider-line"></div><div class="divider-text">OR FILL MANUALLY</div><div class="divider-line"></div></div>
+    <button id="manual-toggle" onclick="toggleManualFields()" style="margin-top:14px;display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;font-family:var(--font);font-size:12px;color:var(--text3);cursor:pointer;width:100%;text-align:left">
+      <svg id="manual-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.2s;flex-shrink:0"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      Fill in manually
+    </button>
+    <div id="manual-fields" style="display:none">
     <div class="field" id="f-title"><label>JOB TITLE *</label><input id="job-title" type="text" placeholder="Software Engineer" onkeydown="if(event.key==='Enter')document.getElementById('job-company').focus()" oninput="this.closest('.field').classList.toggle('filled',!!this.value)"></div>
     <div class="field" id="f-company"><label>COMPANY *</label><input id="job-company" type="text" placeholder="Acme Corp" onkeydown="if(event.key==='Enter')document.getElementById('job-location').focus()" oninput="this.closest('.field').classList.toggle('filled',!!this.value)"></div>
     <div class="field" id="f-location"><label>LOCATION</label><input id="job-location" type="text" placeholder="Remote / San Francisco, CA" oninput="this.closest('.field').classList.toggle('filled',!!this.value)"></div>
@@ -911,9 +915,10 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="field"><label>REFERRED BY</label><input id="job-referred-by" type="text" placeholder="Name of referrer (optional)" id="referral-field"></div>
     <div class="field"><label>FOLLOW-UP DATE</label><input id="job-followup" type="date"></div>
     <div class="field"><label>APPLICATION DEADLINE</label><input id="job-deadline" type="date"></div>
-    <div class="modal-actions">
+    </div><!-- end manual-fields -->
+    <div class="modal-actions" style="margin-top:20px">
       <button class="cancel-btn" onclick="closeAddModal()">Cancel</button>
-      <button class="create-btn" onclick="createJob()">Add application</button>
+      <button class="create-btn" onclick="createJob()">Save job</button>
     </div>
   </div>
 </div>
@@ -1851,7 +1856,12 @@ async function parseJobUrl() {
     if (data._linkedinBlocked) {
       statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> LinkedIn requires login to auto-fill. <strong>Use the Chrome/Safari extension</strong> while on LinkedIn, or fill in manually below.`;
     } else if (filled > 0) {
-      statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} — review and correct below`;
+      // Auto-expand so user can review filled fields
+    const mf = document.getElementById('manual-fields');
+    const mc = document.getElementById('manual-chevron');
+    if (mf) mf.style.display = 'block';
+    if (mc) mc.style.transform = 'rotate(180deg)';
+    statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} — review and correct below`;
     } else {
       statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Could not auto-fill — this site may block scraping. Please fill in manually.`;
     }
@@ -1870,6 +1880,14 @@ function spinner() {
 }
 
 // ── MODAL ──
+function toggleManualFields() {
+  const fields = document.getElementById('manual-fields');
+  const chevron = document.getElementById('manual-chevron');
+  const open = fields.style.display !== 'block';
+  fields.style.display = open ? 'block' : 'none';
+  if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
+}
+
 function openAddModal() {
   document.getElementById('add-modal').style.display = 'flex';
   ['job-url','job-title','job-company','job-location','job-salary'].forEach(id => {
@@ -1891,6 +1909,11 @@ function openAddModal() {
   document.getElementById('parse-status').style.display = 'none';
   document.getElementById('parse-btn').textContent = 'Open';
   pendingHtml = null; pendingText = null;
+  // Collapse manual fields on open
+  const mf = document.getElementById('manual-fields');
+  const mc = document.getElementById('manual-chevron');
+  if (mf) mf.style.display = 'none';
+  if (mc) mc.style.transform = '';
   setTimeout(() => document.getElementById('job-url').focus(), 60);
 }
 function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
@@ -6061,7 +6084,7 @@ setInterval(() => {
       <!-- BROWSER EXTENSIONS -->
       <div class="settings-pane" id="spane-extension" style="display:none">
         <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px">Browser Extensions</div>
-        <div style="font-size:13px;color:var(--text3);margin-bottom:20px">Add jobs to Pursuit in one click from any job site &mdash; LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:20px">Add jobs to Summit in one click from any job site &mdash; LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.</div>
         <div style="margin-bottom:20px">
           <a href="/extension.zip" download style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--accent-bg);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;color:#1a1917;text-decoration:none">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -6078,7 +6101,7 @@ setInterval(() => {
               <li>Enable <strong style="color:var(--text2)">Developer Mode</strong></li>
               <li>Click <strong style="color:var(--text2)">Load unpacked</strong></li>
               <li>Select the <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">applied-extension</code> folder</li>
-              <li>Sign in with your Pursuit credentials</li>
+              <li>Sign in with your Summit credentials</li>
             </ol>
           </div>
           <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
@@ -6089,9 +6112,9 @@ setInterval(() => {
             <ol style="font-size:12px;color:var(--text3);line-height:1.9;padding-left:16px;margin:0">
               <li>Install <a href="https://apps.apple.com/app/xcode/id497799835" target="_blank" style="color:var(--blue)">Xcode</a> (free)</li>
               <li>Download and unzip</li>
-              <li>Double-click <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">Install Pursuit Extension.app</code></li>
+              <li>Double-click <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">Install Summit Extension.app</code></li>
               <li>Click <strong style="color:var(--text2)">Install</strong> &mdash; fully automated</li>
-              <li>Enable <strong style="color:var(--text2)">Pursuit</strong> in Safari &rarr; Extensions</li>
+              <li>Enable <strong style="color:var(--text2)">Summit</strong> in Safari &rarr; Extensions</li>
             </ol>
             <div style="margin-top:10px;font-size:11px;color:var(--text3)">Keep the companion app in your Dock while using the extension.</div>
           </div>
@@ -6220,7 +6243,7 @@ setInterval(() => {
       <!-- FEEDBACK -->
       <div class="settings-pane" id="spane-feedback" style="display:none">
         <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px">Feedback</div>
-        <div style="font-size:13px;color:var(--text3);margin-bottom:24px">Help make Pursuit better — report bugs or suggest new features directly on GitHub.</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:24px">Help make Summit better — report bugs or suggest new features directly on GitHub.</div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">
           <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=bug" target="_blank" style="display:flex;flex-direction:column;gap:10px;padding:20px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius);text-decoration:none;transition:all 0.15s" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='rgba(239,68,68,0.06)'">
