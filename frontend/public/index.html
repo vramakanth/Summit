@@ -346,8 +346,8 @@ input[type=\"file\"] { display: none; }
 .settings-user-meta { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
 
 /* ── INSIGHTS ── */
-.insights-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px 28px; }
-  .insights-inner { max-width: 760px; }
+.insights-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px 28px; display: flex; flex-direction: column; }
+  .insights-inner { max-width: 760px; width: 100%; display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .insights-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
 .insights-header-left { flex: 1; min-width: 0; }
 .insights-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
@@ -362,7 +362,7 @@ input[type=\"file\"] { display: none; }
 .insight-card-value { font-size: 14px; font-weight: 600; color: var(--text); }
 .insight-card-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
 /* Section: flat text-based layout — no card borders */
-.insight-section { margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+.insight-section { margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--border); flex-shrink: 0; width: 100%; }
 .insight-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .insight-section-header { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 .insight-section-icon { color: var(--text3); flex-shrink: 0; display: flex; align-items: center; }
@@ -568,6 +568,12 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 #section-view { background: var(--bg); }
 #section-view .docs-overlay { position:static; z-index:auto; }
 .sidebar-action-btn.active { color: var(--accent-bg) !important; background: var(--bg3); border-left: 2px solid var(--accent-bg); padding-left: 14px; }
+
+/* ── Safari insights layout fixes ── */
+.insights-wrap { display: block !important; min-height: 0; }
+.insights-inner { display: block !important; width: 100%; }
+.insight-section { display: block !important; width: 100%; }
+#detail-view { -webkit-flex-direction: column; flex-direction: column; }
 </style>
 </head>
 <body>
