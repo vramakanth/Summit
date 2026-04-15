@@ -118,6 +118,10 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .doc-editor-panel { position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:600;display:flex;align-items:center;justify-content:center; }
 .doc-editor-inner { background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:min(680px,92vw);height:min(80vh,700px);display:flex;flex-direction:column;overflow:hidden; }
 
+/* ── TAILOR OVERLAY LAYOUT FIX ── */
+/* Force side-by-side on desktop — overrides any inline flex-direction:column */
+#to-body { flex-direction: row !important; }
+
 @media (max-width: 680px) {
   .sidebar {
     position: fixed; inset: 0; z-index: 200;
@@ -1292,6 +1296,15 @@ function fmtDate(ts) {
 function statusColor(s) {
   return {'to apply':'#64748b',applied:'#3b82f6',screening:'#8b5cf6',interviewing:'#f59e0b',offer:'#10b981',rejected:'#ef4444',ghosted:'#6b7280',withdrawn:'#9ca3af',expired:'#f97316'}[s] || '#6b7280';
 }
+function formatSalary(s) {
+  if (!s) return '';
+  // Convert "$231,100.00 - $385,100.00" → "$231k – $385k"
+  return s.replace(/\$([\d,]+)(?:\.\d+)?/g, (_, n) => {
+    const num = parseInt(n.replace(/,/g, ''));
+    return num >= 1000 ? '$' + Math.round(num / 1000) + 'k' : '$' + n;
+  }).replace(/\s*-\s*/g, '–');
+}
+
 function formatBytes(n) {
   if (!n) return '0b';
   if (n < 1024) return n + 'b';
@@ -2118,7 +2131,7 @@ function renderDetail() {
           ${esc(j.company)}
           ${j.workType ? `<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-family:var(--mono);font-weight:600">${esc(j.workType)}</span>` : ''}
           ${j.location ? `<span style="color:var(--text3)">·</span><span style="font-size:11px;color:var(--text2)">${esc(j.location)}</span>` : ''}
-          ${j.salary ? `<span style="color:var(--text3)">·</span><span style="font-size:11px;color:var(--accent);font-weight:500">${esc(j.salary)}</span>` : ''}
+          ${j.salary ? `<span style="color:var(--text3)">·</span><span style="font-size:11px;color:var(--accent);font-weight:500">${formatSalary(j.salary)}</span>` : ''}
           ${j.url ? `<a href="${esc(j.url)}" target="_blank">↗ original posting</a>` : ''}
         </div>
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
@@ -2400,10 +2413,11 @@ function fileSlotHtml(type, file, label, iconSvg, uploadLabel) {
     return `<div class="file-slot has-file">
       <div class="file-slot-label">${label}</div>
       ${iconSvg}
-      <div class="file-slot-name" style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px">
-        <span>${esc(file.name)}</span>${fileTypeBadge(file.name)}${edited}
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:2px;max-width:100%;min-width:0">
+        ${fileTypeBadge(file.name)}${edited}
       </div>
-      <div class="file-slot-size">${formatBytes(file.size)}</div>
+      <div style="font-size:12px;color:var(--text2);font-weight:500;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 4px" title="${esc(file.name)}">${esc(file.name)}</div>
+      ${file.size ? `<div class="file-slot-size">${formatBytes(file.size)}</div>` : ''}
       <div class="file-actions">
         <button class="file-action-btn primary-outline" style="border-color:var(--accent);color:var(--accent)" onclick="openFileEditor('${type}')">✎ view &amp; edit</button>
         <button class="file-action-btn" onclick="downloadFile('${type}')">↓ download</button>
@@ -2449,9 +2463,9 @@ function renderFilesTab(j) {
     <div>
       <div style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">TOOLS</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        <button id="gap-analysis-btn" onclick="runKeywordGap()" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px" ${!j.resume&&!j.cover?'disabled title="Upload a resume first"':''}>🔍 Keyword gap</button>
-        <button id="salary-benchmark-btn" onclick="runSalaryBenchmark('${j.id}')" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">📊 Salary benchmark</button>
-        <button onclick="showEmailTemplates('${j.id}')" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px">✉ Email templates</button>
+        <button id="gap-analysis-btn" onclick="runKeywordGap()" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px" ${!j.resume&&!j.cover?'disabled title="Upload a resume first"':''}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> Keyword gap</button>
+        <button id="salary-benchmark-btn" onclick="runSalaryBenchmark('${j.id}')" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/></svg> Salary benchmark</button>
+        <button onclick="showEmailTemplates('${j.id}')" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9l9 5 9-5"/></svg> Email templates</button>
       </div>
       <div id="gap-analysis-output"></div>
       <div id="salary-benchmark-output"></div>
@@ -3808,6 +3822,16 @@ function openTailoringOverlay(jobId, jobDoc, j) {
     </div>`;
 
   document.body.appendChild(overlay);
+  // Force correct flex direction on to-body regardless of inline style
+  const _tb = document.getElementById('to-body');
+  if (_tb) {
+    const _applyDir = () => {
+      _tb.style.flexDirection = window.innerWidth <= 680 ? 'column' : 'row';
+    };
+    _applyDir();
+    overlay._resizeHandler = _applyDir;
+    window.addEventListener('resize', _applyDir);
+  }
   // Esc closes overlay
   overlay._escHandler = e => { if (e.key === 'Escape') closeTailoringOverlay(jobId, jobDoc.id); };
   document.addEventListener('keydown', overlay._escHandler);
@@ -3837,6 +3861,7 @@ async function closeTailoringOverlay(jobId, docId) {
 
   if (overlay?._escHandler) document.removeEventListener('keydown', overlay._escHandler);
   delete tailorSessionDocs[sessionKey];
+  if (overlay?._resizeHandler) window.removeEventListener('resize', overlay._resizeHandler);
   overlay?.remove();
   renderDetail(); // refresh Documents tab to show saved versions
 }
