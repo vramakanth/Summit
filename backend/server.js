@@ -226,12 +226,20 @@ app.post('/api/register', async (req, res) => {
   res.json({ token, username });
 });
 
+app.get('/api/ping', (req, res) => res.json({ ok: true, version: '1.5.0', dataDir: DATA_DIR, usersExist: fs.existsSync(USERS_FILE) }));
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const users = loadUsers();
-  const user = users[username.toLowerCase()];
-  if (!user || !(await bcrypt.compare(password, user.passwordHash)))
+  const uid = username.toLowerCase();
+  const user = users[uid];
+  if (!user) {
+    console.log(`Login failed: user '${uid}' not found. Known users: ${Object.keys(users).join(', ') || 'none'}`);
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+  const hashField = user.passwordHash || user.password;
+  if (!hashField || !(await bcrypt.compare(password, hashField)))
     return res.status(401).json({ error: 'Invalid username or password' });
   const payload = { id: username.toLowerCase(), username: user.username };
   if (user.wrappedKey) payload.wrappedKey = user.wrappedKey;

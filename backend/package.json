@@ -20,5 +20,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "overrides": {
+    "pdfjs-dist": "^4.4.168"
   }
 }

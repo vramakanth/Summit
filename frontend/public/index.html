@@ -88,24 +88,24 @@
 html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; letter-spacing: -0.01em; }
 
 /* ── AUTH ── */
-.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
-.auth-card { width: 100%; max-width: 400px; }
+.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(160deg,#0d1f35 0%,#1a2d4a 45%,#1e3320 100%); }
+.auth-card { width: 100%; max-width: 400px; background: rgba(15,12,10,0.75); backdrop-filter: blur(20px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); padding: 32px; }
 .auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
 .auth-logo-mark { width: 36px; height: 36px; background: var(--accent-bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .auth-logo-mark svg { width: 20px; height: 20px; }
-.auth-logo-text { font-size: 20px; font-weight: 500; letter-spacing: -0.5px; color: var(--text); }
-.auth-logo-sub { font-size: 11px; color: var(--text2); font-family: var(--mono); }
-.auth-heading { font-size: 24px; font-weight: 500; letter-spacing: -0.5px; margin-bottom: 6px; color: var(--text); }
-.auth-sub { font-size: 13px; color: var(--text2); margin-bottom: 28px; line-height: 1.6; }
+.auth-logo-text { font-size: 20px; font-weight: 500; letter-spacing: -0.5px; color: #ffffff; }
+.auth-logo-sub { font-size: 11px; color: rgba(195,240,96,0.7); font-family: var(--mono); }
+.auth-heading { font-size: 24px; font-weight: 500; letter-spacing: -0.5px; margin-bottom: 6px; color: #ffffff; }
+.auth-sub { font-size: 13px; color: rgba(255,255,255,0.55); margin-bottom: 28px; line-height: 1.6; }
 .auth-field { margin-bottom: 14px; }
 .auth-field label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 6px; letter-spacing: 0.5px; }
-.auth-field input { width: 100%; padding: 11px 14px; background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); font-family: var(--font); font-size: 14px; color: var(--text); outline: none; transition: border-color 0.15s; }
+.auth-field input { width: 100%; padding: 11px 14px; background: rgba(255,255,255,0.07); border: 1px solid var(--border2); border-radius: var(--radius-sm); font-family: var(--font); font-size: 14px; color: var(--text); outline: none; transition: border-color 0.15s; }
 .auth-field input:focus { border-color: var(--accent); }
 .auth-field input::placeholder { color: var(--text3); }
 .auth-btn { width: 100%; padding: 12px; background: var(--accent-bg); color: #1a1917; border: none; border-radius: var(--radius-sm); font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .auth-btn:hover { background: var(--accent-bg2); }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.auth-switch { margin-top: 24px; text-align: center; font-size: 13px; color: var(--text2); }
+.auth-switch { margin-top: 24px; text-align: center; font-size: 13px; color: rgba(255,255,255,0.5); }
 .auth-switch a { color: var(--accent); cursor: pointer; font-weight: 500; }
 .auth-switch a:hover { text-decoration: underline; }
 .auth-error { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.25); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--red); margin-bottom: 16px; display: none; }
@@ -581,130 +581,79 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 <!-- ═══ SCREENS ═══ -->
 
 <!-- LANDING -->
-<div id="screen-landing" style="display:block;position:fixed;top:0;right:0;bottom:0;left:0;z-index:900;background:#1a1714;overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="screen-landing" style="display:block;position:fixed;top:0;right:0;bottom:0;left:0;z-index:900;overflow:hidden;font-family:var(--font)">
 
-  <!-- Nav bar -->
-  <div style="display:-webkit-flex;display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:1px solid rgba(255,235,180,0.08)">
-    <div style="display:-webkit-flex;display:flex;align-items:center;gap:10px">
-      <div style="width:30px;height:30px;background:#e8a838;border-radius:7px;display:-webkit-flex;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1714"/></svg>
-      </div>
-      <span style="font-size:16px;font-weight:600;color:#f2ead8;letter-spacing:-0.3px">Summit</span>
-    </div>
-    <div style="display:-webkit-flex;display:flex;align-items:center;gap:10px">
-      <button onclick="showScreen('login')" style="padding:7px 16px;background:transparent;color:#b8a888;border:1px solid rgba(255,235,180,0.15);border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit">Sign in</button>
-      <button onclick="showScreen('register')" style="padding:7px 16px;background:#e8a838;color:#1a1714;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Get started free</button>
-    </div>
+  <!-- Duotone mountain background (SVG) -->
+  <div style="position:absolute;inset:0;z-index:0;overflow:hidden">
+    <!-- Sky gradient -->
+    <div style="position:absolute;inset:0;background:linear-gradient(160deg,#0d1f35 0%,#1a2d4a 40%,#2d4a2a 100%)"></div>
+    <!-- Mountain SVG layers -->
+    <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <!-- Far range - dark teal -->
+      <polygon points="0,900 0,580 120,480 240,540 360,420 500,490 620,360 740,440 860,320 980,410 1100,300 1220,390 1340,280 1440,350 1440,900" fill="#0f2a1a" opacity="0.9"/>
+      <!-- Mid range - darker green-blue -->
+      <polygon points="0,900 0,660 100,580 220,620 340,520 460,570 560,480 680,530 800,440 920,500 1040,420 1160,480 1280,400 1440,460 1440,900" fill="#0a1e2e" opacity="0.95"/>
+      <!-- Foreground - near black -->
+      <polygon points="0,900 0,750 180,720 300,760 420,700 560,740 680,680 800,720 920,660 1060,700 1200,650 1320,690 1440,640 1440,900" fill="#060f1a" opacity="1"/>
+      <!-- Snow caps on far peaks -->
+      <polygon points="600,360 620,330 640,360" fill="rgba(200,230,255,0.6)"/>
+      <polygon points="840,320 860,285 880,320" fill="rgba(200,230,255,0.7)"/>
+      <polygon points="1080,300 1100,265 1120,300" fill="rgba(200,230,255,0.6)"/>
+      <polygon points="340,420 360,388 380,420" fill="rgba(200,230,255,0.4)"/>
+      <!-- Stars -->
+      <circle cx="200" cy="80" r="1.2" fill="rgba(255,255,255,0.6)"/>
+      <circle cx="450" cy="50" r="0.8" fill="rgba(255,255,255,0.5)"/>
+      <circle cx="700" cy="100" r="1.0" fill="rgba(255,255,255,0.7)"/>
+      <circle cx="950" cy="60" r="0.9" fill="rgba(255,255,255,0.5)"/>
+      <circle cx="1150" cy="90" r="1.1" fill="rgba(255,255,255,0.6)"/>
+      <circle cx="300" cy="140" r="0.7" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="1300" cy="120" r="0.8" fill="rgba(255,255,255,0.5)"/>
+      <circle cx="100" cy="200" r="0.6" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="580" cy="170" r="0.9" fill="rgba(255,255,255,0.5)"/>
+      <circle cx="1050" cy="150" r="0.7" fill="rgba(255,255,255,0.4)"/>
+    </svg>
+    <!-- Subtle glow on horizon -->
+    <div style="position:absolute;bottom:35%;left:0;right:0;height:120px;background:linear-gradient(to top,rgba(45,130,80,0.12),transparent)"></div>
   </div>
 
-  <!-- Hero -->
-  <div style="max-width:680px;margin:0 auto;padding:72px 32px 56px;text-align:center">
-    <div style="display:inline-block;padding:5px 14px;background:rgba(232,168,56,0.12);border:1px solid rgba(232,168,56,0.25);border-radius:100px;font-size:11px;color:#e8a838;letter-spacing:0.8px;margin-bottom:24px;font-family:monospace">PRIVATE BETA</div>
-    <h1 style="font-size:clamp(32px,5vw,52px);font-weight:700;color:#f2ead8;letter-spacing:-1.5px;line-height:1.08;margin:0 0 20px">Track every application.<br>Land the right role.</h1>
-    <p style="font-size:16px;color:#9a8a6a;line-height:1.75;max-width:480px;margin:0 auto 36px">AI-powered job tracking with tailored resumes, company insights, salary intelligence, and interview prep — all encrypted, all yours.</p>
-    <div style="display:-webkit-flex;display:flex;gap:12px;justify-content:center;-webkit-flex-wrap:wrap;flex-wrap:wrap">
-      <button onclick="showScreen('register')" style="padding:13px 28px;background:#e8a838;color:#1a1714;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:-0.2px">Get started — it&#39;s free</button>
-      <button onclick="showScreen('login')" style="padding:13px 28px;background:transparent;color:#f2ead8;border:1px solid rgba(255,235,180,0.18);border-radius:8px;font-size:15px;cursor:pointer;font-family:inherit">Sign in</button>
-    </div>
-  </div>
+  <!-- Content overlay -->
+  <div style="position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px">
 
-  <!-- Feature grid -->
-  <div style="max-width:960px;margin:0 auto;padding:0 24px 80px;display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;gap:12px;justify-content:center">
-
-    <!-- Card 1: Pipeline -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(232,168,56,0.1);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e8a838" stroke-width="1.7" stroke-linecap="round"><path d="M4 20V14M8 20V10M12 20V4M16 20V10M20 20V14"/></svg>
+    <!-- Logo + name -->
+    <div style="text-align:center;margin-bottom:48px">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;background:rgba(195,240,96,0.15);border:1px solid rgba(195,240,96,0.25);border-radius:16px;margin-bottom:20px;backdrop-filter:blur(8px)">
+        <svg viewBox="0 0 20 20" fill="none" width="28" height="28"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#c3f060"/></svg>
       </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">Pipeline tracking</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">Kanban-style status tracking from wishlist to offer. See your full funnel at a glance.</div>
-      <div style="margin-top:16px;display:-webkit-flex;display:flex;gap:6px">
-        <span style="padding:3px 8px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:4px;font-size:10px;color:#4ade80;font-family:monospace">applied</span>
-        <span style="padding:3px 8px;background:rgba(232,168,56,0.1);border:1px solid rgba(232,168,56,0.2);border-radius:4px;font-size:10px;color:#e8a838;font-family:monospace">interview</span>
-        <span style="padding:3px 8px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:4px;font-size:10px;color:#818cf8;font-family:monospace">offer</span>
-      </div>
+      <div style="font-size:56px;font-weight:800;color:#ffffff;letter-spacing:-2px;line-height:1;margin-bottom:10px;text-shadow:0 2px 40px rgba(0,0,0,0.5)">Summit</div>
+      <div style="font-size:16px;color:rgba(195,240,96,0.8);letter-spacing:3px;text-transform:uppercase;font-weight:500">Job Tracker</div>
+      <div style="font-size:15px;color:rgba(255,255,255,0.5);margin-top:16px;max-width:320px;line-height:1.6">Track every application. Reach the top.</div>
     </div>
 
-    <!-- Card 2: AI Tailoring -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(129,140,248,0.1);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.7" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
-      </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">AI resume tailoring</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">Instantly tailor your resume and cover letter to each role. Auto-saves versions with change tracking.</div>
-      <div style="margin-top:16px;padding:8px 10px;background:rgba(129,140,248,0.06);border-radius:6px;font-size:11px;color:#818cf8;font-family:monospace">fastest available AI · auto-selected</div>
+    <!-- CTA buttons -->
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px">
+      <button onclick="showScreen('register')" style="padding:14px 24px;background:#c3f060;color:#0d1f15;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:-0.2px;transition:all 0.15s;box-shadow:0 4px 24px rgba(195,240,96,0.25)" onmouseover="this.style.background='#d4f77a'" onmouseout="this.style.background='#c3f060'">
+        Get started free
+      </button>
+      <button onclick="showScreen('login')" style="padding:14px 24px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.15);border-radius:10px;font-family:var(--font);font-size:15px;font-weight:500;cursor:pointer;letter-spacing:-0.2px;backdrop-filter:blur(8px);transition:all 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.12)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+        Sign in
+      </button>
     </div>
 
-    <!-- Card 3: Company Insights -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(52,211,153,0.1);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-      </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">Company intelligence</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">Live stock data, Glassdoor ratings, salary ranges, culture analysis, and latest news — all in one click.</div>
-      <div style="margin-top:16px;display:-webkit-flex;display:flex;align-items:center;gap:8px">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a838" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/></svg>
-        <span style="font-size:12px;color:#9a8a6a;font-family:monospace">$62.95 · +1.2% · 24.2B mkt cap</span>
-      </div>
+    <!-- Footer -->
+    <div style="position:absolute;bottom:24px;font-size:11px;color:rgba(255,255,255,0.2);letter-spacing:0.5px">
+      jobsummit.app · v1.5.0
     </div>
-
-    <!-- Card 4: Interview Prep -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(251,146,60,0.1);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="1.7" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">Interview prep</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">AI-generated role-specific questions covering behavioral, technical, and culture fit. Track what you've practiced.</div>
-      <div style="margin-top:16px;display:-webkit-flex;display:flex;align-items:center;gap:8px">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-        <span style="font-size:12px;color:#9a8a6a">12 / 15 practiced</span>
-      </div>
-    </div>
-
-    <!-- Card 5: Salary Intel -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(250,204,21,0.1);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9.5a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5m0 1h.01"/></svg>
-      </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">Salary intelligence</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">P25–P90 salary bands, total comp breakdown, equity details, and negotiation leverage signals.</div>
-      <div style="margin-top:16px;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;position:relative;overflow:hidden">
-        <div style="position:absolute;top:0;left:20%;right:35%;height:100%;background:rgba(232,168,56,0.4);border-radius:4px"></div>
-        <div style="position:absolute;top:0;left:47%;width:4px;height:100%;background:#e8a838;border-radius:2px"></div>
-      </div>
-      <div style="display:-webkit-flex;display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9a8a6a;font-family:monospace">
-        <span>P25 $180k</span><span>median $240k</span><span>P90 $380k</span>
-      </div>
-    </div>
-
-    <!-- Card 6: Encryption -->
-    <div style="background:#211e1b;border:1px solid rgba(255,235,180,0.08);border-radius:12px;padding:24px;width:280px;text-align:left">
-      <div style="width:40px;height:40px;background:rgba(239,68,68,0.08);border-radius:10px;display:-webkit-flex;display:flex;align-items:center;justify-content:center;margin-bottom:16px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      </div>
-      <div style="font-size:14px;font-weight:600;color:#f2ead8;margin-bottom:8px">End-to-end encrypted</div>
-      <div style="font-size:13px;color:#9a8a6a;line-height:1.6">Your resumes and documents are encrypted before they leave your device. We never see your files.</div>
-      <div style="margin-top:16px;padding:8px 10px;background:rgba(239,68,68,0.05);border-radius:6px;font-size:11px;color:#f87171;font-family:monospace">AES-256 · client-side encryption</div>
-    </div>
-
-  </div>
-
-  <!-- Footer with version -->
-  <div style="text-align:center;padding:24px 32px 40px;border-top:1px solid rgba(255,235,180,0.06)">
-    <div style="display:-webkit-flex;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
-      <div style="width:18px;height:18px;background:#e8a838;border-radius:4px;display:-webkit-flex;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 20 20" fill="none" width="10" height="10"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1714"/></svg>
-      </div>
-      <span style="font-size:13px;color:#6b5f50">Summit · Job Tracker</span>
-    </div>
-    <div style="font-size:11px;color:#4a3f30;font-family:monospace">v1.4.0 · private beta</div>
   </div>
 
 </div>
 
-<!-- LOGIN -->
+
 <div id="screen-login" class="auth-wrap" style="display:none">
   <div class="auth-card">
+    <button onclick="showScreen('landing')" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:rgba(255,255,255,0.4);font-family:var(--font);font-size:12px;cursor:pointer;padding:0;margin-bottom:24px" onmouseover="this.style.color='rgba(255,255,255,0.7)'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Back
+    </button>
     <div class="auth-logo">
       <div class="auth-logo-mark">
         <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
@@ -737,6 +686,10 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 <!-- REGISTER -->
 <div id="screen-register" class="auth-wrap" style="display:none">
   <div class="auth-card">
+    <button onclick="showScreen('landing')" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:rgba(255,255,255,0.4);font-family:var(--font);font-size:12px;cursor:pointer;padding:0;margin-bottom:24px" onmouseover="this.style.color='rgba(255,255,255,0.7)'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Back
+    </button>
     <div class="auth-logo">
       <div class="auth-logo-mark">
         <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
