@@ -697,9 +697,9 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <div class="auth-field">
       <label>PASSWORD</label>
-      <input id="login-password" type="password" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+      <input id="login-password" type="password" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
-    <button id="login-btn" class="auth-btn" onclick="login()">Sign in</button>
+    <button id="login-btn" class="auth-btn" onclick="doLogin()">Sign in</button>
     <div class="auth-switch">
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
@@ -741,9 +741,9 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <div class="auth-field">
       <label>CONFIRM PASSWORD</label>
-      <input id="reg-confirm" type="password" placeholder="Confirm password" autocomplete="new-password" onkeydown="if(event.key==='Enter')register()">
+      <input id="reg-confirm" type="password" placeholder="Confirm password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()">
     </div>
-    <button id="register-btn" class="auth-btn" onclick="register()">Create account</button>
+    <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
     <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.4.0 · private beta</div>
   </div>
