@@ -375,478 +375,106 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
 });
 
 // ── ATS helpers ──────────────────────────────────────────────────────────────
-const { cleanJobUrl, detectATS, slugFallback } = require('./ats-helpers');
+const { cleanJobUrl, slugFallback } = require('./ats-helpers');
 
 async function fetchATS(rawUrl) {
-  const url  = cleanJobUrl(rawUrl);
-  const ats  = detectATS(url);
-  const UA   = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-  const JSON_H = { Accept: 'application/json', 'Content-Type': 'application/json' };
+  const url = cleanJobUrl(rawUrl);
 
-  // ── Google Jobs ─────────────────────────────────────────────────────────────
-  if (ats === 'googlejobs') {
-    // share.google links redirect to google.com/search?...&udm=8
-    // Server-side we can't render the JS SPA, but we can follow the redirect
-    // and extract job info from the URL params and page meta
-    let resolvedUrl = url;
-    if (/share\.google/i.test(url)) {
-      try {
-        const r = await fetchTimeout(url, {
-          headers: { 'User-Agent': UA },
-          redirect: 'follow',
-        }, 8000);
-        resolvedUrl = r.url || url;
-      } catch {}
+  // 1. Jina.ai reader renders JS and bypasses most bot blocks
+  try {
+    const r = await fetchTimeout('https://r.jina.ai/' + url, {
+      headers: { 'User-Agent': UA, Accept: 'text/plain,*/*', 'X-Return-Format': 'text' }
+    }, 20000);
+    if (r.ok) {
+      const raw = await r.text();
+      const text = raw
+        .replace(/^(Title|URL|Published Time|Description):[^\n]*\n/gim, '')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+        .replace(/\n{4,}/g, '\n\n').trim();
+      if (text.length > 200) {
+        return { text, salary: extractSalaryFromText(text), html: '', _via: 'jina' };
+      }
     }
-    // Extract kgs (Knowledge Graph entity) and search query
-    try {
-      const u = new URL(resolvedUrl);
-      const query = u.searchParams.get('q') || '';
-      const kgs = u.searchParams.get('kgs') || '';
-      // Try to fetch the Google Jobs page to get structured data from meta tags
-      const r = await fetchTimeout(resolvedUrl, {
-        headers: { 'User-Agent': UA, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' }
-      }, 10000);
-      if (r.ok) {
-        const html = await r.text();
-        // Extract title from og:title or title tag
-        const ogTitle = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i)?.[1]
-                     || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.replace(/ - Google Search$/, '').trim();
-        // Extract any JSON-LD (Google sometimes embeds it)
-        const ldMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
-        let ldFields = null;
-        if (ldMatch) {
-          try {
-            const ld = JSON.parse(ldMatch[1].trim());
-            const jobs = Array.isArray(ld) ? ld : [ld];
-            const job = jobs.find(d => d['@type'] === 'JobPosting');
-            if (job) {
-              ldFields = {
-                title: job.title,
-                company: job.hiringOrganization?.name,
-                location: job.jobLocation?.address?.addressLocality || null,
-                workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
-                salary: null,
-              };
-            }
-          } catch {}
-        }
-        const text = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
-        return {
-          fields: ldFields || (ogTitle ? { title: ogTitle.replace(/ \| Google Jobs$/, '').trim() } : null),
-          text,
-          html: '',
-          _ats: 'googlejobs',
-          _resolvedUrl: resolvedUrl !== url ? resolvedUrl : undefined,
-        };
-      }
-    } catch {}
-    return { html: '', text: '', fields: null, _ats: 'googlejobs' };
-  }
+  } catch {}
 
-  // ── LinkedIn ────────────────────────────────────────────────────────────────
-  if (ats === 'linkedin') {
-    return { html:'', text:'', fields: null, _ats:'linkedin', _linkedinBlocked: true };
-  }
-
-  // ── Greenhouse ──────────────────────────────────────────────────────────────
-  if (ats === 'greenhouse') {
-    try {
-      // Handles both boards.greenhouse.io and job-boards.greenhouse.io
-      const m = url.match(/greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/) ||
-                url.match(/greenhouse\.io\/([^/?#]+)\?.*gh_jid=(\d+)/);
-      if (m) {
-        const company = m[1], jobId = m[2];
-        const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${company}/jobs/${jobId}`;
-        const r = await fetchTimeout(apiUrl, { headers: JSON_H }, 10000);
-        if (r.ok) {
-          const d = await r.json();
-          const text = (d.content||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-          // Extract salary from job description text
-          let salary = null;
-          const sm = text.match(/\$([\d,]+(?:\.\d+)?)\s*[-\u2013\u2014]\s*\$([\d,]+(?:\.\d+)?)/);
-          if (sm) {
-            const fmt = s => { const n=parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
-            salary = fmt(sm[1])+'\u2013'+fmt(sm[2]);
-          }
-          // Fallback: fetch page HTML to find salary in <bdi> elements
-          if (!salary) {
-            try {
-              const pr = await fetchTimeout(url, { headers: { 'User-Agent': UA } }, 8000);
-              if (pr.ok) {
-                const ph = await pr.text();
-                const bm = ph.match(/<bdi>\$([\d,]+(?:\.\d+)?)<\/bdi>\s*-\s*<bdi>\$([\d,]+(?:\.\d+)?)<\/bdi>/);
-                if (bm) {
-                  const fmt = s => { const n=parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
-                  salary = fmt(bm[1])+'\u2013'+fmt(bm[2]);
-                }
-              }
-            } catch {}
-          }
-          if (!salary) salary = 'not found';
-          return { fields:{ title:d.title, company:d.company_name||company, location:d.location?.name, salary }, text, html:d.content||'', _ats:'greenhouse' };
-        }
-      }
-    } catch {}
-  }
-
-  // ── Lever ───────────────────────────────────────────────────────────────────
-  if (ats === 'lever') {
-    try {
-      const m = url.match(/lever\.co\/([^/?#]+)\/([a-f0-9-]{36})/i);
-      if (m) {
-        const [, company, id] = m;
-        const r = await fetchTimeout(`https://api.lever.co/v0/postings/${company}/${id}`, { headers: JSON_H }, 10000);
-        if (r.ok) {
-          const d = await r.json();
-          const text = [d.text||'', d.descriptionPlain||'', ...(d.lists||[]).map(l=>l.content)].join(' ').replace(/\s+/g,' ').slice(0,8000);
-          return { fields:{ title:d.text, company:d.company||company, location:d.categories?.location }, text, html:d.description||'', _ats:'lever' };
-        }
-      }
-    } catch {}
-  }
-
-  // ── Workday ─────────────────────────────────────────────────────────────────
-  if (ats === 'workday') {
-    try {
-      // Pattern: https://{tenant}.wd{N}.myworkdayjobs.com/{locale}/{site}/job/{externalPath}
-      const m = url.match(/https?:\/\/([^.]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z-]+\/)?([^/]+)\/job\/(.+?)(?:\?|$)/i)
-             || url.match(/https?:\/\/jobs\.myworkdaysite\.com\/recruiting\/([^/]+)\/([^/]+)\/job\/(.+?)(?:\?|$)/i);
-      if (m) {
-        const tenant = m[1], wdN = m[2], site = m[3], externalPath = m[4];
-        const apiUrl = `https://${tenant}.${wdN}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/job/${externalPath}`;
-        const r = await fetchTimeout(apiUrl, {
-          headers: { ...JSON_H, 'User-Agent': UA, Referer: url }
-        }, 12000);
-        if (r.ok) {
-          const d = await r.json();
-          const jp = d.jobPostingInfo || d;
-          const title = jp.title || jp.jobPostingId?.replace(/_[A-Z]{2}-?\d+$/, '').replace(/[-_]/g,' ');
-          const location = jp.location || jp.jobRequisitionLocation?.descriptor;
-          const isRemote = jp.remoteType === 'Full_Remote' || /remote/i.test(location||'');
-          const html = jp.jobDescription || jp.description || '';
-          const text = html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-          return { fields:{ title, company: tenant.charAt(0).toUpperCase()+tenant.slice(1), location: isRemote ? null : location, workType: isRemote ? 'Remote' : jp.remoteType === 'Hybrid_Remote' ? 'Hybrid' : null, remote: isRemote }, text, html, _ats:'workday' };
-        }
-      }
-    } catch {}
-    // Slug fallback for Workday if API failed
-    const sf = slugFallback(url);
-    if (sf) return { fields: sf, html:'', text:'', _ats:'workday', _slugFallback:true };
-  }
-
-  // ── SmartRecruiters ─────────────────────────────────────────────────────────
-  if (ats === 'smartrecruiters') {
-    try {
-      // URL: jobs.smartrecruiters.com/{Company}/{numericId}-{slug}
-      const m = url.match(/smartrecruiters\.com\/([^/?#]+)\/(\d+)/);
-      if (m) {
-        const [, company, id] = m;
-        const r = await fetchTimeout(`https://api.smartrecruiters.com/v1/companies/${company}/postings/${id}`, { headers: JSON_H }, 10000);
-        if (r.ok) {
-          const d = await r.json();
-          const loc = d.location;
-          const location = [loc?.city, loc?.region, loc?.country?.toUpperCase()].filter(Boolean).join(', ');
-          const sections = (d.jobAd?.sections || []).map(s => (s.content||'').replace(/<[^>]+>/g,' ')).join(' ');
-          return { fields:{ title:d.name, company:d.company?.name||company, location: loc?.remote ? null : location, workType: loc?.remote ? 'Remote' : null, remote: !!loc?.remote }, text:sections.trim().slice(0,8000), html:'', _ats:'smartrecruiters' };
-        }
-      }
-    } catch {}
-  }
-
-  // ── Ashby ───────────────────────────────────────────────────────────────────
-  if (ats === 'ashby') {
-    try {
-      const m = url.match(/ashbyhq\.com\/([^/?#]+)\/([^/?#]+)/);
-      if (m) {
-        const [, company, jobId] = m;
-        const r = await fetchTimeout('https://jobs.ashbyhq.com/api/non-user-graphql', {
-          method:'POST', headers: JSON_H,
-          body: JSON.stringify({ operationName:'ApiJobPosting', variables:{ organizationHostedJobsPageName:company, jobPostingId:jobId },
-            query:'query ApiJobPosting($organizationHostedJobsPageName:String!,$jobPostingId:String!){jobPosting(organizationHostedJobsPageName:$organizationHostedJobsPageName,jobPostingId:$jobPostingId){title descriptionHtml isRemote locationName compensationTierSummary}}'
-          })
-        }, 10000);
-        if (r.ok) {
-          const d = await r.json();
-          const p = d?.data?.jobPosting;
-          if (p) {
-            const text = (p.descriptionHtml||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-            return { fields:{ title:p.title, company, location:p.isRemote?null:p.locationName, workType:p.isRemote?'Remote':null, remote:p.isRemote, salary:p.compensationTierSummary||null }, text, html:p.descriptionHtml||'', _ats:'ashby' };
-          }
-        }
-      }
-    } catch {}
-  }
-
-  // ── Workable ────────────────────────────────────────────────────────────────
-  if (ats === 'workable') {
-    try {
-      // apply.workable.com/company/j/uuid or company.workable.com/jobs/uuid
-      const m = url.match(/workable\.com\/([^/?#]+)\/j\/([^/?#]+)/) ||
-                url.match(/workable\.com\/jobs\/([^/?#]+)/);
-      if (m) {
-        const [, company, jobSlug] = m;
-        const r = await fetchTimeout(`https://apply.workable.com/api/v3/accounts/${company}/jobs/${jobSlug}`, { headers: JSON_H }, 10000);
-        if (r.ok) {
-          const d = await r.json();
-          const loc = d.location_str || [d.city, d.state, d.country].filter(Boolean).join(', ');
-          const text = (d.full_description||d.description||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-          return { fields:{ title:d.title, company:d.full_title||company, location:d.remote?null:loc, workType:d.remote?'Remote':null, remote:d.remote }, text, html:d.full_description||'', _ats:'workable' };
-        }
-      }
-    } catch {}
-  }
-
-  // ── iCIMS / slug-extractable ─────────────────────────────────────────────────
-  if (ats === 'icims') {
-    const sf = slugFallback(url);
-    // Try HTML fetch first
-    try {
-      const r = await fetchTimeout(url, { headers:{ 'User-Agent':UA, Accept:'text/html', 'Accept-Language':'en-US,en;q=0.9' } }, 12000);
-      if (r.ok) {
-        const html = await r.text();
-        const text = html.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-        if (text.length > 300) return { fields: sf||null, html:html.slice(0,500000), text, _ats:'icims' };
-      }
-    } catch {}
-    if (sf) return { fields:sf, html:'', text:'', _ats:'icims', _slugFallback:true };
-  }
-
-  // ── Eightfold AI (careers.company.com, Dexcom etc.) ────────────────────────
-  // Eightfold embeds full JSON-LD in the initial HTML — server-side fetch works.
-  // Fall through to generic HTML handler which extracts JSON-LD.
-
-  // ── Indeed ─────────────────────────────────────────────────────────────────
-  // Indeed is JS-rendered and blocks bots, but sometimes returns usable JSON in page
-  if (ats === 'indeed') {
-    try {
-      // Extract job key from URL
-      const jk = new URL(url).searchParams.get('jk');
-      if (jk) {
-        // Try Indeed's internal job API endpoint
-        const apiR = await fetchTimeout(`https://www.indeed.com/m/basecamp/viewjob?viewtype=embedded&jk=${jk}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' }
-        }, 12000);
-        if (apiR.ok) {
-          const html = await apiR.text();
-          // Extract from JSON-LD
-          const ldMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
-          if (ldMatch) {
-            try {
-              const ld = JSON.parse(ldMatch[1].trim());
-              const job = Array.isArray(ld) ? ld.find(d => d['@type'] === 'JobPosting') : ld['@type'] === 'JobPosting' ? ld : null;
-              if (job?.title) {
-                const loc = job.jobLocation?.address;
-                const location = [loc?.addressLocality, loc?.addressRegion].filter(Boolean).join(', ');
-                let salary = null;
-                if (job.baseSalary?.value?.minValue && job.baseSalary?.value?.maxValue) {
-                  const fmt = n => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
-                  salary = fmt(job.baseSalary.value.minValue) + '\u2013' + fmt(job.baseSalary.value.maxValue);
-                }
-                const text = (job.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-                // Try salary from description if not in baseSalary
-                if (!salary && text) {
-                  const sm = text.match(/\$([\d,]+(?:\.\d+)?)\s*[-\u2013\u2014]\s*\$([\d,]+(?:\.\d+)?)/);
-                  if (sm) {
-                    const fmt = s => { const n = parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
-                    salary = fmt(sm[1]) + '\u2013' + fmt(sm[2]);
-                  }
-                }
-                return { fields:{ title:job.title, company:job.hiringOrganization?.name, location:location||null, workType:job.jobLocationType==='TELECOMMUTE'?'Remote':null, salary }, text, html:'', _ats:'indeed' };
-              }
-            } catch {}
-          }
-          // Fallback: extract from Indeed's JS data blob
-          const titleMatch = html.match(/"jobTitle"\s*:\s*"([^"]+)"/);
-          const companyMatch = html.match(/"companyName"\s*:\s*"([^"]+)"/);
-          const locMatch = html.match(/"formattedLocation"\s*:\s*"([^"]+)"/);
-          if (titleMatch) {
-            return { fields:{ title:titleMatch[1], company:companyMatch?.[1]||null, location:locMatch?.[1]||null, salary:null }, text:'', html:'', _ats:'indeed' };
-          }
-        }
-      }
-    } catch {}
-    // Fall through to slug fallback if all else fails
-    const sf = slugFallback(url);
-    if (sf?.title) return { fields:sf, html:'', text:'', _ats:'indeed', _slugFallback:true };
-  }
-
-  // ── ZipRecruiter, SimplyHired, Lensa, career.io ──────────────────────────────
-  // These all have JSON-LD and serve server-side rendered HTML
-  // The generic handler covers them but we add URL cleanup first
-  if (['ziprecruiter','simplyhired','lensa','careerdotio'].includes(ats)) {
-    // Strip all UTM and tracking params — they cause redirects on some sites
-    try {
-      const u = new URL(url);
-      ['utm_campaign','utm_source','utm_medium','utm_term','utm_content',
-       'jid','ref','from','via','src'].forEach(p => u.searchParams.delete(p));
-      // Fall through to generic handler with clean URL
-      const cleanedUrl = u.toString();
-      const r = await fetchTimeout(cleanedUrl, {
-        headers: { 'User-Agent': UA, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' }
-      }, 15000);
-      if (r.ok) {
-        const html = await r.text();
-        // Extract JSON-LD
-        let jsonLdFields = null, scriptSalary = null, jsonLdText = '';
-        const ldMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-        if (ldMatch) {
-          for (const block of ldMatch) {
-            try {
-              const data = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi,'').trim());
-              const jobs = Array.isArray(data)?data:[data];
-              const job = jobs.find(d=>d['@type']==='JobPosting');
-              if (job) {
-                const loc = job.jobLocation?.address;
-                const city = loc?.addressLocality, region = loc?.addressRegion;
-                const location = [city,region].filter(Boolean).join(', ') || null;
-                // Structured salary
-                if (job.baseSalary?.value?.minValue && job.baseSalary?.value?.maxValue) {
-                  const fmt = n => n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString();
-                  scriptSalary = fmt(job.baseSalary.value.minValue)+'\u2013'+fmt(job.baseSalary.value.maxValue);
-                }
-                // Salary from description
-                if (!scriptSalary && job.description) {
-                  jsonLdText = job.description.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-                  const dm = jsonLdText.match(/[Ss]alary[\s\S]{0,20}\$([\d,]+(?:\.\d+)?)\s*[-\u2013\u2014to]+\s*\$([\d,]+(?:\.\d+)?)/);
-                  if (dm) {
-                    const fmt = s => { const n=parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
-                    scriptSalary = fmt(dm[1])+'\u2013'+fmt(dm[2]);
-                  }
-                }
-                jsonLdFields = { title:job.title, company:job.hiringOrganization?.name, location, workType:job.jobLocationType==='TELECOMMUTE'?'Remote':null, remote:job.jobLocationType==='TELECOMMUTE' };
-                break;
-              }
-            } catch {}
-          }
-        }
-        // If no salary from JSON-LD, search first dollar range in MAIN job section body text
-        if (!scriptSalary) {
-          const bodyMatch = html.match(/<(?:main|article|section)[^>]*>([\s\S]*?)<\/(?:main|article|section)>/i);
-          const bodyText = (bodyMatch?.[1]||html).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,3000);
-          const sm = bodyText.match(/\$([\d,]+(?:\.\d+)?)\s*[-\u2013\u2014]\s*\$([\d,]+(?:\.\d+)?)/);
-          if (sm) {
-            const fmt = s => { const n=parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
-            scriptSalary = fmt(sm[1])+'\u2013'+fmt(sm[2]);
-          }
-        }
-        const bodyText2 = html.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-        const text = jsonLdText || bodyText2;
-        const fields = scriptSalary ? {...(jsonLdFields||{}), salary:scriptSalary} : jsonLdFields;
-        if (fields && fields.salary == null) fields.salary = 'not found';
-        return { fields, text, html:'', _ats:ats };
-      }
-    } catch(e) { /* fall through to generic */ }
-  }
-
-  // ── Generic HTML fetch (Indeed, Glassdoor, ZipRecruiter, Dice, Wellfound, etc.) ──
-  const slugFields = slugFallback(url);
+  // 2. Direct fetch with real browser UA — works for SSR pages
   try {
     const r = await fetchTimeout(url, {
-      headers:{ 'User-Agent':UA, Accept:'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language':'en-US,en;q=0.9', 'Cache-Control':'no-cache' }
+      headers: {
+        'User-Agent': UA,
+        Accept: 'text/html,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: 'https://www.google.com/',
+      }
     }, 15000);
-    if (!r.ok) {
-      if (slugFields) return { fields:slugFields, html:'', text:'', _ats:ats, _slugFallback:true };
-      return { html:'', text:'', error:`HTTP ${r.status}`, _ats:ats };
-    }
-    const html = await r.text();
-    // Extract JSON-LD structured data (job boards often embed this)
-    let jsonLdFields = null;
-    const ldMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-    if (ldMatch) {
-      for (const block of ldMatch) {
+    if (r.ok) {
+      const html = await r.text();
+      const text = htmlToText(html);
+      const salary = extractSalaryFromText(text) || extractSalaryFromHtml(html);
+      let fields = null;
+      const ldBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
+      for (const block of ldBlocks) {
         try {
           const data = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi,'').trim());
-          const job = Array.isArray(data) ? data.find(d=>d['@type']==='JobPosting') : data['@type']==='JobPosting' ? data : null;
-          if (job) {
-            const loc = job.jobLocation?.address;
-            const city = loc?.addressLocality, region = loc?.addressRegion, country = loc?.addressCountry;
-            const location = [city, region, country].filter(Boolean).join(', ');
-            jsonLdFields = {
-              title: job.title,
-              company: job.hiringOrganization?.name,
-              location: job.jobLocationType === 'TELECOMMUTE' ? null : location || null,
+          const job = Array.isArray(data)
+            ? data.find(d => d['@type'] === 'JobPosting')
+            : (data['@type'] === 'JobPosting' ? data : null);
+          if (job && job.title) {
+            const loc = job.jobLocation && job.jobLocation.address;
+            fields = {
+              title:    job.title,
+              company:  (job.hiringOrganization && job.hiringOrganization.name) || null,
+              location: loc ? [loc.addressLocality, loc.addressRegion].filter(Boolean).join(', ') || null : null,
               workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
-              salary: job.baseSalary ? `${job.baseSalary.value?.minValue||''}${job.baseSalary.value?.maxValue?`–${job.baseSalary.value.maxValue}`:''}${job.baseSalary.currency?' '+job.baseSalary.currency:''}`.trim() : null,
-              remote: job.jobLocationType === 'TELECOMMUTE',
+              salary,
             };
             break;
           }
         } catch {}
       }
-    }
-    // Scan ALL script tags for salary and job data
-    let scriptSalary = null;
-    let jsonLdText = '';  // description text from JSON-LD (useful when body is SPA shell)
-    const scriptTags = html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi);
-    for (const [, scriptContent] of scriptTags) {
-      if (scriptContent.length < 50) continue;
-
-      // --- JSON-LD: extract description text AND salary from it ---
-      if (scriptContent.includes('"@type"') && scriptContent.includes('JobPosting')) {
-        try {
-          const jld = JSON.parse(scriptContent.trim());
-          const job = Array.isArray(jld) ? jld.find(d => d['@type'] === 'JobPosting') : jld['@type'] === 'JobPosting' ? jld : null;
-          if (job) {
-            // Get full description text for AI extraction later
-            if (job.description) jsonLdText = job.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
-            // Check for salary in description text (common: "Salary:\n\n$231,100.00 - $385,100.00")
-            if (!scriptSalary && jsonLdText) {
-              const descSalary = jsonLdText.match(/[Ss]alary[:\s]+\$([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*\$([\d,]+(?:\.\d+)?)/);
-              if (descSalary) {
-                const fmt = (s) => {
-                  const n = parseFloat(s.replace(/,/g,''));
-                  return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
-                };
-                scriptSalary = fmt(descSalary[1]) + '–' + fmt(descSalary[2]);
-              }
-            }
-            // baseSalary structured field
-            if (!scriptSalary && job.baseSalary?.value) {
-              const bv = job.baseSalary.value;
-              if (bv.minValue && bv.maxValue) {
-                const fmt = (n) => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
-                scriptSalary = fmt(bv.minValue) + '–' + fmt(bv.maxValue);
-              }
-            }
-          }
-        } catch {}
-      }
-
-      // --- Non-JSON-LD script: look for salary patterns in embedded data ---
-      if (!scriptSalary) {
-        const salaryMatch = scriptContent.match(/"Salary":\s*"(\$[\d,.]+ ?[-\u2013\u2014] ?\$[\d,.]+)"/)
-          || scriptContent.match(/"salary_range":\s*"([^"]+)"/i)
-          || scriptContent.match(/"minValue":\s*([\d.]+)[\s\S]{0,100}"maxValue":\s*([\d.]+)/);
-        if (salaryMatch) {
-          if (salaryMatch[2]) {
-            const min = Math.round(parseFloat(salaryMatch[1])).toLocaleString();
-            const max = Math.round(parseFloat(salaryMatch[2])).toLocaleString();
-            scriptSalary = `$${min}–$${max}`;
-          } else {
-            scriptSalary = salaryMatch[1].trim();
-          }
-        }
+      if (text.length > 200) {
+        return { fields, text, html: html.slice(0, 200000), salary, _via: 'fetch' };
       }
     }
+  } catch {}
 
-    // Extract main content text
-    const bodyMatch = html.match(/<(?:main|article)[^>]*>([\s\S]*?)<\/(?:main|article)>/i);
-    const bodyHtml = bodyMatch ? bodyMatch[1] : html;
-    const bodyText = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-    const isSpaShell = bodyText.length < 200;
-    // Use JSON-LD description as text fallback when body is a SPA shell (e.g. Dexcom/Eightfold)
-    const text = isSpaShell && jsonLdText ? jsonLdText : bodyText;
-    const baseFields = jsonLdFields || (isSpaShell ? slugFields : null);
-    // Merge script-extracted salary into fields
-    const fields = scriptSalary ? { ...(baseFields || {}), salary: scriptSalary } : baseFields;
-    // If salary couldn't be extracted, mark it explicitly
-    if (fields && fields.salary == null) fields.salary = 'not found';
-    return { fields, html:html.slice(0,500000), text, _ats:ats, _spaShell:isSpaShell&&!jsonLdFields };
-  } catch(e) {
-    if (slugFields) return { fields:slugFields, html:'', text:'', _ats:ats, _slugFallback:true };
-    return { html:'', text:'', error:e.message, _ats:ats };
-  }
+  // 3. Slug fallback — title/company from URL path only
+  return { fields: slugFallback(url), text: '', html: '', salary: null, _via: 'slug' };
+}
+
+function htmlToText(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi,'')
+    .replace(/<script[\s\S]*?<\/script>/gi,'')
+    .replace(/<br\s*\/?>/gi,'\n')
+    .replace(/<\/p>/gi,'\n\n')
+    .replace(/<\/li>/gi,'\n')
+    .replace(/<li[^>]*>/gi,'\u2022 ')
+    .replace(/<\/h[1-6]>/gi,'\n\n')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<')
+    .replace(/&gt;/gi,'>').replace(/&quot;/gi,'"').replace(/&#39;/gi,"'")
+    .replace(/&[a-z0-9]+;/gi,' ')
+    .replace(/[ \t]+/g,' ').replace(/\n{4,}/g,'\n\n\n').trim();
+}
+
+function extractSalaryFromText(text) {
+  const m = text.match(/\$([\d,]+(?:\.\d+)?)\s*[kK]?\s*[-\u2013\u2014to]+\s*\$([\d,]+(?:\.\d+)?)\s*[kK]?/);
+  if (!m) return null;
+  const isK = /[kK]/.test(m[0]);
+  const fmt = (raw) => {
+    const n = parseFloat(raw.replace(/,/g,'')) * (isK && parseFloat(raw.replace(/,/g,'')) < 1000 ? 1000 : 1);
+    return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
+  };
+  return fmt(m[1]) + '\u2013' + fmt(m[2]);
+}
+
+function extractSalaryFromHtml(html) {
+  const m = html.match(/<bdi>\s*\$([\d,]+(?:\.\d+)?)\s*<\/bdi>\s*-\s*<bdi>\s*\$([\d,]+(?:\.\d+)?)\s*<\/bdi>/i);
+  if (!m) return null;
+  const fmt = s => { const n = parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
+  return fmt(m[1]) + '\u2013' + fmt(m[2]);
 }
 
 app.post('/api/parse-job', authMiddleware, async (req, res) => {
@@ -859,11 +487,18 @@ app.post('/api/parse-job', authMiddleware, async (req, res) => {
 
 app.post('/api/extract-fields', authMiddleware, async (req, res) => {
   const postingText = req.body.postingText || req.body.text || '';
+  const domSalary = req.body.salary || null; // pre-extracted from DOM (bdi, JSON-LD)
   if (!postingText) return res.status(400).json({ error: 'postingText required' });
-  const sys = 'Extract job posting details. Return ONLY valid JSON, no markdown, no explanation. Fields: title(string), company(string), location(city+state only, null if remote-only), workType("Remote"|"Hybrid"|"On-site"|null), remote(boolean), salary(ONLY real dollar amounts like "$120k-$150k/yr" or null — never invent, never use "Competitive" or "DOE").';
+  // If the browser already extracted salary precisely, tell AI to use it
+  const salaryHint = domSalary ? `The salary is already confirmed as ${domSalary} — use this exactly.` : '';
+  const sys = `Extract job posting details. Return ONLY valid JSON, no markdown.
+Fields: title(string), company(string), location(city+state only, null if remote-only), workType("Remote"|"Hybrid"|"On-site"|null), remote(boolean), salary(ONLY real dollar amounts like "$120k–$150k" or null — never invent, never use "Competitive" or "DOE"). ${salaryHint}`;
   const usr = `Extract from this job posting:\n\n${postingText.slice(0, 4000)}`;
   try {
-    res.json(parseJson(await callAI(['openrouter','groq','google'], sys, usr, 400)));
+    const parsed = parseJson(await callAI(['openrouter','groq','google'], sys, usr, 400));
+    // Always prefer DOM-extracted salary over AI-guessed salary
+    if (domSalary) parsed.salary = domSalary;
+    res.json(parsed);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

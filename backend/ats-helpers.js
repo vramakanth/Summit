@@ -1,70 +1,61 @@
-/**
- * Summit — ATS Helpers
- * Pure functions for URL detection and slug extraction.
- * Exported separately so they can be unit-tested without starting the server.
- */
+// ats-helpers.js — URL cleaning only.
+// Field extraction is now done by AI against rendered page text.
 
+/**
+ * Strip tracking params and normalise a job URL.
+ * Returns the cleaned URL string.
+ */
 function cleanJobUrl(raw) {
   try {
-    const u = new URL(raw);
-    if (u.hash.startsWith('#:~:')) u.hash = '';
+    const u = new URL(raw.trim());
+    const REMOVE = [
+      'utm_source','utm_medium','utm_campaign','utm_term','utm_content',
+      'utm_id','ref','from','via','src','fbclid','gclid','msclkid',
+      'mc_cid','mc_eid','_hsenc','_hsmi','hsCtaTracking',
+      'jid','job_id',
+      // indeed / google-specific noise
+      'shndl','shmd','shmds','shmd','jbr','sv',
+    ];
+    REMOVE.forEach(p => u.searchParams.delete(p));
+    // Remove empty fragments
+    if (u.hash === '#' || u.hash === '') u.hash = '';
     return u.toString();
-  } catch { return raw.split('#')[0]; }
+  } catch {
+    return raw.trim();
+  }
 }
 
-function detectATS(url) {
-  if (/job-boards\.greenhouse\.io|boards?\.greenhouse\.io|\.greenhouse\.io\/jobs/i.test(url)) return 'greenhouse';
-  if (/jobs\.lever\.co/i.test(url))                                  return 'lever';
-  if (/myworkdayjobs\.com|myworkdaysite\.com/i.test(url))           return 'workday';
-  if (/bamboohr\.com\/jobs/i.test(url))                             return 'bamboohr';
-  if (/ashbyhq\.com/i.test(url))                                    return 'ashby';
-  if (/jobs\.smartrecruiters\.com/i.test(url))                      return 'smartrecruiters';
-  if (/linkedin\.com\/jobs/i.test(url))                             return 'linkedin';
-  if (/share\.google\/|google\.com\/search[^?]*\?[^#]*udm=8|google\.com\/search[^?]*\?[^#]*source=sh[^&]*job/i.test(url)) return 'googlejobs';
-  // Eightfold AI: powers many company career sites; identified by ?domain= param or /careers/job/ path
-  if (/eightfold\.ai|vscdn\.net/i.test(url))                       return 'eightfold';
-  if (/[?&]domain=[^&]+$|[?&]domain=[^&]+&|\/careers\/job\/\d+/i.test(url)) return 'eightfold';
-  if (/indeed\.com/i.test(url))                                     return 'indeed';
-  if (/glassdoor\.com/i.test(url))                                  return 'glassdoor';
-  if (/icims\.com/i.test(url))                                      return 'icims';
-  if (/jobvite\.com/i.test(url))                                    return 'jobvite';
-  if (/workable\.com/i.test(url))                                   return 'workable';
-  if (/recruitee\.com/i.test(url))                                  return 'recruitee';
-  if (/pinpointhq\.com/i.test(url))                                 return 'pinpoint';
-  if (/ziprecruiter\.com/i.test(url))                               return 'ziprecruiter';
-  if (/simplyhired\.com/i.test(url))                                return 'simplyhired';
-  if (/lensa\.com/i.test(url))                                      return 'lensa';
-  if (/career\.io/i.test(url))                                      return 'careerdotio';
-  return 'generic';
-}
-
-/** Extract title+company from a URL slug as last-resort fallback */
-function slugFallback(url) {
+/**
+ * Best-effort slug extraction from URL path when all fetch methods fail.
+ * e.g. "ziprecruiter.com/c/Saratech/Job/Director-of-Engineering"
+ *   → { company: "Saratech", title: "Director of Engineering" }
+ */
+function slugFallback(rawUrl) {
   try {
-    const u = new URL(url);
-    const segments = u.pathname.split('/').filter(Boolean);
-    const slug = segments[segments.length - 1] || segments[segments.length - 2] || '';
-    if (!slug || slug.length < 5) return null;
-    const cleaned = slug.replace(/^[\dA-Z]+-\d+-?/, '').replace(/^[\d]+-/, '');
-    const words = cleaned.split(/[-_]/).filter(w => w.length > 1);
-    const stopWords = new Set(['remote','united','states','us','usa','ca','uk','au','hybrid','onsite','in']);
-    let titleWords = [], isRemote = false, isHybrid = false;
-    for (const w of words) {
-      const lw = w.toLowerCase();
-      if (lw === 'remote') { isRemote = true; continue; }
-      if (lw === 'hybrid') { isHybrid = true; continue; }
-      if (!stopWords.has(lw)) titleWords.push(w.charAt(0).toUpperCase() + w.slice(1));
+    const u = new URL(rawUrl);
+    const parts = u.pathname.split('/').filter(Boolean);
+    // Generic: title is the longest readable segment
+    const readable = parts
+      .map(p => p.replace(/[-_+]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim())
+      .filter(p => p.length > 4 && !/^\d+$/.test(p) && !/^[a-f0-9]{20,}$/.test(p) && !/^[A-Z0-9]{8,}$/.test(p));
+
+    // Heuristics per hostname
+    const h = u.hostname;
+    if (h.includes('ziprecruiter') && parts[0]==='c') {
+      return { company: readable[0]||null, title: readable[1]||null };
     }
-    const title = titleWords.join(' ');
-    const host = u.hostname.replace(/^(careers|jobs|apply|www)\./, '');
-    const company = host.split('.')[0];
-    const companyName = company.charAt(0).toUpperCase() + company.slice(1);
-    return title.length > 3 ? {
-      title, company: companyName,
-      workType: isRemote ? 'Remote' : isHybrid ? 'Hybrid' : null,
-      remote: isRemote,
-    } : null;
+    if (h.includes('greenhouse') || h.includes('lever') || h.includes('ashby')) {
+      return { company: readable[0]||null, title: readable[readable.length-1]||null };
+    }
+    if (h.includes('linkedin')) {
+      const ti = parts.indexOf('view');
+      return { title: ti>=0 ? readable[ti+1]||null : readable[readable.length-1]||null };
+    }
+    // Generic: last meaningful segment = title, second-to-last = company (if different)
+    const title = readable[readable.length-1] || null;
+    const company = readable.length > 1 ? readable[readable.length-2] : null;
+    return { title, company: company !== title ? company : null };
   } catch { return null; }
 }
 
-module.exports = { cleanJobUrl, detectATS, slugFallback };
+module.exports = { cleanJobUrl, slugFallback };
