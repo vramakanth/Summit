@@ -1759,8 +1759,10 @@ function scheduleSave() {
 
 // ── URL PARSING ──
 async function parseJobUrl() {
-  const url = document.getElementById('job-url').value.trim();
+  let url = document.getElementById('job-url').value.trim();
   if (!url) { alert('Paste a job posting URL first.'); return; }
+  // Strip browser-only text fragments (#:~:text=...) that confuse servers
+  try { const u = new URL(url); if (u.hash.startsWith('#:~:')) { u.hash = ''; url = u.toString(); document.getElementById('job-url').value = url; } } catch {}
 
   const btn = document.getElementById('parse-btn');
   const statusEl = document.getElementById('parse-status');

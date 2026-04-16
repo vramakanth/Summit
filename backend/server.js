@@ -374,23 +374,269 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
   res.json({ text, html, name: req.file.originalname, size: req.file.size });
 });
 
+// ── ATS helpers ──────────────────────────────────────────────────────────────
+function cleanJobUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.hash.startsWith('#:~:')) u.hash = '';
+    return u.toString();
+  } catch { return raw.split('#')[0]; }
+}
+
+function detectATS(url) {
+  if (/boards?\.greenhouse\.io|\.greenhouse\.io\/jobs/i.test(url))  return 'greenhouse';
+  if (/jobs\.lever\.co/i.test(url))                                  return 'lever';
+  if (/myworkdayjobs\.com|myworkdaysite\.com/i.test(url))           return 'workday';
+  if (/bamboohr\.com\/jobs/i.test(url))                             return 'bamboohr';
+  if (/ashbyhq\.com/i.test(url))                                    return 'ashby';
+  if (/jobs\.smartrecruiters\.com/i.test(url))                      return 'smartrecruiters';
+  if (/linkedin\.com\/jobs/i.test(url))                             return 'linkedin';
+  if (/indeed\.com/i.test(url))                                     return 'indeed';
+  if (/glassdoor\.com/i.test(url))                                  return 'glassdoor';
+  if (/icims\.com|[?&]domain=|\/careers\/job\/\d+/i.test(url))     return 'icims';
+  if (/jobvite\.com/i.test(url))                                    return 'jobvite';
+  if (/workable\.com/i.test(url))                                   return 'workable';
+  if (/recruitee\.com/i.test(url))                                  return 'recruitee';
+  if (/pinpointhq\.com/i.test(url))                                 return 'pinpoint';
+  return 'generic';
+}
+
+/** Extract title+company from a URL slug as last-resort fallback */
+function slugFallback(url) {
+  try {
+    const u = new URL(url);
+    // Get last meaningful path segment
+    const segments = u.pathname.split('/').filter(Boolean);
+    const slug = segments[segments.length - 1] || segments[segments.length - 2] || '';
+    if (!slug || slug.length < 5) return null;
+    // Strip leading job-id numbers like "12345-job-title" or "JR-12345-job-title"
+    const cleaned = slug.replace(/^[\dA-Z]+-\d+-?/, '').replace(/^[\d]+-/, '');
+    const words = cleaned.split(/[-_]/).filter(w => w.length > 1);
+    const stopWords = new Set(['remote','united','states','us','usa','ca','uk','au','hybrid','onsite','in']);
+    let titleWords = [], isRemote = false, isHybrid = false;
+    for (const w of words) {
+      const lw = w.toLowerCase();
+      if (lw === 'remote') { isRemote = true; continue; }
+      if (lw === 'hybrid') { isHybrid = true; continue; }
+      if (!stopWords.has(lw)) titleWords.push(w.charAt(0).toUpperCase() + w.slice(1));
+    }
+    const title = titleWords.join(' ');
+    const host = u.hostname.replace(/^(careers|jobs|apply|www)\./, '');
+    const company = host.split('.')[0];
+    const companyName = company.charAt(0).toUpperCase() + company.slice(1);
+    return title.length > 3 ? {
+      title, company: companyName,
+      workType: isRemote ? 'Remote' : isHybrid ? 'Hybrid' : null,
+      remote: isRemote,
+    } : null;
+  } catch { return null; }
+}
+
+async function fetchATS(rawUrl) {
+  const url  = cleanJobUrl(rawUrl);
+  const ats  = detectATS(url);
+  const UA   = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  const JSON_H = { Accept: 'application/json', 'Content-Type': 'application/json' };
+
+  // ── LinkedIn ────────────────────────────────────────────────────────────────
+  if (ats === 'linkedin') {
+    return { html:'', text:'', fields: null, _ats:'linkedin', _linkedinBlocked: true };
+  }
+
+  // ── Greenhouse ──────────────────────────────────────────────────────────────
+  if (ats === 'greenhouse') {
+    try {
+      const m = url.match(/greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/) ||
+                url.match(/gh_jid=(\d+).*greenhouse\.io\/([^/?#]+)/) ||
+                url.match(/greenhouse\.io\/([^/?#]+)\?.*gh_jid=(\d+)/);
+      if (m) {
+        const company = m[1], jobId = m[2];
+        const r = await fetchTimeout(`https://boards-api.greenhouse.io/v1/boards/${company}/jobs/${jobId}`, { headers: JSON_H }, 10000);
+        if (r.ok) {
+          const d = await r.json();
+          const text = (d.content||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+          return { fields:{ title:d.title, company:d.company_name||company, location:d.location?.name }, text, html:d.content||'', _ats:'greenhouse' };
+        }
+      }
+    } catch {}
+  }
+
+  // ── Lever ───────────────────────────────────────────────────────────────────
+  if (ats === 'lever') {
+    try {
+      const m = url.match(/lever\.co\/([^/?#]+)\/([a-f0-9-]{36})/i);
+      if (m) {
+        const [, company, id] = m;
+        const r = await fetchTimeout(`https://api.lever.co/v0/postings/${company}/${id}`, { headers: JSON_H }, 10000);
+        if (r.ok) {
+          const d = await r.json();
+          const text = [d.text||'', d.descriptionPlain||'', ...(d.lists||[]).map(l=>l.content)].join(' ').replace(/\s+/g,' ').slice(0,8000);
+          return { fields:{ title:d.text, company:d.company||company, location:d.categories?.location }, text, html:d.description||'', _ats:'lever' };
+        }
+      }
+    } catch {}
+  }
+
+  // ── Workday ─────────────────────────────────────────────────────────────────
+  if (ats === 'workday') {
+    try {
+      // Pattern: https://{tenant}.wd{N}.myworkdayjobs.com/{locale}/{site}/job/{externalPath}
+      const m = url.match(/https?:\/\/([^.]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z-]+\/)?([^/]+)\/job\/(.+?)(?:\?|$)/i)
+             || url.match(/https?:\/\/jobs\.myworkdaysite\.com\/recruiting\/([^/]+)\/([^/]+)\/job\/(.+?)(?:\?|$)/i);
+      if (m) {
+        const tenant = m[1], wdN = m[2], site = m[3], externalPath = m[4];
+        const apiUrl = `https://${tenant}.${wdN}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/job/${externalPath}`;
+        const r = await fetchTimeout(apiUrl, {
+          headers: { ...JSON_H, 'User-Agent': UA, Referer: url }
+        }, 12000);
+        if (r.ok) {
+          const d = await r.json();
+          const jp = d.jobPostingInfo || d;
+          const title = jp.title || jp.jobPostingId?.replace(/_[A-Z]{2}-?\d+$/, '').replace(/[-_]/g,' ');
+          const location = jp.location || jp.jobRequisitionLocation?.descriptor;
+          const isRemote = jp.remoteType === 'Full_Remote' || /remote/i.test(location||'');
+          const html = jp.jobDescription || jp.description || '';
+          const text = html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
+          return { fields:{ title, company: tenant.charAt(0).toUpperCase()+tenant.slice(1), location: isRemote ? null : location, workType: isRemote ? 'Remote' : jp.remoteType === 'Hybrid_Remote' ? 'Hybrid' : null, remote: isRemote }, text, html, _ats:'workday' };
+        }
+      }
+    } catch {}
+    // Slug fallback for Workday if API failed
+    const sf = slugFallback(url);
+    if (sf) return { fields: sf, html:'', text:'', _ats:'workday', _slugFallback:true };
+  }
+
+  // ── SmartRecruiters ─────────────────────────────────────────────────────────
+  if (ats === 'smartrecruiters') {
+    try {
+      // URL: jobs.smartrecruiters.com/{Company}/{numericId}-{slug}
+      const m = url.match(/smartrecruiters\.com\/([^/?#]+)\/(\d+)/);
+      if (m) {
+        const [, company, id] = m;
+        const r = await fetchTimeout(`https://api.smartrecruiters.com/v1/companies/${company}/postings/${id}`, { headers: JSON_H }, 10000);
+        if (r.ok) {
+          const d = await r.json();
+          const loc = d.location;
+          const location = [loc?.city, loc?.region, loc?.country?.toUpperCase()].filter(Boolean).join(', ');
+          const sections = (d.jobAd?.sections || []).map(s => (s.content||'').replace(/<[^>]+>/g,' ')).join(' ');
+          return { fields:{ title:d.name, company:d.company?.name||company, location: loc?.remote ? null : location, workType: loc?.remote ? 'Remote' : null, remote: !!loc?.remote }, text:sections.trim().slice(0,8000), html:'', _ats:'smartrecruiters' };
+        }
+      }
+    } catch {}
+  }
+
+  // ── Ashby ───────────────────────────────────────────────────────────────────
+  if (ats === 'ashby') {
+    try {
+      const m = url.match(/ashbyhq\.com\/([^/?#]+)\/([^/?#]+)/);
+      if (m) {
+        const [, company, jobId] = m;
+        const r = await fetchTimeout('https://jobs.ashbyhq.com/api/non-user-graphql', {
+          method:'POST', headers: JSON_H,
+          body: JSON.stringify({ operationName:'ApiJobPosting', variables:{ organizationHostedJobsPageName:company, jobPostingId:jobId },
+            query:'query ApiJobPosting($organizationHostedJobsPageName:String!,$jobPostingId:String!){jobPosting(organizationHostedJobsPageName:$organizationHostedJobsPageName,jobPostingId:$jobPostingId){title descriptionHtml isRemote locationName compensationTierSummary}}'
+          })
+        }, 10000);
+        if (r.ok) {
+          const d = await r.json();
+          const p = d?.data?.jobPosting;
+          if (p) {
+            const text = (p.descriptionHtml||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+            return { fields:{ title:p.title, company, location:p.isRemote?null:p.locationName, workType:p.isRemote?'Remote':null, remote:p.isRemote, salary:p.compensationTierSummary||null }, text, html:p.descriptionHtml||'', _ats:'ashby' };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // ── Workable ────────────────────────────────────────────────────────────────
+  if (ats === 'workable') {
+    try {
+      // apply.workable.com/company/j/uuid or company.workable.com/jobs/uuid
+      const m = url.match(/workable\.com\/([^/?#]+)\/j\/([^/?#]+)/) ||
+                url.match(/workable\.com\/jobs\/([^/?#]+)/);
+      if (m) {
+        const [, company, jobSlug] = m;
+        const r = await fetchTimeout(`https://apply.workable.com/api/v3/accounts/${company}/jobs/${jobSlug}`, { headers: JSON_H }, 10000);
+        if (r.ok) {
+          const d = await r.json();
+          const loc = d.location_str || [d.city, d.state, d.country].filter(Boolean).join(', ');
+          const text = (d.full_description||d.description||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
+          return { fields:{ title:d.title, company:d.full_title||company, location:d.remote?null:loc, workType:d.remote?'Remote':null, remote:d.remote }, text, html:d.full_description||'', _ats:'workable' };
+        }
+      }
+    } catch {}
+  }
+
+  // ── iCIMS / slug-extractable ─────────────────────────────────────────────────
+  if (ats === 'icims') {
+    const sf = slugFallback(url);
+    // Try HTML fetch first
+    try {
+      const r = await fetchTimeout(url, { headers:{ 'User-Agent':UA, Accept:'text/html', 'Accept-Language':'en-US,en;q=0.9' } }, 12000);
+      if (r.ok) {
+        const html = await r.text();
+        const text = html.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
+        if (text.length > 300) return { fields: sf||null, html:html.slice(0,500000), text, _ats:'icims' };
+      }
+    } catch {}
+    if (sf) return { fields:sf, html:'', text:'', _ats:'icims', _slugFallback:true };
+  }
+
+  // ── Generic HTML fetch (Indeed, Glassdoor, ZipRecruiter, Dice, Wellfound, etc.) ──
+  const slugFields = slugFallback(url);
+  try {
+    const r = await fetchTimeout(url, {
+      headers:{ 'User-Agent':UA, Accept:'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language':'en-US,en;q=0.9', 'Cache-Control':'no-cache' }
+    }, 15000);
+    if (!r.ok) {
+      if (slugFields) return { fields:slugFields, html:'', text:'', _ats:ats, _slugFallback:true };
+      return { html:'', text:'', error:`HTTP ${r.status}`, _ats:ats };
+    }
+    const html = await r.text();
+    // Extract JSON-LD structured data (job boards often embed this)
+    let jsonLdFields = null;
+    const ldMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    if (ldMatch) {
+      for (const block of ldMatch) {
+        try {
+          const data = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi,'').trim());
+          const job = Array.isArray(data) ? data.find(d=>d['@type']==='JobPosting') : data['@type']==='JobPosting' ? data : null;
+          if (job) {
+            const loc = job.jobLocation?.address;
+            const city = loc?.addressLocality, region = loc?.addressRegion, country = loc?.addressCountry;
+            const location = [city, region, country].filter(Boolean).join(', ');
+            jsonLdFields = {
+              title: job.title,
+              company: job.hiringOrganization?.name,
+              location: job.jobLocationType === 'TELECOMMUTE' ? null : location || null,
+              workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
+              salary: job.baseSalary ? `${job.baseSalary.value?.minValue||''}${job.baseSalary.value?.maxValue?`–${job.baseSalary.value.maxValue}`:''}${job.baseSalary.currency?' '+job.baseSalary.currency:''}`.trim() : null,
+              remote: job.jobLocationType === 'TELECOMMUTE',
+            };
+            break;
+          }
+        } catch {}
+      }
+    }
+    // Extract main content text
+    const bodyMatch = html.match(/<(?:main|article)[^>]*>([\s\S]*?)<\/(?:main|article)>/i);
+    const bodyHtml = bodyMatch ? bodyMatch[1] : html;
+    const text = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
+    const isSpaShell = text.length < 200;
+    const fields = jsonLdFields || (isSpaShell ? slugFields : null);
+    return { fields, html:html.slice(0,500000), text:isSpaShell?'':text, _ats:ats, _spaShell:isSpaShell&&!jsonLdFields };
+  } catch(e) {
+    if (slugFields) return { fields:slugFields, html:'', text:'', _ats:ats, _slugFallback:true };
+    return { html:'', text:'', error:e.message, _ats:ats };
+  }
+}
+
 app.post('/api/parse-job', authMiddleware, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
   try {
-    const r = await fetchTimeout(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
-      }
-    }, 15000);
-    if (!r.ok) return res.json({ html:'', text:'', error:`HTTP ${r.status}` });
-    const html = await r.text();
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi,'')
-                     .replace(/<style[\s\S]*?<\/style>/gi,'')
-                     .replace(/<[^>]+>/g,' ')
-                     .replace(/\s+/g,' ').trim().slice(0, 8000);
-    res.json({ html: html.slice(0,500000), text });
+    res.json(await fetchATS(url));
   } catch (e) { res.json({ html:'', text:'', error: e.message }); }
 });
 
@@ -742,8 +988,12 @@ app.get('*', (req, res) => {
 // START
 // ════════════════════════════════════════════════════════════════════════════════
 
-app.listen(PORT, () => {
-  console.log(`Applied Tracker on port ${PORT}`);
-  console.log(`Data: ${DATA_DIR}`);
-  console.log(`AI: groq=${!!GROQ_API_KEY} openrouter=${!!OPENROUTER_API_KEY} google=${!!GOOGLE_API_KEY}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Applied Tracker on port ${PORT}`);
+    console.log(`Data: ${DATA_DIR}`);
+    console.log(`AI: groq=${!!GROQ_API_KEY} openrouter=${!!OPENROUTER_API_KEY} google=${!!GOOGLE_API_KEY}`);
+  });
+}
+
+module.exports = app;

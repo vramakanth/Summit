@@ -1,115 +1,177 @@
-// Applied Chrome Extension - content.js
-// Detects job info from common job posting sites
+// Summit Chrome Extension — content.js v2.0
+// Extracts job info from page DOM for popup to use as fallback
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action !== 'detectJob') return;
+  if (msg.action !== 'extractJob') return;
 
   const url = window.location.href;
   const hostname = window.location.hostname;
   let title = '', company = '', location = '', salary = '', workType = '';
 
-  // ── LinkedIn ──
+  // ── LinkedIn ──────────────────────────────────────────────────────────────
   if (hostname.includes('linkedin.com')) {
-    // Job title — try multiple selector patterns across LinkedIn's changing UI
     title = (
       document.querySelector('.job-details-jobs-unified-top-card__job-title h1') ||
       document.querySelector('.job-details-jobs-unified-top-card__job-title') ||
       document.querySelector('.topcard__title') ||
       document.querySelector('h1.t-24') ||
-      document.querySelector('h1[class*="title"]')
+      document.querySelector('h1[class*="job-title"]') ||
+      document.querySelector('h1')
     )?.textContent?.trim() || '';
 
-    // Company name
     company = (
       document.querySelector('.job-details-jobs-unified-top-card__company-name a') ||
       document.querySelector('.job-details-jobs-unified-top-card__company-name') ||
       document.querySelector('.topcard__org-name-link') ||
-      document.querySelector('a[data-tracking-control-name*="company"]')
+      document.querySelector('a[data-tracking-control-name*="company"]') ||
+      document.querySelector('[class*="company-name"]')
     )?.textContent?.trim() || '';
 
-    // Location — extract and split workType from it
     const locationEl = (
       document.querySelector('.job-details-jobs-unified-top-card__bullet') ||
-      document.querySelector('.topcard__flavor--bullet') ||
-      document.querySelector('[class*="location"]')
+      document.querySelector('.topcard__flavor--bullet')
     )?.textContent?.trim() || '';
 
-    // Work type pill (Remote / Hybrid / On-site)
     const workTypePill = (
       document.querySelector('.job-details-jobs-unified-top-card__workplace-type') ||
-      document.querySelector('[class*="workplace-type"]') ||
-      document.querySelector('.job-details-jobs-unified-top-card__job-insight span')
+      document.querySelector('[class*="workplace-type"]')
     )?.textContent?.trim() || '';
 
-    if (workTypePill.toLowerCase().includes('remote')) workType = 'Remote';
-    else if (workTypePill.toLowerCase().includes('hybrid')) workType = 'Hybrid';
-    else if (workTypePill.toLowerCase().includes('on-site') || workTypePill.toLowerCase().includes('onsite')) workType = 'On-site';
+    if (/remote/i.test(workTypePill))         workType = 'Remote';
+    else if (/hybrid/i.test(workTypePill))    workType = 'Hybrid';
+    else if (/on.?site/i.test(workTypePill))  workType = 'On-site';
 
-    // Clean location — remove workType from it if present
-    if (locationEl) {
-      location = locationEl
-        .replace(/\s*(Remote|Hybrid|On-site|Onsite)\s*/gi, '')
-        .replace(/·/g, '').trim();
-    }
+    location = locationEl.replace(/\s*(Remote|Hybrid|On-site|Onsite)\s*/gi, '').replace(/·/g, '').trim();
 
-    // Salary — LinkedIn sometimes shows it in the insights section
-    const insights = Array.from(document.querySelectorAll('.job-details-jobs-unified-top-card__job-insight, [class*="insight"]'));
+    // Salary from insights
+    const insights = document.querySelectorAll('[class*="insight"]');
     for (const el of insights) {
-      const txt = el.textContent || '';
-      const salaryMatch = txt.match(/\$[\d,.]+[kK]?\s*[-–to]+\s*\$[\d,.]+[kK]?/);
-      if (salaryMatch) { salary = salaryMatch[0].trim(); break; }
+      const m = el.textContent.match(/\$[\d,.]+ *[kK]?[ –-]+\$[\d,.]+ *[kK]?/);
+      if (m) { salary = m[0].trim(); break; }
     }
   }
 
-  // ── Indeed ──
+  // ── Indeed ────────────────────────────────────────────────────────────────
   else if (hostname.includes('indeed.com')) {
-    title = document.querySelector('h1.jobsearch-JobInfoHeader-title, [data-testid="jobsearch-JobInfoHeader-title"]')?.textContent?.trim() || '';
-    company = document.querySelector('[data-testid="inlineHeader-companyName"], .icl-u-lg-mr--sm')?.textContent?.trim() || '';
-    location = document.querySelector('[data-testid="job-location"]')?.textContent?.trim() || '';
+    title    = document.querySelector('h1.jobsearch-JobInfoHeader-title, [data-testid="jobsearch-JobInfoHeader-title"], h1[class*="title"]')?.textContent?.trim() || '';
+    company  = document.querySelector('[data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"]')?.textContent?.trim() || '';
+    location = document.querySelector('[data-testid="job-location"], [class*="location"]')?.textContent?.trim() || '';
+    const salaryEl = document.querySelector('[id*="salaryInfoAndJobType"], [class*="salary"]');
+    if (salaryEl) salary = salaryEl.textContent.trim();
   }
 
-  // ── Greenhouse ──
-  else if (hostname.includes('greenhouse.io') || url.includes('greenhouse.io')) {
-    title = document.querySelector('h1.app-title, h1[class*="title"]')?.textContent?.trim() || '';
-    company = document.querySelector('.company-name, h2[class*="company"]')?.textContent?.trim() || '';
-    location = document.querySelector('.location')?.textContent?.trim() || '';
+  // ── Greenhouse ────────────────────────────────────────────────────────────
+  else if (hostname.includes('greenhouse.io')) {
+    title    = document.querySelector('h1.app-title, h1[class*="title"], h1')?.textContent?.trim() || '';
+    company  = document.querySelector('.company-name, [class*="company"]')?.textContent?.trim() || '';
+    location = document.querySelector('.location, [class*="location"]')?.textContent?.trim() || '';
   }
 
-  // ── Lever ──
+  // ── Lever ─────────────────────────────────────────────────────────────────
   else if (hostname.includes('lever.co')) {
-    title = document.querySelector('h2[data-qa="posting-name"]')?.textContent?.trim() || '';
-    company = document.querySelector('.main-header-logo img')?.alt?.trim() || document.title.split(' - ').slice(-1)[0]?.trim() || '';
-    location = document.querySelector('[data-qa="posting-categories"] .sort-by-time')?.textContent?.trim() || '';
+    title    = document.querySelector('h2[data-qa="posting-name"], .posting-headline h2')?.textContent?.trim() || '';
+    company  = document.querySelector('.main-header-logo img')?.alt?.trim() || '';
+    location = document.querySelector('[data-qa="posting-categories"] .sort-by-time, .posting-categories .sort-by-time')?.textContent?.trim() || '';
   }
 
-  // ── Workday ──
-  else if (hostname.includes('myworkdayjobs.com') || hostname.includes('wd1.myworkday.com')) {
-    title = document.querySelector('[data-automation-id="jobPostingHeader"]')?.textContent?.trim() || '';
+  // ── Workday ───────────────────────────────────────────────────────────────
+  else if (hostname.includes('myworkdayjobs.com') || hostname.includes('myworkdaysite.com')) {
+    title    = document.querySelector('[data-automation-id="jobPostingHeader"]')?.textContent?.trim() || '';
     location = document.querySelector('[data-automation-id="locations"]')?.textContent?.trim() || '';
+    company  = document.querySelector('[data-automation-id="company-name"]')?.textContent?.trim() || '';
+    const remoteEl = document.querySelector('[data-automation-id="Time_Type_facet_1_0"]');
+    if (/remote/i.test(location || '')) workType = 'Remote';
   }
 
-  // ── Generic fallback ──
+  // ── SmartRecruiters ───────────────────────────────────────────────────────
+  else if (hostname.includes('smartrecruiters.com')) {
+    title    = document.querySelector('.job-title h1, h1[class*="title"]')?.textContent?.trim() || '';
+    company  = document.querySelector('.hiring-company-name, [class*="company"]')?.textContent?.trim() || '';
+    location = document.querySelector('[class*="location"] span, .job-location')?.textContent?.trim() || '';
+  }
+
+  // ── Ashby ─────────────────────────────────────────────────────────────────
+  else if (hostname.includes('ashbyhq.com')) {
+    title    = document.querySelector('h1')?.textContent?.trim() || '';
+    location = document.querySelector('[class*="location"], [class*="Location"]')?.textContent?.trim() || '';
+  }
+
+  // ── Workable ──────────────────────────────────────────────────────────────
+  else if (hostname.includes('workable.com')) {
+    title    = document.querySelector('h1[class*="title"], h1')?.textContent?.trim() || '';
+    company  = document.querySelector('[class*="company"] h2, [class*="company-name"]')?.textContent?.trim() || '';
+    location = document.querySelector('[class*="location"] li, [class*="location"]')?.textContent?.trim() || '';
+  }
+
+  // ── Glassdoor ─────────────────────────────────────────────────────────────
+  else if (hostname.includes('glassdoor.com')) {
+    title    = document.querySelector('[data-test="job-title"], h1[class*="title"], h1')?.textContent?.trim() || '';
+    company  = document.querySelector('[data-test="employer-name"], [class*="employer-name"]')?.textContent?.trim() || '';
+    location = document.querySelector('[data-test="location"], [class*="location"]')?.textContent?.trim() || '';
+  }
+
+  // ── ZipRecruiter ──────────────────────────────────────────────────────────
+  else if (hostname.includes('ziprecruiter.com')) {
+    title    = document.querySelector('h1.job_title, h1[class*="title"]')?.textContent?.trim() || '';
+    company  = document.querySelector('.hiring_company_name, [class*="company"]')?.textContent?.trim() || '';
+    location = document.querySelector('.location_name, [class*="location"]')?.textContent?.trim() || '';
+  }
+
+  // ── Generic fallback ──────────────────────────────────────────────────────
   if (!title) {
-    // Try h1 first
-    title = document.querySelector('h1')?.textContent?.trim() || '';
-    // Remove common suffixes
-    title = title.replace(/\s*[|–-].*$/, '').trim();
+    // Try JSON-LD first
+    const ld = document.querySelector('script[type="application/ld+json"]');
+    if (ld) {
+      try {
+        const data = JSON.parse(ld.textContent);
+        const job = Array.isArray(data) ? data.find(d => d['@type'] === 'JobPosting') : data['@type'] === 'JobPosting' ? data : null;
+        if (job) {
+          title   = title   || job.title || '';
+          company = company || job.hiringOrganization?.name || '';
+          const loc = job.jobLocation?.address;
+          location = location || [loc?.addressLocality, loc?.addressRegion].filter(Boolean).join(', ');
+          if (job.jobLocationType === 'TELECOMMUTE') workType = 'Remote';
+        }
+      } catch {}
+    }
+  }
+  if (!title) {
+    title = (document.querySelector('h1')?.textContent || '').trim();
+    title = title.replace(/\s*[|–\-].*$/, '').trim().slice(0, 80);
   }
   if (!company) {
-    // Try common patterns
-    const ogSite = document.querySelector('meta[property="og:site_name"]')?.content;
-    company = ogSite || document.title.split(' - ').slice(-1)[0]?.split(' | ').slice(-1)[0]?.trim() || '';
+    company = document.querySelector('meta[property="og:site_name"]')?.content
+      || document.title.split(/[|\-–]/).slice(-1)[0]?.trim()
+      || '';
   }
 
-  // Remote/hybrid detection from page text
+  // Work type from page text if not found
   if (!workType) {
-    const pageText = document.body?.innerText?.toLowerCase() || '';
-    const first2000 = pageText.slice(0, 2000);
-    if (first2000.includes('fully remote') || first2000.includes('100% remote')) workType = 'Remote';
-    else if (first2000.includes('hybrid')) workType = 'Hybrid';
-    else if (first2000.includes('on-site') || first2000.includes('onsite')) workType = 'On-site';
+    const pageText = (document.body?.innerText || '').toLowerCase().slice(0, 3000);
+    if (/fully remote|100% remote|remote-first/.test(pageText)) workType = 'Remote';
+    else if (/\bhybrid\b/.test(pageText)) workType = 'Hybrid';
+    else if (/on-site|onsite|in-office/.test(pageText)) workType = 'On-site';
+    else if (/\bremote\b/.test(pageText)) workType = 'Remote';
   }
 
-  sendResponse({ title, company, location, salary, workType });
+  // Extract job description body text for AI fallback
+  const bodyText = (() => {
+    // Try specific containers first
+    const containers = [
+      document.querySelector('[class*="description"]'),
+      document.querySelector('[class*="job-description"]'),
+      document.querySelector('.jobsearch-JobComponent-description'),
+      document.querySelector('[data-testid="jobsearch-jobDescriptionText"]'),
+      document.querySelector('main article'),
+      document.querySelector('main'),
+      document.querySelector('article'),
+    ].filter(Boolean);
+    const el = containers[0];
+    if (el) return el.innerText?.replace(/\s+/g, ' ').trim().slice(0, 6000) || '';
+    // Last resort: body text
+    return document.body?.innerText?.replace(/\s+/g, ' ').trim().slice(0, 6000) || '';
+  })();
+
+  sendResponse({ title, company, location, salary, workType, bodyText });
   return true;
 });

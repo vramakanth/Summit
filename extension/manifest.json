@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Pursuit — Job Tracker",
-  "version": "1.0.0",
-  "description": "Add job postings to your Pursuit tracker in one click from any page.",
-  "permissions": ["activeTab", "storage"],
+  "name": "Summit — Job Tracker",
+  "version": "2.0.0",
+  "description": "Add any job posting to Summit in one click. Works on LinkedIn, Indeed, Greenhouse, Workday, and more.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://jobsummit.app/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
