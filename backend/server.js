@@ -160,7 +160,7 @@ function adminMiddleware(req, res, next) {
 }
 
 // ── AI helpers ───────────────────────────────────────────────────────────────
-async function fetchTimeout(url, opts, ms = 60000) {
+async function fetchTimeout(url, opts, ms = 20000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
@@ -384,7 +384,7 @@ async function fetchATS(rawUrl) {
   try {
     const r = await fetchTimeout('https://r.jina.ai/' + url, {
       headers: { 'User-Agent': UA, Accept: 'text/plain,*/*', 'X-Return-Format': 'text' }
-    }, 20000);
+    }, 12000);
     if (r.ok) {
       const raw = await r.text();
       const text = raw
@@ -495,7 +495,7 @@ app.post('/api/extract-fields', authMiddleware, async (req, res) => {
 Fields: title(string), company(string), location(city+state only, null if remote-only), workType("Remote"|"Hybrid"|"On-site"|null), remote(boolean), salary(ONLY real dollar amounts like "$120k–$150k" or null — never invent, never use "Competitive" or "DOE"). ${salaryHint}`;
   const usr = `Extract from this job posting:\n\n${postingText.slice(0, 4000)}`;
   try {
-    const parsed = parseJson(await callAI(['openrouter','groq','google'], sys, usr, 400));
+    const parsed = parseJson(await callAI(['groq','openrouter','google'], sys, usr, 400));
     // Always prefer DOM-extracted salary over AI-guessed salary
     if (domSalary) parsed.salary = domSalary;
     res.json(parsed);
@@ -513,7 +513,7 @@ app.post('/api/tailor', authMiddleware, async (req, res) => {
   const sys = 'You are a professional career coach. Return ONLY the tailored document as clean HTML using <h1>,<h2>,<h3>,<p>,<strong>,<ul>,<li>. Preserve all section structure. No preamble, no labels, no backticks.';
   const usr = `Tailor this ${label} for the role. Return only clean HTML.\n\nCompany: ${company}\nRole: ${title}\n${location?`Location: ${location}`:''}${salary?`\nSalary: ${salary}`:''}${context?`\nNotes: ${context}`:''}${postingText?`\n\nJob posting:\n${postingText.slice(0,3000)}`:''}\n\n${label} TO TAILOR:\n${content}`;
   try {
-    const result = await callAI(['openrouter','groq','google'], sys, usr, 3000);
+    const result = await callAI(['groq','openrouter','google'], sys, usr, 3000);
     res.json({ result: result.trim(), docType });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -532,7 +532,7 @@ app.post('/api/tailor-docx', authMiddleware, async (req, res) => {
     const label = docType === 'resume' ? 'RESUME' : 'COVER LETTER';
     const sys = `You are a professional career coach. Tailor this ${label}. Return ONLY the tailored text, same length and structure.`;
     const usr = `Company: ${company}\nRole: ${title}\n${location||''}\n${salary||''}\n${context||''}\n${postingText?postingText.slice(0,2000):''}\n\nOriginal ${label}:\n${rawText.slice(0,3000)}\n\nReturn ONLY the tailored text.`;
-    const tailored = await callAI(['openrouter','groq','google'], sys, usr, 3000);
+    const tailored = await callAI(['groq','openrouter','google'], sys, usr, 3000);
     // Replace text content in XML runs proportionally
     const textRuns = [...xml.matchAll(/<w:r[ >][\s\S]*?<\/w:r>/g)].map(m=>m[0]).filter(r=>/<w:t[ >]/.test(r));
     if (textRuns.length === 0) return res.status(422).json({ error: 'No text runs in DOCX' });
@@ -599,7 +599,7 @@ ${postingText?'Job posting context: '+postingText.slice(0,800):''}
 app.post('/api/outreach-targets', authMiddleware, async (req, res) => {
   const { company, title } = req.body;
   try {
-    const raw = await callAI(['openrouter','groq','google'],
+    const raw = await callAI(['groq','openrouter','google'],
       'Return valid JSON only, no markdown.',
       `Suggest 3 LinkedIn contacts to reach out to when applying for ${title} at ${company}. Return: {"contacts":[{"title":"...","reason":"...","searchTip":"..."}]}`,
       500);
@@ -612,7 +612,7 @@ app.post('/api/interview-questions', authMiddleware, async (req, res) => {
   const avoidSection = existingQuestions.length > 0
     ? `\n\nDO NOT repeat these existing questions:\n${existingQuestions.map(q => '- ' + q).join('\n')}` : '';
   try {
-    const raw = await callAI(['openrouter','groq','google'],
+    const raw = await callAI(['groq','openrouter','google'],
       'Return valid JSON only, no markdown, no backticks.',
       `Generate ${count} interview questions for the role: ${title} at ${company}.${postingText ? '\nJob posting context: ' + postingText.slice(0, 1500) : ''}${avoidSection}
 
@@ -630,7 +630,7 @@ Return ONLY this JSON:
 app.post('/api/keyword-gap', authMiddleware, async (req, res) => {
   const { resumeText, postingText } = req.body;
   try {
-    const raw = await callAI(['openrouter','groq','google'],
+    const raw = await callAI(['groq','openrouter','google'],
       'Return valid JSON only, no markdown.',
       `Find keyword gaps between this resume and job posting.\nPosting: ${(postingText||'').slice(0,2000)}\nResume: ${(resumeText||'').slice(0,2000)}\nReturn: {"matched":["keyword"],"missing":["keyword"],"score":75,"suggestions":["add X to Y"]}`,
       800);
@@ -641,7 +641,7 @@ app.post('/api/keyword-gap', authMiddleware, async (req, res) => {
 app.post('/api/email-template', authMiddleware, async (req, res) => {
   const { company, title, type, context } = req.body;
   try {
-    const raw = await callAI(['openrouter','groq','google'],
+    const raw = await callAI(['groq','openrouter','google'],
       'Return valid JSON only, no markdown.',
       `Write a ${type||'follow-up'} email for ${title} at ${company}. ${context||''}\nReturn: {"subject":"...","body":"..."}`,
       500);
@@ -652,7 +652,7 @@ app.post('/api/email-template', authMiddleware, async (req, res) => {
 app.post('/api/salary-benchmark', authMiddleware, async (req, res) => {
   const { title, location, company } = req.body;
   try {
-    const raw = await callAI(['openrouter','groq','google'],
+    const raw = await callAI(['groq','openrouter','google'],
       'Return valid JSON only, no markdown.',
       `Salary benchmarks for ${title} in ${location||'United States'}${company?` at ${company}`:''}.\nReturn: {"low":120000,"median":150000,"high":180000,"currency":"USD","notes":"..."}`,
       300);
