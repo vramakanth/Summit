@@ -25,6 +25,7 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const GROQ_MODEL     = process.env.GROQ_MODEL     || 'llama-3.3-70b-versatile';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
 const GOOGLE_MODEL   = process.env.GOOGLE_MODEL   || 'gemini-2.0-flash';
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 // ── Data directories ─────────────────────────────────────────────────────────
 const USERS_FILE  = path.join(DATA_DIR, 'users.json');
