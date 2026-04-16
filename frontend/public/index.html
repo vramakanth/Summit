@@ -2102,7 +2102,7 @@ function renderJobList() {
           ${j.followUpDate && new Date(j.followUpDate) <= new Date(Date.now()+86400000*2) ? '<span style="font-size:9px;padding:1px 4px;background:rgba(251,191,36,0.15);color:var(--amber);border-radius:3px">↩</span>' : ''}
           ${j.deadline && new Date(j.deadline) <= new Date(Date.now()+86400000*3) ? '<span style="font-size:9px;padding:1px 4px;background:rgba(239,68,68,0.12);color:var(--red);border-radius:3px">⏰</span>' : ''}
           <span style="flex:1"></span>
-          <button onclick="event.stopPropagation();toggleWatchlist('${j.id}')" title="${j.watchlist?'Remove from watchlist':'Add to watchlist'}" style="padding:0;background:none;border:none;cursor:pointer;font-size:13px;line-height:1;color:${j.watchlist?'var(--accent-bg)':'var(--border2)'};transition:color .15s;flex-shrink:0">${j.watchlist?'★':'☆'}</button>
+          <button onclick="event.stopPropagation();toggleWatchlist('${j.id}')" title="${j.watchlist?'Remove from watchlist':'Add to watchlist'}" style="padding:3px 4px;background:none;border:none;cursor:pointer;font-size:13px;line-height:1;color:${j.watchlist?'var(--accent-bg)':'var(--border2)'};transition:color .15s;flex-shrink:0;border-radius:3px;min-width:20px;text-align:center">${j.watchlist?'★':'☆'}</button>
           <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${fmtDate(j.createdAt)}</span>
         </div>
       </div>
@@ -5307,7 +5307,9 @@ function toggleWatchlist(jobId) {
   const j = jobs[jobId]; if (!j) return;
   j.watchlist = !j.watchlist;
   if (j.watchlist && !j.watchlistAddedAt) j.watchlistAddedAt = Date.now();
-  scheduleSave(); renderDetail();
+  scheduleSave();
+  renderJobList();   // update inline star in left pane
+  renderDetail();    // update star button in detail header
 }
 
 async function addToWatchlist() {

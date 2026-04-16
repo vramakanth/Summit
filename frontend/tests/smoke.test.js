@@ -143,6 +143,15 @@ t('getFilteredJobs handles watchlist', () => {
   const idx = src.indexOf("currentFilter === 'watchlist'");
   if (idx < 0) throw new Error('watchlist filter logic missing');
 });
+t('toggleWatchlist calls renderJobList (syncs inline star)', () => {
+  const idx = src.indexOf('function toggleWatchlist');
+  const body = src.slice(idx, idx + 300);
+  if (!body.includes('renderJobList')) throw new Error('renderJobList not called — inline star wont update');
+});
+t('Inline star has adequate hit target (padding)', () => {
+  const rl = src.slice(src.indexOf('function renderJobList'), src.indexOf('function selectJob'));
+  if (!rl.includes('min-width:20px')) throw new Error('star hit target too small');
+});
 t('Inline star in job list item',      () => {
   // Star button inside renderJobList — uses event.stopPropagation to avoid selecting job
   const rl = src.slice(src.indexOf('function renderJobList'), src.indexOf('function selectJob'));
