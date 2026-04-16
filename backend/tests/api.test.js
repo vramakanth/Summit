@@ -104,7 +104,11 @@ describe('POST /api/login', () => {
 
 // ─── Jobs (authenticated) ─────────────────────────────────────────────────────
 
-describe('Jobs API', () => {
+// ─── Jobs API ─────────────────────────────────────────────────────────────────
+// The jobs API uses a simple GET (returns full object) + PUT (saves full object).
+// No individual POST/PATCH/DELETE routes — the frontend manages the object client-side.
+
+describe('Jobs API — GET + PUT (full object store)', () => {
   let token;
 
   beforeAll(async () => {
@@ -113,75 +117,59 @@ describe('Jobs API', () => {
     token = res.body.token;
   });
 
-  it('GET /api/jobs returns empty array initially', async () => {
-    const res = await request(app).get('/api/jobs').set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(0);
-  });
-
-  it('GET /api/jobs returns 401 without token', async () => {
+  it('GET /api/jobs requires auth', async () => {
     const res = await request(app).get('/api/jobs');
     expect(res.status).toBe(401);
   });
 
-  it('POST /api/jobs creates a job', async () => {
-    const res = await request(app)
-      .post('/api/jobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ title: 'Software Engineer', company: 'Acme', status: 'to apply' });
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('id');
-    expect(res.body.title).toBe('Software Engineer');
-    expect(res.body.company).toBe('Acme');
-  });
-
-  it('POST /api/jobs rejects missing title', async () => {
-    const res = await request(app)
-      .post('/api/jobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ company: 'No Title Corp' });
-    expect(res.status).toBe(400);
-  });
-
-  it('GET /api/jobs returns created jobs', async () => {
-    await request(app)
-      .post('/api/jobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ title: 'PM Role', company: 'Beta Inc', status: 'applied' });
+  it('GET /api/jobs returns empty object for new user', async () => {
     const res = await request(app).get('/api/jobs').set('Authorization', `Bearer ${token}`);
-    expect(res.body.length).toBeGreaterThan(0);
-    expect(res.body.some(j => j.company === 'Beta Inc')).toBe(true);
-  });
-
-  it('PATCH /api/jobs/:id updates a job', async () => {
-    const createRes = await request(app)
-      .post('/api/jobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ title: 'Old Title', company: 'Corp', status: 'to apply' });
-    const id = createRes.body.id;
-    const res = await request(app)
-      .patch(`/api/jobs/${id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ title: 'New Title', status: 'applied' });
     expect(res.status).toBe(200);
-    expect(res.body.title).toBe('New Title');
-    expect(res.body.status).toBe('applied');
+    expect(res.headers['content-type']).toMatch(/json/);
+    // Returns an object (keyed by job id), not an array
+    expect(typeof res.body).toBe('object');
+    expect(Array.isArray(res.body)).toBe(false);
   });
 
-  it('DELETE /api/jobs/:id removes a job', async () => {
-    const createRes = await request(app)
-      .post('/api/jobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ title: 'Delete Me', company: 'Gone Corp', status: 'to apply' });
-    const id = createRes.body.id;
-    const del = await request(app)
-      .delete(`/api/jobs/${id}`)
-      .set('Authorization', `Bearer ${token}`);
-    expect(del.status).toBe(200);
-    // Verify it's gone
-    const list = await request(app).get('/api/jobs').set('Authorization', `Bearer ${token}`);
-    expect(list.body.some(j => j.id === id)).toBe(false);
+  it('PUT /api/jobs requires auth', async () => {
+    const res = await request(app).put('/api/jobs').send({ job1: { title: 'Test' } });
+    expect(res.status).toBe(401);
+  });
+
+  it('PUT /api/jobs saves the full jobs object', async () => {
+    const jobs = {
+      'abc123': { id: 'abc123', title: 'Software Engineer', company: 'Acme', status: 'to apply', createdAt: Date.now() },
+    };
+    const save = await request(app).put('/api/jobs').set('Authorization', `Bearer ${token}`).send(jobs);
+    expect(save.status).toBe(200);
+    expect(save.body.ok).toBe(true);
+  });
+
+  it('GET /api/jobs returns previously saved jobs', async () => {
+    const jobs = {
+      'job1': { id: 'job1', title: 'Software Engineer', company: 'Acme', status: 'to apply', createdAt: Date.now() },
+      'job2': { id: 'job2', title: 'Product Manager', company: 'Beta', status: 'applied', createdAt: Date.now() },
+    };
+    await request(app).put('/api/jobs').set('Authorization', `Bearer ${token}`).send(jobs);
+    const res = await request(app).get('/api/jobs').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body['job1'].title).toBe('Software Engineer');
+    expect(res.body['job2'].company).toBe('Beta');
+  });
+
+  it('PUT /api/jobs overwrites (full object replace)', async () => {
+    const v1 = { 'j1': { id: 'j1', title: 'Old', company: 'OldCo', status: 'to apply', createdAt: Date.now() } };
+    const v2 = { 'j2': { id: 'j2', title: 'New', company: 'NewCo', status: 'applied', createdAt: Date.now() } };
+    await request(app).put('/api/jobs').set('Authorization', `Bearer ${token}`).send(v1);
+    await request(app).put('/api/jobs').set('Authorization', `Bearer ${token}`).send(v2);
+    const res = await request(app).get('/api/jobs').set('Authorization', `Bearer ${token}`);
+    expect(res.body['j1']).toBeUndefined();  // overwritten
+    expect(res.body['j2'].title).toBe('New');
+  });
+
+  it('PUT /api/jobs rejects non-object body', async () => {
+    const res = await request(app).put('/api/jobs').set('Authorization', `Bearer ${token}`).send('invalid');
+    expect(res.status).toBe(400);
   });
 });
 

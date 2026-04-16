@@ -375,62 +375,7 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
 });
 
 // ── ATS helpers ──────────────────────────────────────────────────────────────
-function cleanJobUrl(raw) {
-  try {
-    const u = new URL(raw);
-    if (u.hash.startsWith('#:~:')) u.hash = '';
-    return u.toString();
-  } catch { return raw.split('#')[0]; }
-}
-
-function detectATS(url) {
-  if (/boards?\.greenhouse\.io|\.greenhouse\.io\/jobs/i.test(url))  return 'greenhouse';
-  if (/jobs\.lever\.co/i.test(url))                                  return 'lever';
-  if (/myworkdayjobs\.com|myworkdaysite\.com/i.test(url))           return 'workday';
-  if (/bamboohr\.com\/jobs/i.test(url))                             return 'bamboohr';
-  if (/ashbyhq\.com/i.test(url))                                    return 'ashby';
-  if (/jobs\.smartrecruiters\.com/i.test(url))                      return 'smartrecruiters';
-  if (/linkedin\.com\/jobs/i.test(url))                             return 'linkedin';
-  if (/indeed\.com/i.test(url))                                     return 'indeed';
-  if (/glassdoor\.com/i.test(url))                                  return 'glassdoor';
-  if (/icims\.com|[?&]domain=|\/careers\/job\/\d+/i.test(url))     return 'icims';
-  if (/jobvite\.com/i.test(url))                                    return 'jobvite';
-  if (/workable\.com/i.test(url))                                   return 'workable';
-  if (/recruitee\.com/i.test(url))                                  return 'recruitee';
-  if (/pinpointhq\.com/i.test(url))                                 return 'pinpoint';
-  return 'generic';
-}
-
-/** Extract title+company from a URL slug as last-resort fallback */
-function slugFallback(url) {
-  try {
-    const u = new URL(url);
-    // Get last meaningful path segment
-    const segments = u.pathname.split('/').filter(Boolean);
-    const slug = segments[segments.length - 1] || segments[segments.length - 2] || '';
-    if (!slug || slug.length < 5) return null;
-    // Strip leading job-id numbers like "12345-job-title" or "JR-12345-job-title"
-    const cleaned = slug.replace(/^[\dA-Z]+-\d+-?/, '').replace(/^[\d]+-/, '');
-    const words = cleaned.split(/[-_]/).filter(w => w.length > 1);
-    const stopWords = new Set(['remote','united','states','us','usa','ca','uk','au','hybrid','onsite','in']);
-    let titleWords = [], isRemote = false, isHybrid = false;
-    for (const w of words) {
-      const lw = w.toLowerCase();
-      if (lw === 'remote') { isRemote = true; continue; }
-      if (lw === 'hybrid') { isHybrid = true; continue; }
-      if (!stopWords.has(lw)) titleWords.push(w.charAt(0).toUpperCase() + w.slice(1));
-    }
-    const title = titleWords.join(' ');
-    const host = u.hostname.replace(/^(careers|jobs|apply|www)\./, '');
-    const company = host.split('.')[0];
-    const companyName = company.charAt(0).toUpperCase() + company.slice(1);
-    return title.length > 3 ? {
-      title, company: companyName,
-      workType: isRemote ? 'Remote' : isHybrid ? 'Hybrid' : null,
-      remote: isRemote,
-    } : null;
-  } catch { return null; }
-}
+const { cleanJobUrl, detectATS, slugFallback } = require('./ats-helpers');
 
 async function fetchATS(rawUrl) {
   const url  = cleanJobUrl(rawUrl);
@@ -583,6 +528,10 @@ async function fetchATS(rawUrl) {
     if (sf) return { fields:sf, html:'', text:'', _ats:'icims', _slugFallback:true };
   }
 
+  // ── Eightfold AI (careers.company.com, Dexcom etc.) ────────────────────────
+  // Eightfold embeds full JSON-LD in the initial HTML — server-side fetch works.
+  // Fall through to generic HTML handler which extracts JSON-LD.
+
   // ── Generic HTML fetch (Indeed, Glassdoor, ZipRecruiter, Dice, Wellfound, etc.) ──
   const slugFields = slugFallback(url);
   try {
@@ -619,13 +568,72 @@ async function fetchATS(rawUrl) {
         } catch {}
       }
     }
+    // Scan ALL script tags for salary and job data
+    let scriptSalary = null;
+    let jsonLdText = '';  // description text from JSON-LD (useful when body is SPA shell)
+    const scriptTags = html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+    for (const [, scriptContent] of scriptTags) {
+      if (scriptContent.length < 50) continue;
+
+      // --- JSON-LD: extract description text AND salary from it ---
+      if (scriptContent.includes('"@type"') && scriptContent.includes('JobPosting')) {
+        try {
+          const jld = JSON.parse(scriptContent.trim());
+          const job = Array.isArray(jld) ? jld.find(d => d['@type'] === 'JobPosting') : jld['@type'] === 'JobPosting' ? jld : null;
+          if (job) {
+            // Get full description text for AI extraction later
+            if (job.description) jsonLdText = job.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
+            // Check for salary in description text (common: "Salary:\n\n$231,100.00 - $385,100.00")
+            if (!scriptSalary && jsonLdText) {
+              const descSalary = jsonLdText.match(/[Ss]alary[:\s]+\$([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*\$([\d,]+(?:\.\d+)?)/);
+              if (descSalary) {
+                const fmt = (s) => {
+                  const n = parseFloat(s.replace(/,/g,''));
+                  return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
+                };
+                scriptSalary = fmt(descSalary[1]) + '–' + fmt(descSalary[2]);
+              }
+            }
+            // baseSalary structured field
+            if (!scriptSalary && job.baseSalary?.value) {
+              const bv = job.baseSalary.value;
+              if (bv.minValue && bv.maxValue) {
+                const fmt = (n) => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
+                scriptSalary = fmt(bv.minValue) + '–' + fmt(bv.maxValue);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // --- Non-JSON-LD script: look for salary patterns in embedded data ---
+      if (!scriptSalary) {
+        const salaryMatch = scriptContent.match(/"Salary":\s*"(\$[\d,.]+ ?[-\u2013\u2014] ?\$[\d,.]+)"/)
+          || scriptContent.match(/"salary_range":\s*"([^"]+)"/i)
+          || scriptContent.match(/"minValue":\s*([\d.]+)[\s\S]{0,100}"maxValue":\s*([\d.]+)/);
+        if (salaryMatch) {
+          if (salaryMatch[2]) {
+            const min = Math.round(parseFloat(salaryMatch[1])).toLocaleString();
+            const max = Math.round(parseFloat(salaryMatch[2])).toLocaleString();
+            scriptSalary = `$${min}–$${max}`;
+          } else {
+            scriptSalary = salaryMatch[1].trim();
+          }
+        }
+      }
+    }
+
     // Extract main content text
     const bodyMatch = html.match(/<(?:main|article)[^>]*>([\s\S]*?)<\/(?:main|article)>/i);
     const bodyHtml = bodyMatch ? bodyMatch[1] : html;
-    const text = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
-    const isSpaShell = text.length < 200;
-    const fields = jsonLdFields || (isSpaShell ? slugFields : null);
-    return { fields, html:html.slice(0,500000), text:isSpaShell?'':text, _ats:ats, _spaShell:isSpaShell&&!jsonLdFields };
+    const bodyText = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
+    const isSpaShell = bodyText.length < 200;
+    // Use JSON-LD description as text fallback when body is a SPA shell (e.g. Dexcom/Eightfold)
+    const text = isSpaShell && jsonLdText ? jsonLdText : bodyText;
+    const baseFields = jsonLdFields || (isSpaShell ? slugFields : null);
+    // Merge script-extracted salary into fields
+    const fields = scriptSalary ? { ...(baseFields || {}), salary: scriptSalary } : baseFields;
+    return { fields, html:html.slice(0,500000), text, _ats:ats, _spaShell:isSpaShell&&!jsonLdFields };
   } catch(e) {
     if (slugFields) return { fields:slugFields, html:'', text:'', _ats:ats, _slugFallback:true };
     return { html:'', text:'', error:e.message, _ats:ats };

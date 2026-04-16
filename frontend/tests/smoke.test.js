@@ -155,3 +155,39 @@ describe('Regression — showScreen displayMap', () => {
     expect(html).not.toContain("app:''");
   });
 });
+
+describe('Regression — extension download', () => {
+  it('downloadExtension function is defined in JS', () => {
+    expect(html).toContain('function downloadExtension()');
+  });
+
+  it('extension download button calls downloadExtension()', () => {
+    expect(html).toContain('onclick="downloadExtension()"');
+  });
+
+  it('extension folder name is summit-extension (not applied-extension)', () => {
+    expect(html).toContain('summit-extension');
+    expect(html).not.toContain('applied-extension');
+  });
+});
+
+describe('Regression — add job modal wiring', () => {
+  it('add-modal exists', () => expect(html).toContain('id="add-modal"'));
+
+  it('save job button calls addJob() not createJob()', () => {
+    expect(html).toContain('onclick="addJob()"');
+    expect(html).not.toContain('onclick="createJob()"');
+  });
+
+  it('parseJobUrl sends postingText field (not text) to extract-fields', () => {
+    expect(html).toContain('postingText: text.slice');
+    expect(html).not.toContain('body: JSON.stringify({ url, text: text.slice');
+  });
+});
+
+describe('Regression — layout: app screen flex', () => {
+  it("displayMap sets app to 'flex' not '' (empty string is falsy, causes block layout)", () => {
+    expect(html).toContain("app:'flex'");
+    expect(html).not.toContain("app:''");
+  });
+});
