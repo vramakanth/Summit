@@ -163,9 +163,13 @@ function adminMiddleware(req, res, next) {
 // ── AI helpers ───────────────────────────────────────────────────────────────
 async function fetchTimeout(url, opts, ms = 20000) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
-  finally { clearTimeout(t); }
+  // Belt-and-suspenders: AbortController + hard Promise.race timeout
+  // Node native fetch sometimes ignores abort signals on Render's free tier
+  const fetchProm = fetch(url, { ...opts, signal: ctrl.signal });
+  const timeoutProm = new Promise((_, reject) =>
+    setTimeout(() => { ctrl.abort(); reject(new Error(`Timeout ${ms}ms: ${url.slice(0,60)}`)); }, ms)
+  );
+  return Promise.race([fetchProm, timeoutProm]);
 }
 
 async function callGroq(sys, usr, maxTok = 4000) {
@@ -226,7 +230,32 @@ async function callAI(order, sys, usr, maxTok = 4000) {
 }
 
 function parseJson(raw) {
-  return JSON.parse(raw.replace(/```json|```/g, '').trim());
+  // Strip markdown fences
+  let s = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  // Remove any leading text before the first {
+  const brace = s.indexOf('{');
+  if (brace > 0) s = s.slice(brace);
+  // Try straight parse first
+  try { return JSON.parse(s); } catch {}
+  // Strategy 2: truncate at the last valid closing brace
+  // Handles cases where the AI cuts off mid-object
+  let depth = 0, lastValid = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '{') depth++;
+    else if (s[i] === '}') { depth--; if (depth === 0) { lastValid = i; break; } }
+  }
+  if (lastValid > 0) {
+    try { return JSON.parse(s.slice(0, lastValid + 1)); } catch {}
+  }
+  // Strategy 3: truncate at last complete top-level key-value pair
+  // Walk back from end to find a position where JSON is valid
+  for (let i = s.length - 1; i > 100; i--) {
+    if (s[i] === ',' || s[i] === '}') {
+      const attempt = s.slice(0, i).replace(/,\s*$/, '') + '}';
+      try { return JSON.parse(attempt); } catch {}
+    }
+  }
+  throw new Error('JSON parse failed after repair attempts');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
