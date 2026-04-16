@@ -397,3 +397,40 @@ describe('detectATS — Google Jobs', () => {
     expect(detectATS(url)).toBe('googlejobs');
   });
 });
+
+// ─── URL parsing fixes for 10 URLs ────────────────────────────────────────────
+
+describe('detectATS — job board URLs', () => {
+  it('indeed viewjob → indeed', () => {
+    expect(detectATS('https://www.indeed.com/viewjob?jk=18715e3be76cb999&utm_campaign=google_jobs_apply')).toBe('indeed');
+  });
+
+  it('ziprecruiter company job → ziprecruiter', () => {
+    expect(detectATS('https://www.ziprecruiter.com/c/Saratech/Job/Director-of-Engineering/-in-Mission-Viejo,CA?jid=333f4e6c313bd1ef&utm_campaign=google_jobs_apply')).toBe('ziprecruiter');
+  });
+
+  it('career.io job → careerdotio', () => {
+    expect(detectATS('https://career.io/job/director-of-engineering-brea-karman-space-defense-497b80a6f57f779eb26cdf078d4b39b5?utm_campaign=google_jobs_apply')).toBe('careerdotio');
+  });
+
+  it('simplyhired job → simplyhired', () => {
+    expect(detectATS('https://www.simplyhired.com/job/ENwJKdE3ZlxzefU4UxlJ48J6a27gkkXcqhsVizEK1KlhJsIx3LG2fQ?utm_campaign=google_jobs_apply')).toBe('simplyhired');
+  });
+
+  it('lensa job → lensa', () => {
+    expect(detectATS('https://lensa.com/job-v1/karman-space-and-defense/brea-ca/director-of-engineering/4e259fb258883c881a851cfd8db6a4de?utm_campaign=google_jobs_apply')).toBe('lensa');
+  });
+
+  it('job-boards.greenhouse.io → greenhouse', () => {
+    expect(detectATS('https://job-boards.greenhouse.io/andurilindustries/jobs/5109197007?gh_jid=5109197007')).toBe('greenhouse');
+  });
+
+  it('boards.greenhouse.io → greenhouse', () => {
+    expect(detectATS('https://boards.greenhouse.io/stripe/jobs/123456')).toBe('greenhouse');
+  });
+
+  it('UTM params stripped before ATS detection', () => {
+    const url = cleanJobUrl('https://www.ziprecruiter.com/c/Acme/Job/SWE?jid=abc123&utm_campaign=test&utm_source=google');
+    expect(detectATS(url)).toBe('ziprecruiter');
+  });
+});

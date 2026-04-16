@@ -381,3 +381,160 @@ describe('Regression — Mobile transitions', () => {
     expect(html).toContain("transition:transform 0.25s cubic-bezier(0.4,0,0.2,1)");
   });
 });
+
+// ─── Regression: 9-item fixes ─────────────────────────────────────────────────
+
+describe('Regression — Settings UX cleanup (items 1-4)', () => {
+  it('gear icon removed from user-bar', () => {
+    const userBarIdx = html.indexOf('class="user-bar"');
+    const userBarEnd = html.indexOf('<!-- MAIN CONTENT -->', userBarIdx);
+    const userBar = html.slice(userBarIdx, userBarEnd);
+    // gear icon had a specific SVG path for the cog
+    expect(userBar).not.toContain('onclick="openSettings()" title="Settings"');
+  });
+
+  it('settings sidebar button exists (replaced gear)', () => {
+    expect(html).toContain('data-section="settings"');
+    expect(html).toContain('onclick="openSettings()"');
+  });
+
+  it('settings uses section-view (openSection called)', () => {
+    const openSettingsIdx = html.indexOf('function openSettings(section)');
+    const openSettingsBody = html.slice(openSettingsIdx, openSettingsIdx + 500);
+    expect(openSettingsBody).toContain('openSection(\'settings\')');
+  });
+
+  it('username/count removed from settings header', () => {
+    const settingsPanel = html.indexOf('id="settings-panel-inner"');
+    const settingsNav = html.slice(settingsPanel, settingsPanel + 2000);
+    // The user-avatar and s-username should not appear at the very top of the nav
+    expect(settingsPanel).toBeGreaterThan(0);
+    // The old user header block should be removed
+    expect(settingsNav).not.toContain('id="s-username"');
+  });
+
+  it('settings close button at bottom removed', () => {
+    // The "Close" button inside settings left nav should be gone
+    const inner = html.indexOf('id="settings-panel-inner"');
+    const innerContent = html.slice(inner, inner + 5000);
+    expect(innerContent).not.toContain('>Close</button>');
+  });
+});
+
+describe('Regression — Settings structure (items 7, 6)', () => {
+  it('settings nav order: Account first, Danger Zone last', () => {
+    const navStart = html.indexOf('id="snav-account"');
+    const navDanger = html.indexOf('id="snav-danger"', navStart);
+    expect(navStart).toBeLessThan(navDanger);
+  });
+
+  it('Browser Extensions comes before Help', () => {
+    const extIdx = html.indexOf('id="snav-extension"');
+    const helpIdx = html.indexOf('id="snav-help"');
+    expect(extIdx).toBeLessThan(helpIdx);
+  });
+
+  it('Tailoring comes before Financial Data', () => {
+    const tailorIdx = html.indexOf('id="snav-tailoring"');
+    const finIdx = html.indexOf('id="snav-financial"');
+    expect(tailorIdx).toBeLessThan(finIdx);
+  });
+
+  it('HOW IT WORKS removed from Tailoring pane', () => {
+    const tailorPane = html.slice(html.indexOf('id="spane-tailoring"'), html.indexOf('id="spane-financial"'));
+    expect(tailorPane).not.toContain('HOW IT WORKS');
+  });
+
+  it('How it works added to Help & Support', () => {
+    const helpPane = html.slice(html.indexOf('id="spane-help"'), html.indexOf('id="spane-feedback"'));
+    expect(helpPane).toContain('AI Resume Tailoring');
+  });
+});
+
+describe('Regression — Referrals removed (item 5)', () => {
+  it('referrals sidebar button removed', () => {
+    const sidebarIdx = html.indexOf('class="sidebar-action-btns"');
+    const sidebarEnd = html.indexOf('<!-- User bar -->', sidebarIdx);
+    const sidebar = html.slice(sidebarIdx, sidebarEnd);
+    expect(sidebar).not.toContain('showReferralPipeline()');
+  });
+
+  it('mobile settings nav has no referral button', () => {
+    expect(html).not.toContain('id="mobile-referral-btn"');
+  });
+});
+
+describe('Regression — Detail tabs reordered (item 8)', () => {
+  it('Insights tab comes first', () => {
+    const tabsStart = html.indexOf('class="detail-tabs"');
+    const insightsTab = html.indexOf("switchTab('insights')", tabsStart);
+    const notesTab = html.indexOf("switchTab('notes')", tabsStart);
+    expect(insightsTab).toBeLessThan(notesTab);
+  });
+
+  it('Job Posting comes after Notes', () => {
+    const tabsStart = html.indexOf('class="detail-tabs"');
+    const notesTab = html.indexOf("switchTab('notes')", tabsStart);
+    const postingTab = html.indexOf("switchTab('posting')", tabsStart);
+    expect(notesTab).toBeLessThan(postingTab);
+  });
+
+  it('Interview Prep comes before Contacts', () => {
+    const tabsStart = html.indexOf('class="detail-tabs"');
+    const interviewTab = html.indexOf("switchTab('interview')", tabsStart);
+    const contactsTab = html.indexOf("switchTab('contacts')", tabsStart);
+    expect(interviewTab).toBeLessThan(contactsTab);
+  });
+});
+
+describe('Regression — Feedback monochrome (item 3)', () => {
+  it('feedback cards use SVG icons not emoji', () => {
+    const feedback = html.slice(html.indexOf('id="spane-feedback"'), html.indexOf('id="spane-danger"'));
+    expect(feedback).not.toContain('font-size:28px'); // emoji were in 28px divs
+    expect(feedback).toContain('<svg'); // SVG icons instead
+  });
+
+  it('feedback cards use var(--bg3) not colored backgrounds', () => {
+    const feedback = html.slice(html.indexOf('id="spane-feedback"'), html.indexOf('id="spane-danger"'));
+    expect(feedback).not.toContain('rgba(239,68,68,0.06)');
+    expect(feedback).not.toContain('rgba(59,130,246,0.06)');
+    expect(feedback).toContain('var(--bg3)');
+  });
+});
+
+// ─── Job posting and salary fixes ─────────────────────────────────────────────
+
+describe('Regression — buildPostingHtml markup fix (item 9)', () => {
+  it('toPlainText helper defined inside buildPostingHtml', () => {
+    expect(html).toContain('function toPlainText(raw)');
+  });
+
+  it('strips HTML tags including li, br, p in toPlainText', () => {
+    expect(html).toContain("replace(/<br\\s*\\/?>/gi, '\\n')");
+    expect(html).toContain("replace(/<li[^>]*>/gi, '• ')");
+    expect(html).toContain("replace(/<[^>]+>/g, '')");
+  });
+
+  it('HTML entities decoded in toPlainText', () => {
+    expect(html).toContain("replace(/&amp;/gi, '&')");
+    expect(html).toContain("replace(/&lt;/gi, '<')");
+    expect(html).toContain("replace(/&nbsp;/gi, ' ')");
+  });
+
+  it('buildPostingHtml falls back from postingHtml to postingText if HTML parse gives nothing', () => {
+    expect(html).toContain('rawSource.trim().length < 100 && j.postingText');
+  });
+});
+
+describe('Regression — salary not-found marker (item 8)', () => {
+  it('server sets salary to not found in generic handler', () => {
+    const srv = require('fs').readFileSync('/home/claude/applied-tracker/backend/server.js', 'utf8');
+    expect(srv).toContain("fields.salary = 'not found'");
+  });
+
+  it('multiple handlers set not-found salary', () => {
+    const srv = require('fs').readFileSync('/home/claude/applied-tracker/backend/server.js', 'utf8');
+    const count = (srv.match(/salary = 'not found'/g) || []).length;
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+});

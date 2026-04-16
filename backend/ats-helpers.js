@@ -13,7 +13,7 @@ function cleanJobUrl(raw) {
 }
 
 function detectATS(url) {
-  if (/boards?\.greenhouse\.io|\.greenhouse\.io\/jobs/i.test(url))  return 'greenhouse';
+  if (/job-boards\.greenhouse\.io|boards?\.greenhouse\.io|\.greenhouse\.io\/jobs/i.test(url)) return 'greenhouse';
   if (/jobs\.lever\.co/i.test(url))                                  return 'lever';
   if (/myworkdayjobs\.com|myworkdaysite\.com/i.test(url))           return 'workday';
   if (/bamboohr\.com\/jobs/i.test(url))                             return 'bamboohr';
@@ -31,6 +31,10 @@ function detectATS(url) {
   if (/workable\.com/i.test(url))                                   return 'workable';
   if (/recruitee\.com/i.test(url))                                  return 'recruitee';
   if (/pinpointhq\.com/i.test(url))                                 return 'pinpoint';
+  if (/ziprecruiter\.com/i.test(url))                               return 'ziprecruiter';
+  if (/simplyhired\.com/i.test(url))                                return 'simplyhired';
+  if (/lensa\.com/i.test(url))                                      return 'lensa';
+  if (/career\.io/i.test(url))                                      return 'careerdotio';
   return 'generic';
 }
 

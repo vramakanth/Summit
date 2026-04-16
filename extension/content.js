@@ -1,5 +1,5 @@
-// Summit Chrome Extension — content.js v2.1
-// Extracts job info from page DOM. Runs in the browser so gets fully-rendered JS content.
+// Summit Chrome Extension — content.js v2.2
+// Extracts job info from page DOM. Runs in the browser so gets fully-rendered content.
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action !== 'extractJob') return;
@@ -8,53 +8,43 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const hostname = window.location.hostname;
   let title = '', company = '', location = '', salary = '', workType = '';
 
-  // ── 1. JSON-LD structured data (works on most modern career sites) ─────────
-  // Always try this first — it's the most reliable structured source
-  const ldEl = document.querySelector('script[type="application/ld+json"]');
-  if (ldEl) {
+  // ── 1. JSON-LD structured data (most reliable — try first on every page) ────
+  const ldEls = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const el of ldEls) {
     try {
-      const data = JSON.parse(ldEl.textContent);
+      const data = JSON.parse(el.textContent);
       const jobs = Array.isArray(data) ? data : [data];
-      const job = jobs.find(d => d['@type'] === 'JobPosting') || jobs[0];
+      const job = jobs.find(d => d['@type'] === 'JobPosting') || null;
       if (job) {
         title   = title   || job.title || '';
         company = company || job.hiringOrganization?.name || '';
-
-        // Location
         const loc = job.jobLocation?.address;
-        const city = loc?.addressLocality, region = loc?.addressRegion;
-        if (city || region) location = location || [city, region].filter(Boolean).join(', ');
-
-        // Work type from jobLocationType
-        if (!workType) {
-          if (job.jobLocationType === 'TELECOMMUTE') workType = 'Remote';
+        if (!location && (loc?.addressLocality || loc?.addressRegion)) {
+          location = [loc.addressLocality, loc.addressRegion].filter(Boolean).join(', ');
         }
+        if (!workType && job.jobLocationType === 'TELECOMMUTE') workType = 'Remote';
 
-        // Salary — check baseSalary field first
-        if (!salary && job.baseSalary?.value) {
-          const bv = job.baseSalary.value;
-          if (bv.minValue && bv.maxValue) {
-            const fmt = n => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
-            salary = fmt(bv.minValue) + '–' + fmt(bv.maxValue);
-          }
+        // Structured salary
+        if (!salary && job.baseSalary?.value?.minValue && job.baseSalary?.value?.maxValue) {
+          const fmt = n => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
+          salary = fmt(job.baseSalary.value.minValue) + '–' + fmt(job.baseSalary.value.maxValue);
         }
-
-        // Salary — check inside description text (Dexcom/Eightfold pattern)
-        // e.g. "Salary:\n\n$231,100.00 - $385,100.00"
+        // Salary from description text (Dexcom/Eightfold pattern)
         if (!salary && job.description) {
-          const descSalary = job.description.match(
+          const dm = job.description.match(
             /[Ss]alary[\s\S]{0,20}\$([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*\$([\d,]+(?:\.\d+)?)/
           );
-          if (descSalary) {
-            const fmt = s => { const n = parseFloat(s.replace(/,/g,'')); return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString(); };
-            salary = fmt(descSalary[1]) + '–' + fmt(descSalary[2]);
+          if (dm) {
+            const fmt = s => { const n = parseFloat(s.replace(/,/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
+            salary = fmt(dm[1]) + '–' + fmt(dm[2]);
           }
         }
+        if (title) break; // Found a good job posting
       }
     } catch {}
   }
 
-  // ── 2. Site-specific DOM selectors ────────────────────────────────────────
+  // ── 2. Site-specific selectors ────────────────────────────────────────────
 
   // LinkedIn
   if (hostname.includes('linkedin.com')) {
@@ -64,30 +54,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       document.querySelector('.topcard__title') ||
       document.querySelector('h1')
     )?.textContent?.trim() || '';
-
     company = company || (
       document.querySelector('.job-details-jobs-unified-top-card__company-name a') ||
       document.querySelector('.job-details-jobs-unified-top-card__company-name') ||
       document.querySelector('.topcard__org-name-link')
     )?.textContent?.trim() || '';
-
-    const locationEl = (
-      document.querySelector('.job-details-jobs-unified-top-card__bullet') ||
-      document.querySelector('.topcard__flavor--bullet')
-    )?.textContent?.trim() || '';
-
-    const workTypePill = (
-      document.querySelector('.job-details-jobs-unified-top-card__workplace-type') ||
-      document.querySelector('[class*="workplace-type"]')
-    )?.textContent?.trim() || '';
-
-    if (/remote/i.test(workTypePill))        workType = workType || 'Remote';
-    else if (/hybrid/i.test(workTypePill))   workType = workType || 'Hybrid';
+    const locationEl = document.querySelector('.job-details-jobs-unified-top-card__bullet')?.textContent?.trim() || '';
+    const workTypePill = document.querySelector('.job-details-jobs-unified-top-card__workplace-type')?.textContent?.trim() || '';
+    if (/remote/i.test(workTypePill)) workType = workType || 'Remote';
+    else if (/hybrid/i.test(workTypePill)) workType = workType || 'Hybrid';
     else if (/on.?site/i.test(workTypePill)) workType = workType || 'On-site';
-
     location = location || locationEl.replace(/\s*(Remote|Hybrid|On-site|Onsite)\s*/gi, '').replace(/·/g, '').trim();
-
-    // LinkedIn salary from insights
     if (!salary) {
       for (const el of document.querySelectorAll('[class*="insight"]')) {
         const m = el.textContent.match(/\$[\d,.]+ *[kK]?[ –-]+\$[\d,.]+ *[kK]?/);
@@ -96,52 +73,43 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
   }
 
-  // Google Jobs (share.google/* redirects here, or google.com/search?udm=8)
+  // Google Jobs
   else if (hostname.includes('google.com') && (url.includes('udm=8') || url.includes('vssid=jobs'))) {
-    title   = title   || (
-      document.querySelector('.tNxQIb') ||
-      document.querySelector('[data-jobid] h2') ||
-      document.querySelector('.I9lvk') ||
-      document.querySelector('.KLsYvd h2')
-    )?.textContent?.trim() || '';
-    company = company || (
-      document.querySelector('.I2Cbhb') ||
-      document.querySelector('.vNEEBe')
-    )?.textContent?.trim() || '';
+    title   = title   || document.querySelector('.tNxQIb, [data-jobid] h2, .I9lvk')?.textContent?.trim() || '';
+    company = company || document.querySelector('.I2Cbhb, .vNEEBe')?.textContent?.trim() || '';
     location = location || document.querySelector('.Qk80Jf, .sMzDkb')?.textContent?.trim() || '';
-    if (!salary) {
-      const bodyText2 = document.body?.innerText || '';
-      const sm = bodyText2.match(/\$[\d,]+[kK]?\s*[-\u2013]\s*\$[\d,]+[kK]?\s*(?:a year|\/yr|annually)?/i);
-      if (sm) salary = sm[0].trim();
-    }
-    if (!workType) {
-      const pageText2 = document.body?.innerText?.toLowerCase() || '';
-      if (/\bremote\b/.test(pageText2)) workType = 'Remote';
-      else if (/\bhybrid\b/.test(pageText2)) workType = 'Hybrid';
-    }
   }
 
   // Indeed
   else if (hostname.includes('indeed.com')) {
-    title   = title   || document.querySelector('h1[class*="title"], [data-testid*="jobsearch-JobInfoHeader-title"]')?.textContent?.trim() || '';
-    company = company || document.querySelector('[data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"]')?.textContent?.trim() || '';
-    location = location || document.querySelector('[data-testid="job-location"]')?.textContent?.trim() || '';
+    title   = title   || document.querySelector('h1.jobsearch-JobInfoHeader-title, [data-testid="jobsearch-JobInfoHeader-title"], h1[class*="jobTitle"]')?.textContent?.trim() || '';
+    company = company || document.querySelector('[data-testid="inlineHeader-companyName"] a, [data-testid="inlineHeader-companyName"], [class*="companyName"]')?.textContent?.trim() || '';
+    location = location || document.querySelector('[data-testid="job-location"], [class*="companyLocation"]')?.textContent?.trim() || '';
     if (!salary) {
-      const salaryEl = document.querySelector('[id*="salaryInfoAndJobType"], [class*="salary"], [data-testid*="salary"]');
-      if (salaryEl) salary = salaryEl.textContent.trim();
+      const se = document.querySelector('[id*="salaryInfoAndJobType"], [class*="salary"], [data-testid="attribute_snippet_testid"]');
+      if (se && /\$/.test(se.textContent)) salary = se.textContent.trim();
     }
   }
 
-  // Greenhouse
+  // Greenhouse (job-boards.greenhouse.io and boards.greenhouse.io)
   else if (hostname.includes('greenhouse.io')) {
     title   = title   || document.querySelector('h1.app-title, h1[class*="title"], h1')?.textContent?.trim() || '';
     company = company || document.querySelector('.company-name, [class*="company"]')?.textContent?.trim() || '';
     location = location || document.querySelector('.location, [class*="location"]')?.textContent?.trim() || '';
+    // Greenhouse shows salary in <bdi> elements
+    if (!salary) {
+      const bdis = document.querySelectorAll('bdi');
+      const salaryBdis = Array.from(bdis).filter(b => /^\$[\d,]+/.test(b.textContent.trim()));
+      if (salaryBdis.length >= 2) {
+        const fmt = s => { const n = parseFloat(s.replace(/[\$,]/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+n; };
+        salary = fmt(salaryBdis[0].textContent.trim()) + '–' + fmt(salaryBdis[1].textContent.trim());
+      }
+    }
   }
 
   // Lever
   else if (hostname.includes('lever.co')) {
-    title   = title   || document.querySelector('h2[data-qa="posting-name"], .posting-headline h2')?.textContent?.trim() || '';
+    title   = title   || document.querySelector('h2[data-qa="posting-name"]')?.textContent?.trim() || '';
     company = company || document.querySelector('.main-header-logo img')?.alt?.trim() || '';
     location = location || document.querySelector('[data-qa="posting-categories"] .sort-by-time')?.textContent?.trim() || '';
   }
@@ -158,7 +126,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   else if (hostname.includes('smartrecruiters.com')) {
     title   = title   || document.querySelector('.job-title h1, h1[class*="title"]')?.textContent?.trim() || '';
     company = company || document.querySelector('.hiring-company-name, [class*="company"]')?.textContent?.trim() || '';
-    location = location || document.querySelector('[class*="location"] span, .job-location')?.textContent?.trim() || '';
+    location = location || document.querySelector('[class*="location"] span')?.textContent?.trim() || '';
   }
 
   // Ashby
@@ -169,31 +137,57 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Glassdoor
   else if (hostname.includes('glassdoor.com')) {
-    title   = title   || document.querySelector('[data-test="job-title"], h1[class*="title"], h1')?.textContent?.trim() || '';
+    title   = title   || document.querySelector('[data-test="job-title"], h1')?.textContent?.trim() || '';
     company = company || document.querySelector('[data-test="employer-name"], [class*="employer-name"]')?.textContent?.trim() || '';
-    location = location || document.querySelector('[data-test="location"], [class*="location"]')?.textContent?.trim() || '';
-    if (!salary) {
-      const se = document.querySelector('[data-test="salary-estimate"], [class*="salary"]');
-      if (se) salary = se.textContent.trim();
-    }
+    location = location || document.querySelector('[data-test="location"]')?.textContent?.trim() || '';
+    if (!salary) { const se = document.querySelector('[data-test="salary-estimate"]'); if(se) salary = se.textContent.trim(); }
   }
 
   // ZipRecruiter
   else if (hostname.includes('ziprecruiter.com')) {
-    title   = title   || document.querySelector('h1.job_title, h1[class*="title"]')?.textContent?.trim() || '';
-    company = company || document.querySelector('.hiring_company_name, [class*="company"]')?.textContent?.trim() || '';
+    title   = title   || document.querySelector('h1.job_title, h1[class*="title"], h1')?.textContent?.trim() || '';
+    company = company || document.querySelector('.hiring_company_name, [class*="hiringCompany"], [class*="company"]')?.textContent?.trim() || '';
     location = location || document.querySelector('.location_name, [class*="location"]')?.textContent?.trim() || '';
+    if (!salary) {
+      const se = document.querySelector('[class*="salary"], [class*="compensation"]');
+      if (se && /\$/.test(se.textContent)) salary = se.textContent.trim();
+    }
   }
 
-  // ── 3. Generic fallback — h1 + meta ───────────────────────────────────────
+  // SimplyHired
+  else if (hostname.includes('simplyhired.com')) {
+    title   = title   || document.querySelector('h1[data-testid="jobViewJobTitle"], h1[class*="title"], h1')?.textContent?.trim() || '';
+    company = company || document.querySelector('[data-testid="companyName"], [class*="company"]')?.textContent?.trim() || '';
+    location = location || document.querySelector('[data-testid="companyLocation"], [class*="location"]')?.textContent?.trim() || '';
+    // SimplyHired shows salary for the CURRENT job at top, then similar jobs — take the first match
+    if (!salary) {
+      const se = document.querySelector('[class*="salary"], [data-testid*="salary"]');
+      if (se && /\$/.test(se.textContent)) salary = se.textContent.trim();
+    }
+  }
+
+  // Lensa
+  else if (hostname.includes('lensa.com')) {
+    title   = title   || document.querySelector('h1[class*="title"], h1')?.textContent?.trim() || '';
+    company = company || document.querySelector('[class*="company"], [class*="employer"]')?.textContent?.trim() || '';
+    location = location || document.querySelector('[class*="location"]')?.textContent?.trim() || '';
+  }
+
+  // career.io
+  else if (hostname.includes('career.io')) {
+    title   = title   || document.querySelector('h1[class*="title"], h1')?.textContent?.trim() || '';
+    company = company || document.querySelector('[class*="company"], [class*="employer"]')?.textContent?.trim() || '';
+    location = location || document.querySelector('[class*="location"]')?.textContent?.trim() || '';
+  }
+
+  // ── 3. Generic fallback ───────────────────────────────────────────────────
   if (!title) {
     title = (document.querySelector('h1')?.textContent || '').trim()
       .replace(/\s*[|–\-].*$/, '').trim().slice(0, 80);
   }
   if (!company) {
     company = document.querySelector('meta[property="og:site_name"]')?.content
-      || document.title.split(/[|\-–]/).slice(-1)[0]?.trim()
-      || '';
+      || document.title.split(/[|\-–]/).slice(-1)[0]?.trim() || '';
   }
 
   // ── 4. Work type from page text ───────────────────────────────────────────
@@ -205,52 +199,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     else if (/\bremote\b/.test(pageText)) workType = 'Remote';
   }
 
-  // ── 5. Generic salary from visible page text ──────────────────────────────
-  // This catches salary in any visible text on page (Dexcom shows it in body)
+  // ── 5. Generic salary from visible body text (catches Greenhouse, Dexcom, etc.) ──
   if (!salary) {
     const bodyText = document.body?.innerText || '';
-    // Look for "Salary: $X - $Y" or just "$X - $Y" patterns
     const sm = bodyText.match(/[Ss]alary[:\s]*\n*\s*(\$[\d,]+(?:\.\d+)?)\s*[-–—]\s*(\$[\d,]+(?:\.\d+)?)/)
-            || bodyText.match(/(\$[\d]{3,3}[,\d]+(?:\.\d+)?)\s*[-–—]\s*(\$[\d]{3,3}[,\d]+(?:\.\d+)?)/);
+            || bodyText.match(/(\$[\d]{3}[,\d]+(?:\.\d+)?)\s*[-–—]\s*(\$[\d]{3}[,\d]+(?:\.\d+)?)/);
     if (sm) {
-      const fmt = s => { const n = parseFloat(s.replace(/[$,]/g,'')); return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString(); };
+      const fmt = s => { const n = parseFloat(s.replace(/[$,]/g,'')); return n>=1000?'$'+Math.round(n/1000)+'k':'$'+Math.round(n).toLocaleString(); };
       salary = fmt(sm[1]) + '–' + fmt(sm[2]);
     }
   }
 
-  // ── 6. Body text for AI fallback ──────────────────────────────────────────
-  // Priority: dedicated description container → JSON-LD description → main → full body
+  // ── 6. bodyText for AI extraction ────────────────────────────────────────
   const bodyText = (() => {
-    // Try specific job description containers
-    const sel = [
-      '[class*="description"]:not(meta)',
-      '[class*="job-description"]:not(meta)',
-      '[id*="description"]',
-      '.jobsearch-JobComponent-description',
-      '[data-testid*="jobDescriptionText"]',
-      'main article',
-      'main',
-      'article',
-    ];
+    const sel = ['[class*="description"]:not(meta)', '[class*="job-description"]:not(meta)',
+      '[id*="description"]', 'main article', 'main', 'article'];
     for (const s of sel) {
       const el = document.querySelector(s);
-      if (el && el.innerText?.length > 200) {
-        return el.innerText.replace(/\s+/g, ' ').trim().slice(0, 6000);
-      }
+      if (el && el.innerText?.length > 200) return el.innerText.replace(/\s+/g,' ').trim().slice(0, 6000);
     }
-    // Fall back to JSON-LD description (has full text including salary)
-    if (ldEl) {
+    // JSON-LD description as fallback
+    for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
       try {
-        const jld = JSON.parse(ldEl.textContent);
-        const jobs = Array.isArray(jld) ? jld : [jld];
-        const job = jobs.find(d => d['@type'] === 'JobPosting') || jobs[0];
-        if (job?.description) {
-          return job.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
-        }
+        const data = JSON.parse(el.textContent);
+        const jobs = Array.isArray(data) ? data : [data];
+        const job = jobs.find(d => d['@type'] === 'JobPosting');
+        if (job?.description) return job.description.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,6000);
       } catch {}
     }
-    // Last resort: full body text
-    return document.body?.innerText?.replace(/\s+/g, ' ').trim().slice(0, 6000) || '';
+    return document.body?.innerText?.replace(/\s+/g,' ').trim().slice(0, 6000) || '';
   })();
 
   sendResponse({ title, company, location, salary, workType, bodyText });
