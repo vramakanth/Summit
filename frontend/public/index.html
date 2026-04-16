@@ -21,7 +21,8 @@
 <meta name="theme-color" content="#0e0e0f" media="(prefers-color-scheme: dark)">
 
 <!-- Favicon -->
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 
 <!-- iOS splash / safe areas -->
 <meta name="mobile-web-app-capable" content="yes">
@@ -679,7 +680,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </button>
     <div class="auth-logo">
       <div class="auth-logo-mark">
-        <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><polygon points="2,17 6,8 10,12 13,5 18,17" fill="#1a0d00"/><polygon points="13,5 11.5,9 14.5,9" fill="white" opacity="0.85"/></svg>
       </div>
       <div>
         <div class="auth-logo-text">Summit</div>
@@ -714,7 +715,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </button>
     <div class="auth-logo">
       <div class="auth-logo-mark">
-        <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
+        <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><polygon points="2,17 6,8 10,12 13,5 18,17" fill="#1a0d00"/><polygon points="13,5 11.5,9 14.5,9" fill="white" opacity="0.85"/></svg>
       </div>
       <div>
         <div class="auth-logo-text">Summit</div>
@@ -769,7 +770,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="sidebar-header">
       <div class="logo">
         <div class="logo-mark">
-          <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="currentColor"/></svg>
+          <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><polygon points="2,17 6,8 10,12 13,5 18,17" fill="currentColor"/><polygon points="13,5 11.5,9 14.5,9" fill="white" opacity="0.75"/></svg>
         </div>
         <div>
           <div class="logo-text">Summit</div>
@@ -791,6 +792,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <button class="filter-tab" onclick="setFilter('applied')" data-filter="applied">applied</button>
       <button class="filter-tab" onclick="setFilter('interview')" data-filter="interview">interview</button>
       <button class="filter-tab" onclick="setFilter('stale')" data-filter="stale">stale</button>
+      <button class="filter-tab" onclick="setFilter('watchlist')" data-filter="watchlist">★ watchlist</button>
     </div>
 
     <div class="job-list" id="job-list"></div>
@@ -2063,6 +2065,7 @@ function getFilteredJobs() {
   return Object.values(jobs)
     .filter(j => {
       if (currentFilter === 'stale') { if (!j.stale) return false; }
+      else if (currentFilter === 'watchlist') { if (!j.watchlist) return false; }
       else if (currentFilter !== 'all' && j.status !== currentFilter) return false;
       if (!q) return true;
       const searchable = [
@@ -2099,6 +2102,7 @@ function renderJobList() {
           ${j.followUpDate && new Date(j.followUpDate) <= new Date(Date.now()+86400000*2) ? '<span style="font-size:9px;padding:1px 4px;background:rgba(251,191,36,0.15);color:var(--amber);border-radius:3px">↩</span>' : ''}
           ${j.deadline && new Date(j.deadline) <= new Date(Date.now()+86400000*3) ? '<span style="font-size:9px;padding:1px 4px;background:rgba(239,68,68,0.12);color:var(--red);border-radius:3px">⏰</span>' : ''}
           <span style="flex:1"></span>
+          <button onclick="event.stopPropagation();toggleWatchlist('${j.id}')" title="${j.watchlist?'Remove from watchlist':'Add to watchlist'}" style="padding:0;background:none;border:none;cursor:pointer;font-size:13px;line-height:1;color:${j.watchlist?'var(--accent-bg)':'var(--border2)'};transition:color .15s;flex-shrink:0">${j.watchlist?'★':'☆'}</button>
           <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${fmtDate(j.createdAt)}</span>
         </div>
       </div>
@@ -2281,12 +2285,7 @@ function renderDetail() {
           ${j.salary ? `<span style="color:var(--text3)">·</span><span style="font-size:11px;color:var(--accent);font-weight:500">${formatSalary(j.salary)}</span>` : ''}
           ${j.url ? `<a href="${esc(j.url)}" target="_blank">↗ original posting</a>` : ''}
         </div>
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-          <div class="detail-title">${esc(j.title)}</div>
-          <button onclick="toggleWatchlist('${j.id}')" title="${j.watchlist?'Remove from watchlist':'Add to watchlist'}" style="flex-shrink:0;padding:4px 8px;background:${j.watchlist?'rgba(232,168,56,0.15)':'var(--bg3)'};border:1px solid ${j.watchlist?'rgba(232,168,56,0.4)':'var(--border)'};border-radius:var(--radius-sm);cursor:pointer;font-size:14px;color:${j.watchlist?'var(--accent-bg)':'var(--text3)'};margin-top:2px;transition:all .15s">
-            ${j.watchlist ? '★' : '☆'}
-          </button>
-        </div>
+        <div class="detail-title">${esc(j.title)}</div>
         <div class="detail-meta">
           <div style="display:flex;align-items:center;gap:6px">
             <select class="status-select" onchange="updateStatus('${j.id}',this.value)" style="color:${statusColor(j.status)}">
@@ -2303,9 +2302,14 @@ function renderDetail() {
           ${j.followUpDate ? `<span style="font-size:11px;color:var(--amber);font-family:var(--mono)">↩ Follow up ${fmtDate(j.followUpDate)}</span>` : ''}
         </div>
       </div>
-      <button class="icon-btn danger" onclick="deleteJob('${j.id}')" title="Delete application">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M5 11V5M9 11V5M3 3.5l.5 8a1 1 0 001 .5h5a1 1 0 001-.5l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;padding-top:2px">
+        <button onclick="toggleWatchlist('${j.id}')" title="${j.watchlist?'Remove from watchlist':'Add to watchlist'}" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:${j.watchlist?'rgba(232,168,56,0.15)':'var(--bg3)'};border:1px solid ${j.watchlist?'rgba(232,168,56,0.4)':'var(--border)'};border-radius:var(--radius-sm);cursor:pointer;font-size:15px;color:${j.watchlist?'var(--accent-bg)':'var(--text3)'};transition:all .15s">
+          ${j.watchlist ? '★' : '☆'}
+        </button>
+        <button class="icon-btn danger" onclick="deleteJob('${j.id}')" title="Delete application" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M5 11V5M9 11V5M3 3.5l.5 8a1 1 0 001 .5h5a1 1 0 001-.5l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
     </div>
     <div class="detail-tabs">
       <div class="detail-tab${activeDetailTab==='insights'?' active':''}" onclick="switchTab('insights')">Insights</div>
@@ -6026,7 +6030,7 @@ setInterval(() => {
 <div id="screen-forgot" class="auth-wrap" style="display:none">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="auth-logo-mark"><svg viewBox="0 0 16 16" fill="none"><path d="M3 13L13 3M13 3H7M13 3v6" stroke="#1a1917" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="auth-logo-mark"><svg viewBox="0 0 20 20" fill="none" width="20" height="20"><polygon points="2,17 6,8 10,12 13,5 18,17" fill="#1a0d00"/><polygon points="13,5 11.5,9 14.5,9" fill="white" opacity="0.85"/></svg></div>
       <div><div class="auth-title">Account Recovery</div><div class="auth-sub">Enter your email to recover access</div></div>
     </div>
     <div class="auth-error" id="forgot-error"></div>

@@ -1,0 +1,48 @@
+name: Summit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Backend: syntax check + unit tests ─────────────────────────────────────
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: backend
+        run: npm install
+
+      - name: Syntax check
+        working-directory: backend
+        run: node --check server.js && node --check ats-helpers.js
+
+      - name: Architecture & unit tests
+        working-directory: backend
+        run: node tests/architecture.test.js
+
+  # ── Frontend: smoke tests (zero deps — pure Node) ──────────────────────────
+  frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Smoke tests
+        working-directory: frontend
+        run: node tests/smoke.test.js

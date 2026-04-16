@@ -1,23 +1,57 @@
-# Applied — Job Application Tracker
+# Summit — Job Application Tracker
 
-A self-hosted job application tracker with user accounts, AI tailoring, file management, and timestamped notes.
+![Tests](https://github.com/vramakanth/Job-Application-Tracker/actions/workflows/test.yml/badge.svg)
+
+**Summit** is a self-hosted job application tracker with AI-powered company insights, resume tailoring, interview prep, and a Chrome extension for one-click job capture from any job board.
+
+Live at **[jobsummit.app](https://jobsummit.app)**
+
+---
+
+## Features
+
+- **Pipeline tracking** — Kanban-style status board from wishlist to offer
+- **Company intelligence** — Glassdoor ratings, culture summary, news, role intel, workforce data
+- **AI resume tailoring** — Tailor resume and cover letter to each job posting
+- **Interview prep** — AI-generated role-specific questions, categorized and trackable
+- **Compensation research** — Market salary benchmarks per role and location
+- **Document library** — Store and version resumes and cover letters
+- **Chrome extension** — One-click job capture from any job board
+- **Watchlist** — Star jobs to track high-priority applications
+- **Stale detection** — Auto-detects expired postings
+
+---
 
 ## Project Structure
 
 ```
 applied-tracker/
+├── .github/
+│   └── workflows/
+│       └── test.yml          # GitHub Actions CI (runs on every push)
 ├── backend/
-│   ├── server.js        # Express API server
+│   ├── server.js             # Express API — auth, jobs, AI endpoints
+│   ├── ats-helpers.js        # URL cleaning, slug fallback
 │   ├── package.json
-│   └── data/            # Created automatically on first run
-│       ├── users.json   # Hashed user credentials
-│       └── jobs/        # Per-user job data (one JSON file per user)
-└── frontend/
-    └── public/
-        └── index.html   # Full single-file frontend app
+│   ├── tests/
+│   │   └── architecture.test.js   # 56 backend unit tests
+│   └── data/                 # Auto-created on first run
+│       ├── users.json        # Bcrypt-hashed credentials
+│       └── jobs/             # Per-user job data (one JSON per user)
+├── frontend/
+│   ├── public/
+│   │   └── index.html        # Full single-page app (~6,400 lines)
+│   └── tests/
+│       └── smoke.test.js     # 43 frontend regression tests
+└── extension/
+    ├── manifest.json         # Chrome extension manifest v3
+    ├── content.js            # DOM extraction from job pages
+    └── popup.js              # Extension popup
 ```
 
-## Quick Start (Local)
+---
+
+## Running Locally
 
 ```bash
 cd backend
@@ -28,109 +62,79 @@ node server.js
 
 ---
 
-## Deployment Options
+## Deployment (Render)
 
-### Option A — Railway (recommended, free tier available)
+Summit runs on [Render](https://render.com) with a persistent disk.
 
 1. Push this repo to GitHub
-2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
-3. Set root directory to `backend/`
-4. Add environment variable: `JWT_SECRET=your-long-random-secret-here`
-5. Railway auto-detects Node.js and runs `npm start`
-
-> **Note**: Railway's free tier has ephemeral storage. For persistent data, add a Railway Volume mounted at `/app/data`.
-
-### Option B — Render (free tier, persistent disk)
-
-1. Push repo to GitHub
 2. New Web Service → connect repo
 3. Root directory: `backend/`
 4. Build command: `npm install`
 5. Start command: `node server.js`
-6. Add environment variable: `JWT_SECRET=your-long-random-secret-here`
-7. Add a Disk: mount path `/app/data`, size 1GB
-
-### Option C — VPS / DigitalOcean Droplet
-
-```bash
-# On your server:
-git clone <your-repo>
-cd applied-tracker/backend
-npm install
-
-# Install PM2 for process management
-npm install -g pm2
-JWT_SECRET=your-secret pm2 start server.js --name applied
-pm2 save
-pm2 startup
-
-# Nginx reverse proxy (optional, for custom domain)
-# Point your domain to the server and proxy :3000
-```
-
-### Option D — Docker
-
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY backend/package*.json ./
-RUN npm install --production
-COPY backend/ .
-COPY frontend/ ../frontend/
-EXPOSE 3000
-CMD ["node", "server.js"]
-```
-
-```bash
-docker build -t applied-tracker .
-docker run -d -p 3000:3000 -v $(pwd)/data:/app/data -e JWT_SECRET=your-secret applied-tracker
-```
+6. Add a Disk: mount path `/app/data`, size 1 GB
+7. Set environment variables (see below)
 
 ---
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | Port to listen on |
-| `JWT_SECRET` | `change-this-secret-in-production-please` | Secret for signing JWTs — **change this!** |
-| `ANTHROPIC_API_KEY` | *(required for Insights tab)* | Your Anthropic API key — get one at [console.anthropic.com](https://console.anthropic.com) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SECRET` | ✅ | Secret for signing JWTs — generate with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+| `GROQ_API_KEY` | ✅ | Primary AI provider — [console.groq.com](https://console.groq.com) (free tier available) |
+| `OPENROUTER_API_KEY` | ✅ | Fallback AI provider — [openrouter.ai](https://openrouter.ai) |
+| `GOOGLE_API_KEY` | ✅ | Second fallback — [aistudio.google.com](https://aistudio.google.com) |
+| `PORT` | — | Defaults to `3000` |
+| `DATA_DIR` | — | Defaults to `./data` |
+| `ADMIN_SECRET` | — | Optional header secret for `/api/admin/*` routes |
+
+**AI fallback chain:** Groq → OpenRouter → Google. If Groq is healthy, responses return in 2–5 seconds.
 
 ---
 
-## Security Notes
+## Chrome Extension
 
-- Passwords are hashed with bcrypt (12 rounds) — never stored in plain text
-- JWTs expire after 30 days
-- Each user's job data is stored in a separate file, isolated by user ID
-- **Always set a strong `JWT_SECRET`** in production — generate one with:
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-  ```
+Download from Settings → Browser Extensions inside the app, or load unpacked from the `extension/` folder in Chrome DevTools → Extensions → Load unpacked.
+
+Visit any job posting (Indeed, LinkedIn, Greenhouse, ZipRecruiter, etc.) and click the Summit icon to auto-extract the job title, company, salary, location, and full posting text.
 
 ---
 
-## Customizing the Anthropic API Key
+## Tests
 
-The AI tailoring feature calls the Anthropic API from the browser using the key embedded in the Claude.ai artifact environment. To use it in your own hosted version, you'll need to:
+Tests run automatically via GitHub Actions on every push to `main`.
 
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-2. Move the API call to the backend (recommended for security):
+**Run locally:**
 
-```js
-// In server.js, add a proxy route:
-app.post('/api/tailor', authMiddleware, async (req, res) => {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(req.body)
-  });
-  // stream back to client...
-});
+```bash
+# Backend (56 unit tests — URL parsing, AI routing, salary extraction)
+node backend/tests/architecture.test.js
+
+# Frontend (43 smoke tests — UI regression, watchlist, settings, tabs)
+node frontend/tests/smoke.test.js
 ```
 
-3. In `index.html`, change the fetch URL from `https://api.anthropic.com/v1/messages` to `/api/tailor`
+**View CI results:** Go to the [Actions tab](https://github.com/vramakanth/Job-Application-Tracker/actions) on GitHub.
+
+---
+
+## Security
+
+- Passwords hashed with bcrypt (12 rounds)
+- JWTs expire after 30 days
+- Per-user data isolation — each user's jobs stored in a separate file
+- Optional AES-256-GCM encryption for job data at rest
+
+---
+
+## Tech Stack
+
+| Layer | Stack |
+|-------|-------|
+| Backend | Node.js, Express |
+| Frontend | Vanilla JS, single HTML file |
+| AI | Groq (llama-3.3-70b), OpenRouter, Google Gemini |
+| Job parsing | Jina.ai reader → direct fetch → slug fallback |
+| Auth | JWT + bcrypt |
+| Hosting | Render (backend + disk), Namecheap DNS |
+| CI | GitHub Actions |

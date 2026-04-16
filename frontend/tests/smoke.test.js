@@ -135,3 +135,24 @@ t('Locations shown as pill chips', () => {
   if (!wf.includes('border-radius:100px')) throw new Error('no pill chips');
 });
 t('renderAgeDistribution removed (inlined)', () => not('function renderAgeDistribution'));
+
+// ── Watchlist & job list ─────────────────────────────────────────────────────
+console.log('\n── Watchlist & job list');
+t('Watchlist filter tab exists',       () => has("setFilter('watchlist')"));
+t('getFilteredJobs handles watchlist', () => {
+  const idx = src.indexOf("currentFilter === 'watchlist'");
+  if (idx < 0) throw new Error('watchlist filter logic missing');
+});
+t('Inline star in job list item',      () => {
+  // Star button inside renderJobList — uses event.stopPropagation to avoid selecting job
+  const rl = src.slice(src.indexOf('function renderJobList'), src.indexOf('function selectJob'));
+  if (!rl.includes('event.stopPropagation')) throw new Error('no stopPropagation on star');
+  if (!rl.includes('toggleWatchlist')) throw new Error('no toggleWatchlist in job list');
+});
+t('Star+trash in aligned column in detail header', () => {
+  // Both buttons in a flex-direction:column wrapper
+  const dh = src.slice(src.indexOf('dv.innerHTML'), src.indexOf('dv.innerHTML') + 5000);
+  if (!dh.includes('flex-direction:column')) throw new Error('no column wrapper for buttons');
+  if (!dh.includes('toggleWatchlist') || !dh.includes('deleteJob')) throw new Error('missing buttons');
+});
+t('★ watchlist label on filter tab',   () => has('★ watchlist'));
