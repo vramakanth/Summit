@@ -641,10 +641,10 @@ app.post('/api/parse-job', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/extract-fields', authMiddleware, async (req, res) => {
-  const { postingText } = req.body;
+  const postingText = req.body.postingText || req.body.text || '';
   if (!postingText) return res.status(400).json({ error: 'postingText required' });
-  const sys = 'Extract job details. Return ONLY valid JSON, no markdown. Fields: title(string), company(string), location(physical city/state only), workType("Remote"|"Hybrid"|"On-site"|null), salary(string|null), remote(boolean).';
-  const usr = `Extract from:\n\n${postingText.slice(0, 4000)}`;
+  const sys = 'Extract job posting details. Return ONLY valid JSON, no markdown, no explanation. Fields: title(string), company(string), location(city+state only, null if remote-only), workType("Remote"|"Hybrid"|"On-site"|null), remote(boolean), salary(ONLY real dollar amounts like "$120k-$150k/yr" or null — never invent, never use "Competitive" or "DOE").';
+  const usr = `Extract from this job posting:\n\n${postingText.slice(0, 4000)}`;
   try {
     res.json(parseJson(await callAI(['openrouter','groq','google'], sys, usr, 400)));
   } catch (e) { res.status(500).json({ error: e.message }); }

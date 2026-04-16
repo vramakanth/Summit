@@ -99,3 +99,50 @@ describe('Frontend — mountain background', () => {
   it('applies grayscale filter for duotone', () => expect(html).toContain('grayscale(100%)'));
   it('applies multiply blend for split-tone', () => expect(html).toContain('mix-blend-mode:multiply'));
 });
+
+// ─── Regression tests for known bugs ─────────────────────────────────────────
+
+describe('Regression — auth button wiring (known breakage pattern)', () => {
+  it('login button calls doLogin not login', () => {
+    expect(html).toContain('onclick="doLogin()"');
+    expect(html).not.toContain('onclick="login()"');
+  });
+
+  it('register button calls doRegister not register', () => {
+    expect(html).toContain('onclick="doRegister()"');
+    expect(html).not.toContain('onclick="register()"');
+  });
+
+  it('save job button calls addJob not createJob', () => {
+    expect(html).toContain('onclick="addJob()"');
+    expect(html).not.toContain('onclick="createJob()"');
+  });
+
+  it('enter key on login password calls doLogin', () => {
+    expect(html).toContain("Enter')doLogin()");
+    expect(html).not.toContain("Enter')login()");
+  });
+
+  it('enter key on register confirm calls doRegister', () => {
+    expect(html).toContain("Enter')doRegister()");
+    expect(html).not.toContain("Enter')register()");
+  });
+});
+
+describe('Regression — extract-fields field name', () => {
+  it('frontend sends postingText not text to extract-fields', () => {
+    // The critical fix: frontend was sending {text: ...} but server reads postingText
+    expect(html).toContain("postingText: text.slice");
+    expect(html).not.toContain("body: JSON.stringify({ url, text: text.slice");
+  });
+});
+
+describe('Regression — landing page CTAs', () => {
+  const idx = html.indexOf('id="screen-landing"');
+  const end = html.indexOf('id="screen-login"', idx);
+  const landing = html.slice(idx, end);
+
+  it('no Pursuit branding anywhere', () => expect(html).not.toContain('Pursuit'));
+  it('landing has Get started CTA', () => expect(landing).toMatch(/Get started/));
+  it('landing has Sign in CTA', () => expect(landing).toMatch(/Sign in/));
+});

@@ -86,6 +86,7 @@
 }
 
 html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; letter-spacing: -0.01em; }
+body.in-app { overflow: hidden; height: 100vh; height: 100dvh; }
 
 /* ── AUTH ── */
 .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: transparent; }
@@ -112,7 +113,7 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .auth-error.show { display: block; }
 
 /* ── APP SHELL ── */
-.app { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
+.app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg); }
 
 /* ── MOBILE RESPONSIVE ── */
 /* ── DOC VIEWER ── */
@@ -123,10 +124,10 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 /* Force side-by-side on desktop — overrides any inline flex-direction:column */
 #to-body { flex-direction: row !important; }
 
-.app { display: flex; height: 100vh; overflow: hidden; }
+.app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
 /* SIDEBAR */
-.sidebar { width: 260px; min-width: 260px; background: var(--bg2); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar { width: 260px; min-width: 260px; height: 100%; background: var(--bg2); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
 .sidebar-header { padding: 20px 16px 12px; border-bottom: 0.5px solid var(--border); }
 .logo { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .logo-mark { width: 28px; height: 28px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
@@ -609,7 +610,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <h1 style="font-size:clamp(56px,9vw,96px);font-weight:800;color:#f2ead8;letter-spacing:-3px;line-height:0.92;margin:0 0 22px">Summit</h1>
       <p style="font-size:clamp(15px,2vw,18px);color:rgba(242,234,216,0.6);max-width:420px;line-height:1.6;margin:0 0 44px">Track every application.<br>Tailor every resume. Land the role.</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
-        <button onclick="showScreen('register')" style="padding:14px 30px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer;box-shadow:0 0 48px rgba(232,168,56,0.28)" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Get started free</button>
+        <button onclick="showScreen('register')" style="padding:14px 30px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer;box-shadow:0 0 48px rgba(232,168,56,0.28)" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Get started</button>
         <button onclick="showScreen('login')" style="padding:14px 30px;background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.18);border-radius:10px;font-family:var(--font);font-size:15px;color:rgba(255,255,255,0.82);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.16)'" onmouseout="this.style.background='rgba(255,255,255,0.09)'">Sign in</button>
       </div>
     </div>
@@ -664,7 +665,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
       <!-- Footer CTA -->
       <div style="text-align:center;margin-top:56px">
-        <button onclick="showScreen('register')" style="padding:14px 32px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Start tracking for free →</button>
+        <button onclick="showScreen('register')" style="padding:14px 32px;background:#e8a838;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;color:#1a0d00;cursor:pointer" onmouseover="this.style.background='#f0b84a'" onmouseout="this.style.background='#e8a838'">Get started for free →</button>
         <div style="margin-top:14px;font-size:11px;color:rgba(242,234,216,0.25);letter-spacing:0.5px">jobsummit.app · No credit card required</div>
       </div>
     </div>
@@ -896,7 +897,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div><!-- end manual-fields -->
     <div class="modal-actions" style="margin-top:20px">
       <button class="cancel-btn" onclick="closeAddModal()">Cancel</button>
-      <button class="create-btn" onclick="createJob()">Save job</button>
+      <button class="create-btn" onclick="addJob()">Save job</button>
     </div>
   </div>
 </div>
@@ -1799,7 +1800,7 @@ async function parseJobUrl() {
         const aiRes = await fetch(API + '/api/extract-fields', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-          body: JSON.stringify({ url, text: text.slice(0, 5000) })
+          body: JSON.stringify({ url, postingText: text.slice(0, 5000) })
         });
         if (aiRes.ok) {
           const extracted = await aiRes.json();

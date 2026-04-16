@@ -254,3 +254,49 @@ describe('ATS detection', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ─── extract-fields ───────────────────────────────────────────────────────────
+
+describe('POST /api/extract-fields', () => {
+  let token;
+
+  beforeAll(async () => {
+    await request(app).post('/api/register').send({ username: 'extractuser', password: 'pass123' });
+    const res = await request(app).post('/api/login').send({ username: 'extractuser', password: 'pass123' });
+    token = res.body.token;
+  });
+
+  it('accepts postingText field', async () => {
+    const res = await request(app)
+      .post('/api/extract-fields')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ postingText: 'Senior Software Engineer at Acme Corp in San Francisco, CA. Salary: $150k-$200k.' });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/json/);
+  });
+
+  it('accepts text field (frontend compat)', async () => {
+    // Frontend sends "text" not "postingText" — both must work
+    const res = await request(app)
+      .post('/api/extract-fields')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ text: 'Product Manager at Beta Inc. Remote position.' });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/json/);
+  });
+
+  it('returns 400 for missing text', async () => {
+    const res = await request(app)
+      .post('/api/extract-fields')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('requires auth', async () => {
+    const res = await request(app)
+      .post('/api/extract-fields')
+      .send({ postingText: 'Test' });
+    expect(res.status).toBe(401);
+  });
+});
