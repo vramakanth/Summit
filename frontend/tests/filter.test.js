@@ -385,7 +385,7 @@ t('search within stale filter — matches company', () => {
 console.log('\n── source structure');
 
 t('filter tabs: all status tabs present', () => {
-  const tabs = ['all', 'to apply', 'applied', 'interview', 'stale', 'watchlist'];
+  const tabs = ['all', 'to apply', 'applied', 'interview', 'offer', 'rejected', 'stale', 'watchlist'];
   tabs.forEach(f => {
     if (!src.includes(`setFilter('${f}')`)) throw new Error(`missing filter tab: ${f}`);
   });

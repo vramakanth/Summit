@@ -1,10 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Summit — Job Tracker",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Add any job posting to Summit in one click. Works on LinkedIn, Indeed, Greenhouse, Workday, and more.",
-  "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["https://jobsummit.app/*"],
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
+  "host_permissions": ["https://jobsummit.app/*", "http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "externally_connectable": {
+    "matches": ["https://jobsummit.app/*", "http://localhost/*", "http://127.0.0.1/*"]
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }

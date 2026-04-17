@@ -93,7 +93,7 @@ t('JSON-LD baseSalary extraction', () => { has(contentSrc, 'baseSalary'); has(co
 t('bdi salary extraction',         () => has(contentSrc, "querySelectorAll('bdi')"));
 t('fallback salary from bodyText', () => has(contentSrc, 'bodyText.match('));
 t('sends bodyText + salary + url', () => { has(contentSrc, 'bodyText'); has(contentSrc, 'salary'); has(contentSrc, 'url: location.href'); });
-t('under 100 lines',               () => lt(contentSrc.split('\n').length, 100));
+t('under 200 lines',               () => lt(contentSrc.split('\n').length, 200));
 
 // ── extractSalaryFromText ─────────────────────────────────────────────────────
 console.log('\n── extractSalaryFromText');
@@ -163,6 +163,94 @@ t('GET /api/user-settings returns 404 for missing file', () => {
   const idx = serverSrc.indexOf("app.get('/api/user-settings'");
   const body = serverSrc.slice(idx, idx + 400);
   if (!body.includes('404')) throw new Error('no 404 for missing settings');
+});
+
+// ── Insights: truncation detection and larger output budget ─────────────────
+console.log('\n── Insights data integrity');
+t('/api/insights max tokens bumped to 8000', () => {
+  const idx = serverSrc.indexOf("app.post('/api/insights'");
+  const body = serverSrc.slice(idx, idx + 4500);
+  // Match "callAI(... , 8000)" anywhere inside the insights endpoint body
+  if (!/callAI\([\s\S]*?,\s*8000\s*\)/.test(body)) {
+    throw new Error('insights callAI not using 8000 token budget');
+  }
+});
+t('parseJson flags lossy strategy-3 recovery with _partial', () => {
+  const idx = serverSrc.indexOf('function parseJson(raw)');
+  const body = serverSrc.slice(idx, idx + 2500);
+  if (!body.includes('_partial = true')) {
+    throw new Error('parseJson does not flag _partial on lossy recovery');
+  }
+});
+t('headcountHistory removed from insights prompt (was truncation-wasting)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/insights'");
+  const body = serverSrc.slice(idx, idx + 3000);
+  if (body.includes('headcountHistory')) {
+    throw new Error('headcountHistory still in prompt schema');
+  }
+});
+
+// ── Public mirror finder ────────────────────────────────────────────────────
+console.log('\n── Mirror finder');
+t('MIRROR_ALLOWLIST includes core ATS platforms', () => {
+  const m = serverSrc.match(/const MIRROR_ALLOWLIST\s*=\s*\[([\s\S]+?)\];/);
+  if (!m) throw new Error('MIRROR_ALLOWLIST missing');
+  const body = m[1];
+  for (const host of ['greenhouse', 'lever', 'ashbyhq', 'workable']) {
+    if (!body.includes(host)) throw new Error(`allowlist missing ${host}`);
+  }
+});
+t('Aggregators (LinkedIn/Indeed/ZipRecruiter/Glassdoor) NOT in allowlist', () => {
+  const m = serverSrc.match(/const MIRROR_ALLOWLIST\s*=\s*\[([\s\S]+?)\];/);
+  const body = m[1].toLowerCase();
+  for (const bad of ['linkedin', 'indeed', 'ziprecruiter', 'glassdoor']) {
+    if (body.includes(bad)) throw new Error(`${bad} must NOT be in allowlist (these are the sources of the blocking)`);
+  }
+});
+t('isAllowlistedMirror accepts "careers.<company>." subdomain', () => {
+  if (!/careers\\\./i.test(serverSrc)) throw new Error('no careers.* subdomain handling');
+});
+t('/api/find-posting-mirror endpoint registered + auth-protected', () => {
+  if (!/app\.post\('\/api\/find-posting-mirror',\s*authMiddleware/.test(serverSrc)) {
+    throw new Error('endpoint not registered or not auth-gated');
+  }
+});
+t('searchWeb uses Jina search (s.jina.ai)', () => {
+  if (!/s\.jina\.ai/.test(serverSrc)) throw new Error('not using Jina search');
+});
+t('verifyMirrorMatch returns structured {match, confidence} verdict', () => {
+  const idx = serverSrc.indexOf('async function verifyMirrorMatch');
+  if (idx < 0) throw new Error('verifyMirrorMatch not defined');
+  const body = serverSrc.slice(idx, idx + 1500);
+  if (!body.includes('"match"'))      throw new Error('no match field');
+  if (!body.includes('"confidence"')) throw new Error('no confidence field');
+});
+t('Mirror finder requires verified match (confidence >= 0.7) before returning URL', () => {
+  const idx = serverSrc.indexOf("app.post('/api/find-posting-mirror'");
+  const body = serverSrc.slice(idx, idx + 3000);
+  if (!/confidence.*?0\.7/.test(body)) throw new Error('no confidence threshold');
+});
+t('Mirror finder excludes the original URL\'s host from results', () => {
+  const idx = serverSrc.indexOf("app.post('/api/find-posting-mirror'");
+  const body = serverSrc.slice(idx, idx + 3000);
+  if (!/origHost/.test(body)) throw new Error('no original-host exclusion');
+});
+
+// ── fetchATS Jina branch: full markdown→plain scrub ─────────────────────────
+console.log('\n── Posting fetch markdown scrub');
+t('fetchATS Jina branch strips markdown bold/italic/headings/blockquotes/bullets', () => {
+  const idx = serverSrc.indexOf('async function fetchATS');
+  const body = serverSrc.slice(idx, idx + 3500);
+  // Heading (##)
+  if (!/\\s\*#\{1,6\}\\s\+/.test(body)) throw new Error('no heading strip');
+  // Emphasis: **x**, __x__
+  if (!/\\\*\\\*\|__/.test(body)) throw new Error('no bold strip');
+  // Blockquote
+  if (!/\\s\*>\\s\?/.test(body)) throw new Error('no blockquote strip');
+  // Bullets
+  if (!/\[-\*\+\]\\s\+/.test(body)) throw new Error('no bullet normalize');
+  // Code fences
+  if (!/```\[\\s\\S\]\*\?```/.test(body)) throw new Error('no code-fence strip');
 });
 
 console.log(`\n${pass}/${pass+fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);

@@ -256,28 +256,77 @@ t('refetchPosting tries server first then browser', () => {
   if (!body.includes('/api/parse-job')) throw new Error('missing server-side parse-job call');
   if (!body.includes('_browserFetchPosting')) throw new Error('missing browser fetch fallback');
 });
-t('_browserFetchPosting defined with chrome.tabs', () => {
+t('_browserFetchPosting goes through postMessage bridge (NOT chrome.tabs.create)', () => {
   has('async function _browserFetchPosting');
   const idx = src.indexOf('async function _browserFetchPosting');
   const body = src.slice(idx, idx + 600);
-  if (!body.includes('chrome.tabs')) throw new Error('chrome.tabs not used');
-  // extractJob message is in _browserFetchPosting (separate function)
+  // chrome.tabs is unavailable to web pages — the old implementation could never work
+  if (body.includes('chrome.tabs.create')) throw new Error('still uses chrome.tabs.create (unreachable from web page)');
+  if (!body.includes('_bridgeCall')) throw new Error('not using _bridgeCall bridge');
 });
-t('_browserFetchPosting checks chrome availability', () => {
+t('_browserFetchPosting checks isExtensionInstalled before calling bridge', () => {
   const idx = src.indexOf('async function _browserFetchPosting');
-  const body = src.slice(idx, idx + 300);
-  if (!body.includes("typeof chrome === 'undefined'")) throw new Error('no chrome availability check');
+  const body = src.slice(idx, idx + 400);
+  if (!body.includes('_extensionAvailable')) throw new Error('no extension-presence check');
 });
-t('refetchPosting has helpful fallback UI for blocked sites', () => {
+t('refetchPosting has a purpose-built blocked-site fallback card', () => {
   const idx = src.indexOf('async function refetchPosting');
   const body = src.slice(idx, idx + 4000);
-  if (!body.includes('Open job page')) throw new Error('no helpful fallback message');
-  if (!body.includes("target=\"_blank\"")) throw new Error('no open-in-tab link');
+  if (!body.includes('_renderPostingBlockedCard')) throw new Error('missing fallback card helper');
 });
-t('refetchPosting closes background tab after extraction', () => {
-  const idx = src.indexOf('async function _browserFetchPosting');
+t('_renderPostingBlockedCard covers both "no extension" and "already-tried-extension" paths', () => {
+  const idx = src.indexOf('function _renderPostingBlockedCard');
+  if (idx < 0) throw new Error('_renderPostingBlockedCard not defined');
+  const body = src.slice(idx, idx + 3500);
+  if (!body.includes("'no-extension'")) throw new Error('no-extension branch missing');
+  if (!/Notes/.test(body)) throw new Error('no fallback CTA to paste into Notes');
+  if (!/Install the Summit browser extension/i.test(body)) throw new Error('install-extension CTA missing');
+});
+
+// ── Lazy mirror fallback in refetchPosting ──────────────────────────────────
+console.log('\n── Mirror fallback (lazy, on refetch failure)');
+t('refetchPosting flow: original → cached mirror → search → extension → card', () => {
+  const idx = src.indexOf('async function refetchPosting');
+  const body = src.slice(idx, idx + 5000);
+  // All five steps must appear in order
+  if (!body.includes('_serverFetch(j.url)'))          throw new Error('step 1 (original) missing');
+  if (!body.includes('j.fallbackUrl'))                 throw new Error('step 2 (cached mirror) missing');
+  if (!body.includes('_findMirror'))                   throw new Error('step 3 (search for mirror) missing');
+  if (!body.includes('isExtensionInstalled()'))        throw new Error('step 4 (extension) missing');
+  if (!body.includes('_renderPostingBlockedCard'))     throw new Error('step 5 (fallback card) missing');
+  // Order check: server fetch before cached mirror, before search
+  const i1 = body.indexOf('_serverFetch(j.url)');
+  const i2 = body.indexOf('j.fallbackUrl');
+  const i3 = body.indexOf('_findMirror');
+  if (!(i1 < i2 && i2 < i3)) throw new Error('steps out of order');
+});
+t('Successful primary fetch clears stale mirror (trust the original)', () => {
+  const idx = src.indexOf('async function refetchPosting');
+  const body = src.slice(idx, idx + 3000);
+  if (!/delete j\.fallbackUrl;/.test(body)) throw new Error('no fallback-invalidation on primary success');
+});
+t('Stale mirror (404/blocked on cached fallbackUrl) is cleared so next refetch re-searches', () => {
+  const idx = src.indexOf('async function refetchPosting');
+  const body = src.slice(idx, idx + 4000);
+  // Two delete sites expected: one on primary success, one when cached mirror fails
+  const deletes = (body.match(/delete j\.fallbackUrl/g) || []).length;
+  if (deletes < 2) throw new Error('cached-mirror failure does not clear stale fallbackUrl');
+});
+t('_findMirror POSTs title+company+location+originalUrl to /api/find-posting-mirror', () => {
+  const idx = src.indexOf('async function _findMirror');
+  if (idx < 0) throw new Error('_findMirror not defined');
   const body = src.slice(idx, idx + 800);
-  if (!body.includes('chrome.tabs.remove')) throw new Error('background tab not closed');
+  if (!body.includes('/api/find-posting-mirror')) throw new Error('wrong endpoint');
+  for (const field of ['title', 'company', 'location', 'originalUrl']) {
+    if (!body.includes(field)) throw new Error(`missing field: ${field}`);
+  }
+});
+t('_renderMirrorBadge shows when reading from j.fallbackUrl (so user knows)', () => {
+  const idx = src.indexOf('function _renderMirrorBadge');
+  if (idx < 0) throw new Error('_renderMirrorBadge not defined');
+  const body = src.slice(idx, idx + 1000);
+  if (!body.includes('j.fallbackUrl')) throw new Error('badge does not check for fallbackUrl');
+  if (!body.includes('j.fallbackVia')) throw new Error('badge does not surface the mirror source');
 });
 
 // ── Help in sidebar ──────────────────────────────────────────────────────────
@@ -382,6 +431,207 @@ t('Orphan .insight-section radius override removed', () => {
   if (src.includes('.insight-section { border-radius: 8px !important; }')) {
     throw new Error('orphan radius override still present');
   }
+});
+t('Partial-data warning banner rendered when ins._partial', () => {
+  if (!src.includes('ins._partial ?')) throw new Error('no ins._partial check in renderInsightsTab');
+  // The banner should reference "Partial research" and point at Refresh
+  const idx = src.indexOf('ins._partial ?');
+  const body = src.slice(idx, idx + 600);
+  if (!body.includes('Partial research')) throw new Error('banner copy missing');
+  if (!body.includes('Refresh'))          throw new Error('banner does not direct to refresh');
+});
+
+// ── Status simplification (5 statuses; filter pills match dropdown) ─────────
+console.log('\n── Status system');
+t('STATUSES reduced to 5 (to apply/applied/interview/offer/rejected)', () => {
+  const m = src.match(/const STATUSES\s*=\s*\[([^\]]+)\]/);
+  if (!m) throw new Error('STATUSES not found');
+  const list = m[1];
+  for (const s of ['to apply', 'applied', 'interview', 'offer', 'rejected']) {
+    if (!list.includes(`'${s}'`)) throw new Error(`${s} missing from STATUSES`);
+  }
+  // Make sure legacy ones are gone
+  for (const s of ['screening', 'interviewing', 'ghosted', 'withdrawn', 'expired']) {
+    if (new RegExp(`'${s}'`).test(list)) throw new Error(`legacy status ${s} still in STATUSES`);
+  }
+});
+t('STATUS_MIGRATE map handles all legacy statuses', () => {
+  const m = src.match(/const STATUS_MIGRATE\s*=\s*\{([^}]+)\}/);
+  if (!m) throw new Error('STATUS_MIGRATE not found');
+  for (const s of ['screening', 'interviewing', 'ghosted', 'withdrawn', 'expired']) {
+    if (!m[1].includes(`'${s}'`)) throw new Error(`${s} not in STATUS_MIGRATE`);
+  }
+});
+t('loadJobs applies STATUS_MIGRATE on every load', () => {
+  const idx = src.indexOf('async function loadJobs');
+  const body = src.slice(idx, idx + 3000);
+  if (!/STATUS_MIGRATE\[j\.status\]/.test(body)) {
+    throw new Error('loadJobs does not apply status migration');
+  }
+});
+t('filter pill "interview" (not "interviewing")', () => {
+  // Regression: the pill used to read "interview" but STATUSES had "interviewing",
+  // so the pill filtered to zero jobs. Now both are unified on "interview".
+  if (!src.includes("data-filter=\"interview\"")) throw new Error('no interview pill');
+  if (!src.includes("'interview'"))              throw new Error('no "interview" string literal');
+  // Assert no lingering "interviewing" in STATUSES
+  const m = src.match(/const STATUSES\s*=\s*\[([^\]]+)\]/);
+  if (/'interviewing'/.test(m[1])) throw new Error('legacy interviewing still in STATUSES');
+});
+
+// ── Settings panel: survives navigate-away-and-return ───────────────────────
+console.log('\n── Settings render-safety');
+t('openSettings rescues settings-panel-inner before openSection wipes section-view', () => {
+  const idx = src.indexOf('function openSettings');
+  const body = src.slice(idx, idx + 1800);
+  // Must move inner back to overlay BEFORE calling openSection (which does sv.innerHTML = '')
+  const safeIdx = body.indexOf('overlayPre.appendChild(innerPre)');
+  // Match the STATEMENT with semicolon, not the mention inside the SAFEGUARD comment
+  const openIdx = body.indexOf("openSection('settings');");
+  if (safeIdx < 0) throw new Error('no rescue step for settings-panel-inner');
+  if (openIdx < 0) throw new Error('no openSection call');
+  if (safeIdx > openIdx) throw new Error('rescue must happen BEFORE openSection wipe');
+});
+
+// ── Settings nav: consolidated groups instead of flat list ──────────────────
+console.log('\n── Settings nav grouping');
+t('.snav-group-label CSS class defined', () => has('.snav-group-label'));
+t('Settings sidebar has 3 group labels (Security, Preferences, Your data)', () => {
+  for (const label of ['>SECURITY<', '>PREFERENCES<', '>YOUR DATA<']) {
+    if (!src.includes(label)) throw new Error(`missing group label: ${label}`);
+  }
+});
+
+// ── Help redesign: mountain-bg + editorial layout ───────────────────────────
+console.log('\n── Help redesign');
+t('showHelp shows the mountain-bg', () => {
+  const idx = src.indexOf('function showHelp');
+  const body = src.slice(idx, idx + 8000);
+  if (!/getElementById\('mountain-bg'\)/.test(body)) throw new Error('showHelp does not reference mountain-bg');
+  if (!/bg\.style\.display\s*=\s*''/.test(body)) throw new Error('showHelp does not show mountain-bg');
+});
+t('closeHelp hides the mountain-bg', () => {
+  const idx = src.indexOf('function closeHelp');
+  if (idx < 0) throw new Error('closeHelp not defined');
+  const body = src.slice(idx, idx + 400);
+  if (!body.includes("bg.style.display = 'none'")) throw new Error('closeHelp does not hide mountain-bg');
+});
+t('Help has "FIELD GUIDE" mono eyebrow', () => {
+  const idx = src.indexOf('function showHelp');
+  const body = src.slice(idx, idx + 8000);
+  if (!body.includes('FIELD GUIDE')) throw new Error('FIELD GUIDE eyebrow missing');
+});
+t('Help uses Fraunces display for the "Help" title', () => {
+  const idx = src.indexOf('function showHelp');
+  const body = src.slice(idx, idx + 8000);
+  if (!/font-family:var\(--font-display\).*?>Help</s.test(body)) throw new Error('Help title not in display serif');
+});
+
+// ── Analytics redesign: de-boxed + refined metrics ──────────────────────────
+console.log('\n── Analytics redesign');
+t('Analytics no longer has "Analytics Dashboard" header', () => {
+  if (src.includes('>Analytics Dashboard<')) throw new Error('old dashboard header still present');
+});
+t('Analytics uses Fraunces "Analytics" title + "THE CLIMB" eyebrow', () => {
+  const idx = src.indexOf('function renderAnalytics');
+  const body = src.slice(idx, idx + 10000);
+  if (!body.includes('THE CLIMB')) throw new Error('THE CLIMB eyebrow missing');
+  if (!/font-family:var\(--font-display\)[^>]*>Analytics</.test(body)) throw new Error('Analytics title not in display serif');
+});
+t('Analytics uses stat-strip (analytics-kpi-grid + kpi-card classes)', () => {
+  const idx = src.indexOf('function renderAnalytics');
+  const body = src.slice(idx, idx + 10000);
+  if (!body.includes('class="analytics-kpi-grid"'))    throw new Error('analytics-kpi-grid missing');
+  if (!body.includes('class="analytics-kpi-card"'))    throw new Error('analytics-kpi-card missing');
+});
+t('Analytics dropped work-type distribution', () => {
+  const idx = src.indexOf('function renderAnalytics');
+  const body = src.slice(idx, idx + 10000);
+  if (body.includes('Work type distribution')) throw new Error('work-type still present');
+});
+t('Analytics dropped "All applications" list (redundant with job list)', () => {
+  const idx = src.indexOf('function renderAnalytics');
+  const body = src.slice(idx, idx + 10000);
+  if (body.includes('All applications')) throw new Error('all-applications list still present');
+});
+t('Analytics shows weekly cadence (last 12 weeks)', () => {
+  const idx = src.indexOf('function renderAnalytics');
+  const body = src.slice(idx, idx + 10000);
+  if (!body.includes('Last 12 weeks')) throw new Error('weekly cadence section missing');
+});
+t('Analytics filterAndClose uses data-filter (not textContent match)', () => {
+  const idx = src.indexOf('function filterAndClose');
+  const body = src.slice(idx, idx + 500);
+  if (!body.includes('dataset.filter')) throw new Error('filterAndClose should use dataset.filter');
+});
+
+// ── Posting tab: markdown scrub + paragraph fix ─────────────────────────────
+console.log('\n── Posting tab: markdown + paragraphs');
+t('buildPostingHtml splits paragraphs on \\n\\n', () => {
+  const idx = src.indexOf('function buildPostingHtml');
+  const codeStart = src.indexOf('if (rawSource.trim().length > 0)', idx);
+  if (codeStart < 0) throw new Error('buildPostingHtml body not found');
+  const body = src.slice(codeStart, codeStart + 2000);
+  // Positive check: must split on double-newline. If someone accidentally
+  // reintroduces the old single-line filter trap, paragraphs won't form and
+  // the visual regression will catch it — no need for a fragile negative regex.
+  if (!/split\(\/\\n\{2,\}\/\)/.test(body)) {
+    throw new Error('double-newline paragraph split missing');
+  }
+});
+t('buildPostingHtml promotes short punctuation-less lines to <h3>', () => {
+  const idx = src.indexOf('function buildPostingHtml');
+  const body = src.slice(idx, idx + 4000);
+  if (!/<h3>/.test(body)) throw new Error('no h3 promotion for headings');
+});
+
+// ── Interview tab: scrollable wrapper preserves tabs ─────────────────────────
+console.log('\n── Interview tab nav preservation');
+t('renderInterviewTab wraps output in .interview-wrap (inner scroll)', () => {
+  const idx = src.indexOf('function renderInterviewTab');
+  const body = src.slice(idx, idx + 2500);
+  if (!body.includes('class="interview-wrap"')) {
+    throw new Error('.interview-wrap wrapper missing — tabs will scroll out of view');
+  }
+});
+t('Interview tab is NOT inside .tab-pane wrapper (needs to be direct flex child of .detail-view)', () => {
+  // In renderDetail, the interview branch should render bare, like posting — not wrapped
+  const idx = src.indexOf("activeDetailTab === 'interview'");
+  if (idx < 0) throw new Error('interview branch not found in renderDetail');
+  const body = src.slice(idx, idx + 200);
+  if (/tab-pane[^<]*\$\{renderInterviewTab/.test(body)) {
+    throw new Error('renderInterviewTab still wrapped in tab-pane — will prevent inner scroll');
+  }
+});
+
+// ── Extension bridge (webapp ↔ content.js ↔ background) ─────────────────────
+console.log('\n── Extension bridge');
+t('isExtensionInstalled() helper defined and driven by summit-ext-ready message', () => {
+  if (!src.includes('function isExtensionInstalled'))  throw new Error('isExtensionInstalled missing');
+  if (!src.includes("msg.type === 'summit-ext-ready'")) throw new Error('no summit-ext-ready listener');
+  if (!src.includes('_extensionAvailable'))             throw new Error('no _extensionAvailable flag');
+});
+t('_browserFetchPosting uses _bridgeCall (postMessage) — NOT chrome.tabs.create', () => {
+  const idx = src.indexOf('async function _browserFetchPosting');
+  const body = src.slice(idx, idx + 600);
+  if (body.includes('chrome.tabs.create')) throw new Error('still using chrome.tabs.create (unavailable to web pages)');
+  if (!body.includes('_bridgeCall')) throw new Error('not using _bridgeCall');
+});
+t('_bridgeCall uses nonce + timeout for safety', () => {
+  const idx = src.indexOf('function _bridgeCall');
+  const body = src.slice(idx, idx + 800);
+  if (!body.includes('nonce'))         throw new Error('no nonce');
+  if (!body.includes('bridge-timeout')) throw new Error('no timeout path');
+});
+t('refetchPosting only shows "browser fetch" step if extension installed', () => {
+  const idx = src.indexOf('async function refetchPosting');
+  const body = src.slice(idx, idx + 3500);
+  // Must guard the browser-fetch step behind isExtensionInstalled()
+  if (!/if \(isExtensionInstalled\(\)\)/.test(body)) {
+    throw new Error('refetchPosting does not gate browser-fetch step on extension presence');
+  }
+  // Should render a distinct "install extension" card when not installed
+  if (!body.includes('_renderPostingBlockedCard')) throw new Error('fallback card helper missing');
 });
 
 // ── App-wide typography consistency with insights pass ──────────────────────

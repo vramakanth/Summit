@@ -255,10 +255,10 @@ function parseJson(raw) {
   // Remove any leading text before the first {
   const brace = s.indexOf('{');
   if (brace > 0) s = s.slice(brace);
-  // Try straight parse first
+  // Try straight parse first — clean success, no partial flag
   try { return JSON.parse(s); } catch {}
   // Strategy 2: truncate at the last valid closing brace
-  // Handles cases where the AI cuts off mid-object
+  // Handles cases where the AI appended trailing garbage after a complete object
   let depth = 0, lastValid = -1;
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '{') depth++;
@@ -267,12 +267,20 @@ function parseJson(raw) {
   if (lastValid > 0) {
     try { return JSON.parse(s.slice(0, lastValid + 1)); } catch {}
   }
-  // Strategy 3: truncate at last complete top-level key-value pair
-  // Walk back from end to find a position where JSON is valid
+  // Strategy 3: truncate at last complete top-level key-value pair (LOSSY)
+  // Walk back from end to find a position where JSON is valid.
+  // This silently drops any fields after the truncation point — so we flag it.
   for (let i = s.length - 1; i > 100; i--) {
     if (s[i] === ',' || s[i] === '}') {
       const attempt = s.slice(0, i).replace(/,\s*$/, '') + '}';
-      try { return JSON.parse(attempt); } catch {}
+      try {
+        const parsed = JSON.parse(attempt);
+        // Mark as partial so callers can surface a retry UI
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsed._partial = true;
+        }
+        return parsed;
+      } catch {}
     }
   }
   throw new Error('JSON parse failed after repair attempts');
@@ -450,11 +458,39 @@ async function fetchATS(rawUrl) {
     }, 12000);
     if (r.ok) {
       const raw = await r.text();
+      // Jina returns MARKDOWN. Strip all markdown syntax to leave clean prose —
+      // not just links — otherwise **bold**, ##headers, >quotes, - bullets leak
+      // through to the posting tab as literal characters.
       const text = raw
-        .replace(/^(Title|URL|Published Time|Description):[^\n]*\n/gim, '')
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        // Frontmatter-style lines Jina prepends
+        .replace(/^(Title|URL Source|URL|Published Time|Markdown Content|Description):[^\n]*\n/gim, '')
+        // Links and images — keep link text, drop URLs
         .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-        .replace(/\n{4,}/g, '\n\n').trim();
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        // Reference-style links
+        .replace(/^\s*\[[^\]]+\]:\s*\S.*$/gm, '')
+        // Headings (# to ######) — keep text, drop hashes
+        .replace(/^\s*#{1,6}\s+/gm, '')
+        // Blockquote markers
+        .replace(/^\s*>\s?/gm, '')
+        // Unordered list markers → bullet, ordered list markers → stripped
+        .replace(/^(\s*)[-*+]\s+/gm, '$1• ')
+        .replace(/^(\s*)\d+\.\s+/gm, '$1')
+        // Horizontal rules
+        .replace(/^\s*([-*_])\s*\1\s*\1[-*_\s]*$/gm, '')
+        // Emphasis: ***x***, **x**, __x__, *x*, _x_ → x
+        .replace(/(\*\*\*|___)(.+?)\1/g, '$2')
+        .replace(/(\*\*|__)(.+?)\1/g, '$2')
+        .replace(/(?<!\w)[*_]([^*_\n]+?)[*_](?!\w)/g, '$1')
+        // Inline code and code fences
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`([^`]+)`/g, '$1')
+        // Strikethrough ~~x~~
+        .replace(/~~(.+?)~~/g, '$1')
+        // Tidy whitespace
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{4,}/g, '\n\n\n')
+        .trim();
       if (text.length > 200) {
         return { text, salary: extractSalaryFromText(text), html: '', _via: 'jina' };
       }
@@ -546,6 +582,132 @@ app.post('/api/parse-job', authMiddleware, async (req, res) => {
   try {
     res.json(await fetchATS(url));
   } catch (e) { res.json({ html:'', text:'', error: e.message }); }
+});
+
+// ── Public mirror finder ────────────────────────────────────────────────────
+// When the original posting URL is blocked (Cloudflare etc.), search the web for
+// the same job on an unprotected source (company careers, Greenhouse, Lever,
+// Ashby, Workable, SmartRecruiters, BreezyHR, Recruitee). Verify the match via
+// AI before returning, so we don't hand back "a different Senior Engineer role."
+//
+// Returns { ok, mirrorUrl, via, reason? }. Called lazily on refetch failure —
+// once found, the client caches it on the job as j.fallbackUrl and reuses it.
+
+// Strict allowlist. Left side is a domain substring; right side is a label for UI.
+// Order matters — higher-quality sources first. Blocked aggregators (LinkedIn,
+// Indeed, ZipRecruiter, Glassdoor) are deliberately NOT here — they are usually
+// the SOURCE of the Cloudflare problem, not a solution to it.
+const MIRROR_ALLOWLIST = [
+  // ATS platforms — clean public pages, rarely bot-protected
+  { match: 'boards.greenhouse.io',     label: 'Greenhouse' },
+  { match: 'job-boards.greenhouse.io', label: 'Greenhouse' },
+  { match: 'jobs.lever.co',            label: 'Lever' },
+  { match: 'jobs.ashbyhq.com',         label: 'Ashby' },
+  { match: 'apply.workable.com',       label: 'Workable' },
+  { match: 'careers.smartrecruiters.com', label: 'SmartRecruiters' },
+  { match: 'breezy.hr',                label: 'Breezy' },
+  { match: 'recruitee.com',            label: 'Recruitee' },
+  { match: 'pinpointhq.com',           label: 'Pinpoint' },
+  { match: 'jobvite.com',              label: 'Jobvite' },
+  { match: 'bamboohr.com/jobs',        label: 'BambooHR' },
+  { match: 'teamtailor.com',           label: 'Teamtailor' },
+  { match: 'applytojob.com',           label: 'JazzHR' },
+];
+
+function isAllowlistedMirror(url) {
+  try {
+    const u = new URL(url);
+    const host = u.host.toLowerCase();
+    for (const entry of MIRROR_ALLOWLIST) {
+      if (host.includes(entry.match.split('/')[0]) &&
+          (!entry.match.includes('/') || u.pathname.includes(entry.match.split('/').slice(1).join('/')))) {
+        return entry.label;
+      }
+    }
+    // Also allow company careers pages: careers.<company>.com or <company>.com/careers
+    if (/(^|\.)careers\./i.test(host)) return 'Company careers';
+    // Company root domain + /careers or /jobs path — accept if the company slug is in the URL
+    return null;
+  } catch { return null; }
+}
+
+// Use Jina's search endpoint — returns top-10 organic results as structured JSON.
+// Free tier is fine for our volume (one call per refetch failure).
+async function searchWeb(query) {
+  try {
+    const r = await fetchTimeout(
+      'https://s.jina.ai/?q=' + encodeURIComponent(query),
+      { headers: { 'Accept': 'application/json', 'X-Respond-With': 'no-content' } },
+      10000
+    );
+    if (!r.ok) return [];
+    const data = await r.json();
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    return rows.map(r => ({ url: r.url, title: r.title || '', snippet: r.description || '' }))
+               .filter(r => r.url);
+  } catch { return []; }
+}
+
+// Ask AI to judge whether a candidate posting is the SAME job as the claimed
+// title/company/location. Low token count — we only need a yes/no + confidence.
+async function verifyMirrorMatch({ claimedTitle, claimedCompany, claimedLocation, candidateText }) {
+  const sys = 'You verify whether two job postings describe the same role. Return ONLY valid compact JSON.';
+  const usr = `Claimed: title="${claimedTitle}", company="${claimedCompany}"${claimedLocation ? `, location="${claimedLocation}"` : ''}.
+
+Candidate posting (first 1500 chars):
+${(candidateText || '').slice(0, 1500)}
+
+Do these describe the SAME job? Return {"match": true|false, "confidence": 0.0-1.0, "reason": "brief"}.
+- Company must match exactly (same employer).
+- Title must be equivalent (minor wording differences OK; different seniority or function = NOT a match).
+- Location should be compatible if both specified.`;
+  try {
+    const raw = await callAI(['groq','google','openrouter'], sys, usr, 150);
+    return parseJson(raw);
+  } catch { return { match: false, confidence: 0, reason: 'verify-failed' }; }
+}
+
+app.post('/api/find-posting-mirror', authMiddleware, async (req, res) => {
+  const { title, company, location, originalUrl } = req.body || {};
+  if (!title || !company) return res.status(400).json({ error: 'title and company required' });
+
+  // Build a focused query. Quoting company + title usually finds exact matches.
+  const query = `"${company}" "${title}"${location ? ' ' + location : ''}`;
+  const results = await searchWeb(query);
+  if (!results.length) return res.json({ ok: false, reason: 'no-search-results' });
+
+  // Don't return the URL we already know is blocked
+  let origHost = '';
+  try { origHost = new URL(originalUrl || '').host.toLowerCase(); } catch {}
+
+  // Score candidates: allowlisted sources first, skip the original host
+  const candidates = [];
+  for (const r of results) {
+    if (!r.url) continue;
+    try {
+      const h = new URL(r.url).host.toLowerCase();
+      if (origHost && h === origHost) continue;
+    } catch { continue; }
+    const label = isAllowlistedMirror(r.url);
+    if (label) candidates.push({ ...r, label });
+  }
+  if (!candidates.length) return res.json({ ok: false, reason: 'no-allowlisted-candidates' });
+
+  // Try up to 3 candidates — fetch, verify, return first match
+  for (const c of candidates.slice(0, 3)) {
+    let fetched;
+    try { fetched = await fetchATS(c.url); } catch { continue; }
+    if (!fetched?.text || fetched.text.length < 300) continue;
+
+    const verdict = await verifyMirrorMatch({
+      claimedTitle: title, claimedCompany: company, claimedLocation: location,
+      candidateText: fetched.text,
+    });
+    if (verdict?.match && (verdict.confidence ?? 0) >= 0.7) {
+      return res.json({ ok: true, mirrorUrl: c.url, via: c.label, confidence: verdict.confidence });
+    }
+  }
+  res.json({ ok: false, reason: 'no-verified-match' });
 });
 
 app.post('/api/extract-fields', authMiddleware, async (req, res) => {
@@ -645,7 +807,7 @@ ${postingText?'Job posting context: '+postingText.slice(0,800):''}
 
 {"overview":{"founded":"year","employees":"N,NNN","hq":"city","industry":"sector"},
 "companyOverview":"3-4 paragraphs about company mission, products, culture, recent developments",
-"workforce":{"headcount":"N,NNN","headcountTrend":"growing","avgTenure":"2.5 years","fullTimePct":85,"remoteRatio":40,"recentLayoffs":"None","headcountHistory":[{"year":2019,"count":5000},{"year":2020,"count":5200},{"year":2021,"count":7000},{"year":2022,"count":9000},{"year":2023,"count":10500},{"year":2024,"count":12000}],"genderSplit":{"female":42,"male":56,"other":2},"ageBrackets":{"under30":28,"30to40":38,"40to50":22,"over50":12},"ethnicityMix":{"asian":28,"white":48,"hispanic":12,"black":8,"other":4},"visaSponsorship":"yes","visaNote":"Sponsors H-1B; green card support for qualified candidates","topLocations":["City, ST","Remote"],"glassdoorDiversity":4.1,"note":"Estimated from public data."},
+"workforce":{"headcount":"N,NNN","headcountTrend":"growing","avgTenure":"2.5 years","fullTimePct":85,"remoteRatio":40,"recentLayoffs":"None","genderSplit":{"female":42,"male":56,"other":2},"ageBrackets":{"under30":28,"30to40":38,"40to50":22,"over50":12},"ethnicityMix":{"asian":28,"white":48,"hispanic":12,"black":8,"other":4},"visaSponsorship":"yes","visaNote":"Sponsors H-1B; green card support for qualified candidates","topLocations":["City, ST","Remote"],"glassdoorDiversity":4.1,"note":"Estimated from public data."},
 "culture":{"overallRating":3.8,"workLifeBalance":3.5,"cultureValues":3.8,"careerOpp":3.6,"compensation":3.4,"leadership":3.5,"numRatings":"1,234","ceoApproval":72,"recommend":68,"summary":"Culture summary paragraph"},
 "roleIntel":"2-3 paragraphs about this specific role and team",
 "flags":{"green":["positive signal"],"red":["concern to watch"]},
@@ -653,7 +815,7 @@ ${postingText?'Job posting context: '+postingText.slice(0,800):''}
 "news":[{"headline":"Recent headline","source":"Source","date":"2024-01","url":"","sentiment":"positive"}],
 "interviewTips":"Role-specific interview preparation tips"}`
   try {
-    const raw = await callAI(['groq','openrouter','google'], sys, usr, 4000);
+    const raw = await callAI(['groq','openrouter','google'], sys, usr, 8000);
     const data = parseJson(raw);
     res.json({ ...data, stock, generatedAt: Date.now() });
   } catch (e) { console.error('insights:', e.message); res.status(500).json({ error: e.message }); }

@@ -476,6 +476,8 @@ input[type=\"file\"] { display: none; }
 .snav-btn { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: none; background: none; color: var(--text2); font-family: var(--font); font-size: 13px; cursor: pointer; width: 100%; text-align: left; border-left: 2px solid transparent; transition: all 0.12s; }
 .snav-btn:hover { color: var(--text); background: var(--bg3); }
 .snav-btn.active { border-left-color: var(--accent-bg); color: var(--accent-bg); background: var(--bg3); padding-left: 12px; }
+.snav-group-label { padding: 16px 14px 6px; font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: 0.15em; text-transform: uppercase; }
+.snav-group-label:first-child { padding-top: 0; }
 .user-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; margin-top: auto; }
 .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #1a1917; font-family: var(--mono); flex-shrink: 0; }
 .user-name { font-size: 12px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
@@ -805,6 +807,8 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <button class="filter-tab" onclick="setFilter('to apply')" data-filter="to apply">to apply</button>
       <button class="filter-tab" onclick="setFilter('applied')" data-filter="applied">applied</button>
       <button class="filter-tab" onclick="setFilter('interview')" data-filter="interview">interview</button>
+      <button class="filter-tab" onclick="setFilter('offer')" data-filter="offer">offer</button>
+      <button class="filter-tab" onclick="setFilter('rejected')" data-filter="rejected">rejected</button>
       <button class="filter-tab" onclick="setFilter('stale')" data-filter="stale">stale</button>
       <button class="filter-tab" onclick="setFilter('watchlist')" data-filter="watchlist">★ watchlist</button>
     </div>
@@ -1156,7 +1160,9 @@ const CryptoEngine = {
 let dataKey = null;
 let isEncrypted = false; // true for zero-knowledge accounts
 
-const STATUSES = ['to apply','applied','screening','interviewing','offer','rejected','ghosted','withdrawn','expired'];
+const STATUSES = ['to apply','applied','interview','offer','rejected'];
+// Legacy statuses → current. Applied on load so existing accounts migrate transparently.
+const STATUS_MIGRATE = { 'screening':'interview', 'interviewing':'interview', 'ghosted':'rejected', 'withdrawn':'rejected', 'expired':'rejected' };
 
 // ── UTILITIES ──
 function stripHtml(html) {
@@ -1175,7 +1181,15 @@ function fmtDate(ts) {
   return new Date(ts).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
 function statusColor(s) {
-  return {'to apply':'#64748b',applied:'#3b82f6',screening:'#8b5cf6',interviewing:'#f59e0b',offer:'#10b981',rejected:'#ef4444',ghosted:'#6b7280',withdrawn:'#9ca3af',expired:'#f97316'}[s] || '#6b7280';
+  return {
+    'to apply':'#64748b',
+    'applied':'#3b82f6',
+    'interview':'#f59e0b',
+    'offer':'#10b981',
+    'rejected':'#ef4444',
+    // Legacy (pre-migration) — keep colors so existing UI doesn't flash wrong before load
+    'screening':'#f59e0b','interviewing':'#f59e0b','ghosted':'#ef4444','withdrawn':'#ef4444','expired':'#ef4444'
+  }[s] || '#6b7280';
 }
 function formatSalary(s) {
   if (!s) return '';
@@ -1774,6 +1788,11 @@ async function loadJobs() {
       jobs = blob; // Very old format fallback
     }
     if (!jobs || typeof jobs !== 'object') jobs = {};
+
+    // Migrate legacy statuses (screening/interviewing → interview, ghosted/withdrawn/expired → rejected)
+    Object.values(jobs).forEach(j => {
+      if (j.status && STATUS_MIGRATE[j.status]) j.status = STATUS_MIGRATE[j.status];
+    });
 
     // Migrate legacy location strings
     Object.values(jobs).forEach(j => {
@@ -2433,7 +2452,7 @@ function renderDetail() {
           : activeDetailTab === 'contacts'
             ? `<div class="tab-pane">${renderContactsTab(j)}</div>`
             : activeDetailTab === 'interview'
-              ? `<div class="tab-pane">${renderInterviewTab(j)}</div>`
+              ? renderInterviewTab(j)
               : `<div class="tab-pane">${renderNotesTab(j)}</div>`
     }
   `;
@@ -2543,23 +2562,28 @@ function buildPostingHtml(j) {
   }
 
   if (rawSource.trim().length > 0) {
-    const lines = rawSource
-      .split('\n')
-      .map(l => l.trim())
-      .filter(Boolean);
+    // Split into paragraphs on blank-line boundaries (double newlines).
+    // Previous version did `.split('\n').filter(Boolean)` which stripped blanks
+    // before the paragraph-detection loop, so everything fused into one mega-paragraph.
+    const normalized = rawSource.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+    const paras = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
 
-    // Group lines into paragraphs (blank lines between sections become <p> breaks)
-    let html = '';
-    let para = [];
-    for (const line of lines) {
-      if (line === '' && para.length) {
-        html += '<p>' + esc(para.join(' ')).replace(/• /g, '<br>• ') + '</p>';
-        para = [];
-      } else {
-        para.push(line);
+    const html = paras.map(p => {
+      // Detect a multi-line bullet list inside a paragraph
+      const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
+      const allBullets = lines.length > 1 && lines.every(l => l.startsWith('•'));
+      if (allBullets) {
+        return '<ul>' + lines.map(l => '<li>' + esc(l.replace(/^•\s*/, '')) + '</li>').join('') + '</ul>';
       }
-    }
-    if (para.length) html += '<p>' + esc(para.join(' ')).replace(/• /g, '<br>• ') + '</p>';
+      // Regular paragraph — join single-newlines (soft-wrap) with spaces
+      const joined = lines.join(' ');
+      // Heuristic: very short single-line paragraphs that end without punctuation tend to be headings
+      if (lines.length === 1 && joined.length < 80 && !/[.!?:;]$/.test(joined)) {
+        return '<h3>' + esc(joined) + '</h3>';
+      }
+      return '<p>' + esc(joined) + '</p>';
+    }).join('');
+
     return `<div class="posting-body">${html}</div>`;
   }
 
@@ -2580,28 +2604,53 @@ async function refetchPosting(jobId) {
   const area = document.getElementById('posting-content-area');
   if (area) area.innerHTML = `<div class="fetch-loading">${spinner()} Fetching job posting...</div>`;
 
-  // Step 1: try server-side fetch (Jina reader + direct fetch)
-  try {
-    const res = await fetch(API + '/api/parse-job', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ url: j.url })
-    });
-    if (!res.ok) throw new Error('Server error ' + res.status);
-    const data = await res.json();
-    if (data.text && data.text.length > 200) {
-      j.postingHtml = data.html || '';
-      j.postingText = data.text;
+  // ── Step 1: server fetch on the original URL ─────────────────────────────
+  const primary = await _serverFetch(j.url);
+  if (primary.ok) {
+    j.postingHtml = primary.html || '';
+    j.postingText = primary.text;
+    // Successful primary fetch invalidates any stale mirror — trust the original
+    if (j.fallbackUrl) { delete j.fallbackUrl; delete j.fallbackVia; }
+    scheduleSave();
+    if (area) area.innerHTML = buildPostingHtml(j);
+    return;
+  }
+
+  // ── Step 2: already-discovered mirror URL (cached from a prior failure) ──
+  if (j.fallbackUrl) {
+    if (area) area.innerHTML = `<div class="fetch-loading">${spinner()} Original blocked — trying saved mirror (${esc(j.fallbackVia || 'alt source')})…</div>`;
+    const mirror = await _serverFetch(j.fallbackUrl);
+    if (mirror.ok) {
+      j.postingHtml = mirror.html || '';
+      j.postingText = mirror.text;
       scheduleSave();
-      if (area) area.innerHTML = buildPostingHtml(j);
+      if (area) area.innerHTML = buildPostingHtml(j) + _renderMirrorBadge(j);
       return;
     }
-    // Server returned but no useful content — fall through to browser fetch
-    throw new Error('no-content');
-  } catch(e) {
-    // Server fetch failed or returned empty (Cloudflare, bot-blocking, etc.)
-    // Step 2: browser-side fetch via extension tab capture
-    if (area) area.innerHTML = `<div class="fetch-loading">${spinner()} Server blocked — trying browser fetch...</div>`;
+    // Mirror went stale — clear it and keep searching
+    delete j.fallbackUrl;
+    delete j.fallbackVia;
+  }
+
+  // ── Step 3: lazy search for a public mirror (first failure only) ─────────
+  if (area) area.innerHTML = `<div class="fetch-loading">${spinner()} Looking for a public mirror of this posting…</div>`;
+  const found = await _findMirror(j);
+  if (found?.mirrorUrl) {
+    const mirror = await _serverFetch(found.mirrorUrl);
+    if (mirror.ok) {
+      j.postingHtml = mirror.html || '';
+      j.postingText = mirror.text;
+      j.fallbackUrl = found.mirrorUrl;
+      j.fallbackVia = found.via || null;
+      scheduleSave();
+      if (area) area.innerHTML = buildPostingHtml(j) + _renderMirrorBadge(j);
+      return;
+    }
+  }
+
+  // ── Step 4: extension-based browser fetch (only if installed) ────────────
+  if (isExtensionInstalled()) {
+    if (area) area.innerHTML = `<div class="fetch-loading">${spinner()} Site blocked direct fetch — trying via your browser…</div>`;
     const captured = await _browserFetchPosting(j.url);
     if (captured && captured.length > 200) {
       j.postingHtml = '';
@@ -2610,66 +2659,150 @@ async function refetchPosting(jobId) {
       if (area) area.innerHTML = buildPostingHtml(j);
       return;
     }
-
-    // Step 3: both failed — show helpful fallback
-    if (area) area.innerHTML = `<div class="posting-empty" style="padding:20px">
-      <p style="color:var(--text2);margin-bottom:16px;line-height:1.6">
-        This site blocks automated fetching (Cloudflare protection).<br>
-        <strong style="color:var(--text)">Two ways to capture this posting:</strong>
-      </p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <a href="${esc(j.url)}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 14px;background:var(--accent-bg);color:#1a0d00;border-radius:var(--radius-sm);font-size:13px;font-weight:600;text-decoration:none">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          Open job page, then click Summit extension
-        </a>
-        <div style="font-size:11px;color:var(--text3);line-height:1.5">
-          Or paste the job description text directly into the <strong style="color:var(--text2)">Notes</strong> tab.
-        </div>
-      </div>
-    </div>`;
+    if (area) area.innerHTML = _renderPostingBlockedCard(j, 'blocked-even-with-extension');
+    return;
   }
+
+  // ── Step 5: nothing worked — show install-extension / paste-to-Notes card
+  if (area) area.innerHTML = _renderPostingBlockedCard(j, 'no-extension');
 }
 
-// Browser-side fetch via Chrome extension tab capture.
-// Opens the URL in a background tab, waits for content.js to be ready,
-// requests the page text, then closes the tab.
-// Returns the extracted text, or null if extension is not available.
-async function _browserFetchPosting(url) {
-  // Check if Chrome extension API is available
-  if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.tabs) return null;
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 20000); // 20s max
-
-    chrome.tabs.create({ url, active: false }, (tab) => {
-      if (!tab) { clearTimeout(timeout); resolve(null); return; }
-
-      // Poll until the tab is loaded, then ask content.js for the page text
-      let attempts = 0;
-      const poll = setInterval(() => {
-        attempts++;
-        if (attempts > 40) { // 20s max (40 × 500ms)
-          clearInterval(poll);
-          clearTimeout(timeout);
-          chrome.tabs.remove(tab.id).catch(() => {});
-          resolve(null);
-          return;
-        }
-        chrome.tabs.get(tab.id, (t) => {
-          if (chrome.runtime.lastError || !t) return; // tab gone
-          if (t.status !== 'complete') return; // still loading
-          clearInterval(poll);
-          clearTimeout(timeout);
-          // Ask content.js for the rendered page text
-          chrome.tabs.sendMessage(tab.id, { action: 'extractJob' }, (resp) => {
-            chrome.tabs.remove(tab.id).catch(() => {});
-            if (chrome.runtime.lastError || !resp) { resolve(null); return; }
-            resolve(resp.bodyText || null);
-          });
-        });
-      }, 500);
+// Small server-fetch helper so the flow reads cleanly. Returns { ok, text?, html? }.
+async function _serverFetch(url) {
+  try {
+    const res = await fetch(API + '/api/parse-job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ url }),
     });
+    if (!res.ok) return { ok: false };
+    const data = await res.json();
+    if (data.text && data.text.length > 200) return { ok: true, text: data.text, html: data.html || '' };
+    return { ok: false };
+  } catch { return { ok: false }; }
+}
+
+// Ask server to find a public, verified mirror of this job posting.
+// Returns { mirrorUrl, via } on success, null otherwise.
+async function _findMirror(j) {
+  try {
+    const res = await fetch(API + '/api/find-posting-mirror', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({
+        title: j.title, company: j.company, location: j.location || '',
+        originalUrl: j.url,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.ok ? { mirrorUrl: data.mirrorUrl, via: data.via } : null;
+  } catch { return null; }
+}
+
+// Small badge shown below the posting body when we're reading from a mirror,
+// so the user knows the content didn't come from their original URL.
+function _renderMirrorBadge(j) {
+  if (!j.fallbackUrl) return '';
+  return `<div style="max-width:720px;margin:18px 24px 20px;padding:10px 14px;background:rgba(232,168,56,0.06);border:1px solid rgba(232,168,56,0.2);border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)">
+    <span style="color:var(--accent-bg);font-size:13px">↺</span>
+    <span>Reading from a public mirror${j.fallbackVia ? ` (${esc(j.fallbackVia)})` : ''} because the original site blocked direct access.</span>
+    <a href="${esc(j.fallbackUrl)}" target="_blank" style="margin-left:auto;color:var(--text3);text-decoration:underline;text-underline-offset:2px">view</a>
+  </div>`;
+}
+
+// Dedicated fallback card. Two variants depending on whether the user already
+// has the extension — determines what action we suggest.
+function _renderPostingBlockedCard(j, reason) {
+  const extUrl = 'https://chrome.google.com/webstore/'; // TODO: real listing URL once published
+  const noExtension = reason === 'no-extension';
+  return `<div style="max-width:560px;margin:24px auto;padding:24px 28px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:32px;height:32px;border-radius:var(--radius-sm);background:rgba(232,168,56,0.12);display:flex;align-items:center;justify-content:center;color:var(--accent-bg);font-size:16px">⚠</div>
+      <div style="font-family:var(--font-display);font-size:18px;color:var(--text);letter-spacing:-0.01em">This site blocks automated fetching</div>
+    </div>
+    <div style="font-size:14px;line-height:1.6;color:var(--text2);margin-bottom:18px">
+      ${noExtension
+        ? `The site is using a bot-protection service (often Cloudflare). Summit's server can't read it directly. With the browser extension installed, Summit can open the page in your own browser — which the site <em>does</em> trust — and capture the posting automatically.`
+        : `Even with your browser attempting the fetch, this site blocked us. It's a stubborn one — probably requires you to be logged in, or uses extra challenge pages. You can still capture the posting manually:`}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${noExtension ? `
+        <a href="${extUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:11px 16px;background:var(--accent-bg);color:#1a0d00;border-radius:var(--radius-sm);font-size:13px;font-weight:600;text-decoration:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Install the Summit browser extension
+        </a>` : ''
+      }
+      <a href="${esc(j.url)}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:11px 16px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:500;text-decoration:none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Open the original posting
+      </a>
+      <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-top:4px">
+        Then copy the description and paste it into the <strong style="color:var(--text2)">Notes</strong> tab. Tailoring and insights will still work.
+      </div>
+    </div>
+  </div>`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// EXTENSION BRIDGE — talk to the Summit Chrome extension's background worker
+// via window.postMessage (content.js on this page relays to chrome.runtime).
+// Web pages cannot call chrome.tabs directly — the extension has to do it for us.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Set to true once the extension's content.js announces itself via postMessage
+let _extensionAvailable = false;
+let _extensionVersion = null;
+
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const msg = ev.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'summit-ext-ready') {
+    _extensionAvailable = true;
+    _extensionVersion = msg.version || null;
+  }
+});
+
+// Unresolved bridge calls keyed by nonce
+const _bridgePending = new Map();
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return;
+  const msg = ev.data;
+  if (!msg || msg.type !== 'summit-bridge-response' || !msg.nonce) return;
+  const pending = _bridgePending.get(msg.nonce);
+  if (!pending) return;
+  _bridgePending.delete(msg.nonce);
+  clearTimeout(pending.timer);
+  pending.resolve(msg);
+});
+
+function _bridgeCall(action, payload = {}, timeoutMs = 30_000) {
+  return new Promise((resolve) => {
+    const nonce = 'b' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const timer = setTimeout(() => {
+      if (_bridgePending.has(nonce)) {
+        _bridgePending.delete(nonce);
+        resolve({ ok: false, error: 'bridge-timeout' });
+      }
+    }, timeoutMs);
+    _bridgePending.set(nonce, { resolve, timer });
+    window.postMessage({ type: 'summit-bridge', action, nonce, ...payload }, location.origin);
   });
+}
+
+// True if the extension's content.js has announced itself on this page.
+// The announcement is fire-and-forget on page load, so by the time a user
+// clicks Refresh we will have received it if the extension is installed.
+function isExtensionInstalled() { return _extensionAvailable; }
+
+// Ask the extension to open the URL in a background tab and scrape it.
+// Returns the extracted text, or null if unavailable / blocked.
+async function _browserFetchPosting(url) {
+  if (!_extensionAvailable) return null;
+  const resp = await _bridgeCall('fetchPosting', { url }, 30_000);
+  if (!resp.ok) return null;
+  return resp.bodyText || null;
 }
 
 // ── NOTES TAB ──
@@ -2961,7 +3094,11 @@ function renderInsightsTab(j) {
         <div style="font-size:12px;color:var(--text3)">This may be a temporary AI provider issue. Click <strong style="color:var(--text)">Refresh now</strong> to try again.</div>
       </div>
     </div>` : `
-    ${ins._error ? `<div style="margin-bottom:16px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-sm);font-size:12px;color:var(--red)">⚠ Last refresh failed — showing previously cached data</div>` : ''}
+    ${ins._error ? `<div style="margin-bottom:16px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-sm);font-size:13px;color:var(--red)">⚠ Last refresh failed — showing previously cached data</div>` : ''}
+    ${ins._partial ? `<div style="margin-bottom:16px;padding:10px 14px;background:rgba(232,168,56,0.07);border:1px solid rgba(232,168,56,0.28);border-radius:var(--radius-sm);font-size:13px;color:var(--accent-bg);display:flex;align-items:center;gap:8px">
+      <span>⚠</span>
+      <span style="color:var(--text2)">Partial research returned — some sections (e.g. role, culture, news) may be empty. Click <strong style="color:var(--text)">Refresh now</strong> to retry.</span>
+    </div>` : ''}
     <div class="insights-grid">
       ${ins.overview ? renderOverviewCards(ins.overview) : ''}
     </div>
@@ -3830,193 +3967,166 @@ function renderAnalytics(overlay) {
   if (!overlay) overlay = document.getElementById('analytics-overlay');
   if (!overlay) return;
 
-  // Compute stats
+  // Counts per status (new 5-status vocabulary)
   const bySt = {};
   STATUSES.forEach(s => bySt[s] = 0);
-  all.forEach(j => { bySt[j.status] = (bySt[j.status] || 0) + 1; });
+  all.forEach(j => { if (bySt[j.status] !== undefined) bySt[j.status] += 1; });
 
-  const byWorkType = {};
-  all.forEach(j => { const k = j.workType || 'Not specified'; byWorkType[k] = (byWorkType[k] || 0) + 1; });
+  const activeCount = all.filter(j => j.status !== 'rejected').length;
+  const staleCount  = all.filter(j => j.stale).length;
+  const velocity    = computeVelocity();
+  const responseRate = total ? Math.round((((bySt.interview||0) + (bySt.offer||0)) / total) * 100) : 0;
 
-  const byMonth = {};
-  all.forEach(j => {
-    const d = new Date(j.createdAt);
-    const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-    byMonth[key] = (byMonth[key] || 0) + 1;
-  });
+  // Weekly activity — last 12 weeks
+  const weeks = [];
+  const msWeek = 7 * 86400000;
+  const now = Date.now();
+  for (let i = 11; i >= 0; i--) {
+    const start = now - (i + 1) * msWeek;
+    const end   = now - i * msWeek;
+    const count = all.filter(j => j.createdAt > start && j.createdAt <= end).length;
+    const label = i === 0 ? 'this' : `${i}w`;
+    weeks.push({ label, count });
+  }
+  const maxWeek = Math.max(...weeks.map(w => w.count), 1);
 
-  const responseRate = total ? Math.round((((bySt.screening||0) + (bySt.interviewing||0) + (bySt.offer||0)) / total) * 100) : 0;
-  const offerRate = total ? Math.round(((bySt.offer||0) / total) * 100) : 0;
-  const activeCount = all.filter(j => !['rejected','ghosted','withdrawn','expired'].includes(j.status)).length;
-  const velocity = computeVelocity();
-
-  const statusColors = {
-    'to apply':'#64748b', applied:'#3b82f6', screening:'#8b5cf6', interviewing:'#f59e0b',
-    offer:'#10b981', rejected:'#ef4444', ghosted:'#6b7280',
-    withdrawn:'#9ca3af', expired:'#f97316'
-  };
-
-  const maxBar = Math.max(...Object.values(bySt), 1);
+  // Funnel — count at each stage, drop rejected
+  const funnel = [
+    { key:'to apply',  label:'To apply',  count: bySt['to apply']  || 0 },
+    { key:'applied',   label:'Applied',   count: bySt['applied']   || 0 },
+    { key:'interview', label:'Interview', count: bySt['interview'] || 0 },
+    { key:'offer',     label:'Offer',     count: bySt['offer']     || 0 },
+  ];
+  const funnelMax = Math.max(...funnel.map(f => f.count), 1);
 
   overlay.innerHTML = `
-    <div style="display:flex;align-items:center;gap:14px;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2)">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="10" width="4" height="7" rx="1" fill="currentColor" opacity=".6"/><rect x="7" y="6" width="4" height="11" rx="1" fill="currentColor" opacity=".8"/><rect x="13" y="2" width="4" height="15" rx="1" fill="currentColor"/></svg>
-      <div style="font-size:16px;font-weight:600;color:var(--text);flex:1">Analytics Dashboard</div>
-      <button id="analytics-check-btn" onclick="checkAllPostings()" ${checkingPostings?'disabled':''} style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
-        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v3l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        ${checkingPostings ? 'Checking...' : '⟳ Check postings'}
-      </button>
-
-    </div>
-    <!-- Check postings progress bar — shown during checking -->
-    <div id="check-postings-progress" style="display:${checkingPostings?'block':'none'};padding:8px 24px;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div id="check-postings-status" style="font-size:12px;color:var(--text2);font-family:var(--mono)">Ready to check</div>
+    <!-- Header -->
+    <div style="display:flex;align-items:baseline;justify-content:space-between;padding:36px 40px 0;flex-shrink:0">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--accent-bg);letter-spacing:0.25em;margin-bottom:14px">THE CLIMB · AT A GLANCE</div>
+        <div style="font-family:var(--font-display);font-size:34px;font-weight:500;color:var(--text);letter-spacing:-0.02em;line-height:1.1">Analytics</div>
       </div>
-      <div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden">
-        <div id="check-postings-bar" style="height:100%;background:#f97316;border-radius:2px;width:0%;transition:width 0.3s ease"></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button id="analytics-check-btn" onclick="checkAllPostings()" ${checkingPostings?'disabled':''} style="padding:9px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s" onmouseover="this.style.borderColor='var(--border2)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v3l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          ${checkingPostings ? 'Checking…' : 'Check postings'}
+        </button>
+        <button onclick="closeSection()" style="width:32px;height:32px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text2)'">×</button>
       </div>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px">
 
-      <!-- KPI cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
-        ${[
-          {label:'Total applications', value:total, color:'var(--blue)'},
-          {label:'Active pipeline', value:activeCount, color:'var(--accent-bg)'},
-          {label:'Response rate', value:responseRate+'%', color:'var(--purple)'},
-          {label:'Offer rate', value:offerRate+'%', color:'var(--green)'},
-          {label:'Interviews', value:bySt.interviewing||0, color:'var(--amber)'},
-          {label:'Offers received', value:bySt.offer||0, color:'var(--green)'},
-          {label:'Last 7 days', value:(velocity?.last7||0)+' apps', color:'var(--text2)'},
-          {label:'Last 30 days', value:(velocity?.last30||0)+' apps', color:'var(--text2)'},
-          ...(velocity?.avgDaysToResponse ? [{label:'Avg days to response', value:velocity.avgDaysToResponse+'d', color:'var(--text2)'}] : []),
-          {label:'Expired postings', value:bySt.expired||0, color:'#f97316'},
-        ].map(k => `
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-            <div style="font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;margin-bottom:8px">${k.label.toUpperCase()}</div>
-            <div style="font-size:28px;font-weight:700;color:${k.color};letter-spacing:-1px">${k.value}</div>
-          </div>`).join('')}
+    <!-- Progress bar during posting check -->
+    <div id="check-postings-progress" style="display:${checkingPostings?'block':'none'};padding:10px 40px 0;flex-shrink:0">
+      <div id="check-postings-status" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:6px">Ready to check</div>
+      <div style="height:3px;background:var(--bg3);border-radius:2px;overflow:hidden">
+        <div id="check-postings-bar" style="height:100%;background:var(--accent-bg);border-radius:2px;width:0%;transition:width 0.3s ease"></div>
       </div>
+    </div>
 
-      <!-- Status breakdown bar chart -->
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">Applications by status</div>
-        ${Object.entries(bySt).filter(([,v]) => v > 0).map(([s, v]) => `
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer" onclick="filterAndClose('${s}')">
-            <div style="width:90px;font-size:12px;font-family:var(--mono);color:var(--text2);flex-shrink:0">${s}</div>
-            <div style="flex:1;height:22px;background:var(--bg3);border-radius:4px;overflow:hidden">
-              <div style="width:${Math.round((v/maxBar)*100)}%;height:100%;background:${statusColors[s]||'var(--blue)'};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;transition:width .4s ease">
-                <span style="font-size:11px;font-weight:600;color:#fff">${v}</span>
-              </div>
-            </div>
-            <div style="font-size:11px;color:var(--text3);font-family:var(--mono);width:30px;text-align:right">${Math.round((v/total)*100)}%</div>
-          </div>`).join('')}
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Click a bar to jump to that status · Click a job title below to open it</div>
-      </div>
+    <div style="flex:1;overflow-y:auto;padding:32px 40px 60px">
+      <div style="max-width:860px">
 
-      <!-- Job titles grouped by status — clickable -->
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text)">All applications</div>
-        ${STATUSES.filter(s => all.some(j => j.status === s)).map(s => {
-          const group = all.filter(j => j.status === s);
-          return `<div style="border-bottom:1px solid var(--border)">
-            <div style="padding:8px 20px;background:var(--bg3);display:flex;align-items:center;gap:8px">
-              <div style="width:8px;height:8px;border-radius:50%;background:${statusColors[s]||'#6b7280'};flex-shrink:0"></div>
-              <span style="font-size:11px;font-family:var(--mono);font-weight:600;color:var(--text2)">${s.toUpperCase()}</span>
-              <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">(${group.length})</span>
-            </div>
-            ${group.map(j => `
-              <div onclick="openJobFromAnalytics('${j.id}')" style="padding:10px 20px 10px 36px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.12s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-                <div style="font-size:13px;font-weight:500;color:var(--blue);text-decoration:underline;text-underline-offset:2px">${esc(j.title)}</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)">${esc(j.company)}${j.workType?' · '+esc(j.workType):''}${j.location?' · '+esc(j.location):''}</div>
-              </div>`).join('')}
-          </div>`;
-        }).join('')}
-      </div>
+        <!-- Stat strip — editorial, hairline top/bottom, no boxes -->
+        <div class="analytics-kpi-grid">
+          <div class="analytics-kpi-card">
+            <div class="analytics-kpi-value">${total}</div>
+            <div class="analytics-kpi-label">Total</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <div class="analytics-kpi-value">${activeCount}</div>
+            <div class="analytics-kpi-label">Active</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <div class="analytics-kpi-value">${responseRate}<span style="font-size:20px;color:var(--text3)">%</span></div>
+            <div class="analytics-kpi-label">Response rate</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <div class="analytics-kpi-value">${velocity?.last7 || 0}</div>
+            <div class="analytics-kpi-label">This week</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <div class="analytics-kpi-value">${velocity?.avgDaysToResponse != null ? velocity.avgDaysToResponse : '—'}${velocity?.avgDaysToResponse != null ? '<span style="font-size:20px;color:var(--text3)">d</span>' : ''}</div>
+            <div class="analytics-kpi-label">Avg reply</div>
+          </div>
+          <div class="analytics-kpi-card" style="cursor:${staleCount ? 'pointer' : 'default'}" ${staleCount ? 'onclick="filterAndClose(\'stale\')"' : ''}>
+            <div class="analytics-kpi-value" style="${staleCount ? 'color:var(--amber)' : ''}">${staleCount}</div>
+            <div class="analytics-kpi-label">Stale</div>
+          </div>
+        </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-        <!-- Work type breakdown -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">Work type distribution</div>
-          ${Object.entries(byWorkType).map(([k,v]) => `
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <div style="font-size:12px;color:var(--text2)">${esc(k)}</div>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:80px;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden">
-                  <div style="width:${Math.round((v/total)*100)}%;height:100%;background:var(--accent-bg);border-radius:4px"></div>
+        <!-- Pipeline funnel -->
+        <div class="insight-section">
+          <div class="insight-section-header">
+            <div class="insight-section-title">Pipeline</div>
+          </div>
+          <div class="insight-section-body">
+            ${total === 0
+              ? `<div style="font-size:14px;color:var(--text3);padding:20px 0">No applications tracked yet.</div>`
+              : `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-left:1px solid var(--border)">
+                  ${funnel.map((f, i) => {
+                    const pct = total ? Math.round((f.count/total)*100) : 0;
+                    const barPct = Math.round((f.count / funnelMax) * 100);
+                    const col = statusColor(f.key);
+                    return `<div onclick="filterAndClose('${f.key}')" style="padding:18px 20px;border-right:1px solid var(--border);cursor:pointer;transition:background 0.12s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+                      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">${f.label}</div>
+                      <div style="font-family:var(--font-display);font-size:28px;font-weight:500;color:var(--text);letter-spacing:-0.015em;line-height:1;margin-bottom:10px">${f.count}</div>
+                      <div style="height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:6px">
+                        <div style="width:${barPct}%;height:100%;background:${col};border-radius:2px;transition:width 0.4s ease"></div>
+                      </div>
+                      <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${pct}% of total</div>
+                    </div>`;
+                  }).join('')}
                 </div>
-                <div style="font-size:11px;font-family:var(--mono);color:var(--text3)">${v}</div>
-              </div>
-            </div>`).join('')}
+                ${(bySt.rejected || 0) > 0 ? `<div onclick="filterAndClose('rejected')" style="margin-top:14px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:border-color 0.12s" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+                  <div style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:0.08em;text-transform:uppercase">Rejected / ended</div>
+                  <div style="font-family:var(--font-display);font-size:18px;font-weight:500;color:var(--red);letter-spacing:-0.01em">${bySt.rejected} <span style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-left:6px">${Math.round((bySt.rejected/total)*100)}%</span></div>
+                </div>` : ''}`
+            }
+          </div>
         </div>
 
-        <!-- Applications over time -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">Applications over time</div>
-          ${Object.keys(byMonth).length === 0
-            ? '<div style="font-size:13px;color:var(--text3)">No data yet</div>'
-            : (() => {
-                const maxM = Math.max(...Object.values(byMonth), 1);
-                return Object.entries(byMonth).map(([m, v]) => `
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                    <div style="width:55px;font-size:11px;font-family:var(--mono);color:var(--text3);flex-shrink:0">${m}</div>
-                    <div style="flex:1;height:18px;background:var(--bg3);border-radius:3px;overflow:hidden">
-                      <div style="width:${Math.round((v/maxM)*100)}%;height:100%;background:var(--blue);border-radius:3px"></div>
-                    </div>
-                    <div style="font-size:11px;font-family:var(--mono);color:var(--text3);width:20px">${v}</div>
-                  </div>`).join('');
-              })()}
+        <!-- Weekly activity — last 12 weeks -->
+        <div class="insight-section">
+          <div class="insight-section-header">
+            <div class="insight-section-title">Weekly cadence · Last 12 weeks</div>
+          </div>
+          <div class="insight-section-body">
+            ${velocity?.last7 === 0 && total > 0 ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(232,168,56,0.07);border:1px solid rgba(232,168,56,0.28);border-radius:var(--radius-sm);font-size:13px;color:var(--text2)">No applications this week yet — cadence is a factor in getting responses.</div>` : ''}
+            <div style="display:flex;align-items:flex-end;gap:6px;height:110px;border-bottom:1px solid var(--border);padding-bottom:4px">
+              ${weeks.map(w => {
+                const h = Math.round((w.count / maxWeek) * 100);
+                const isThis = w.label === 'this';
+                return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+                  <div style="font-size:10px;color:var(--text3);font-family:var(--mono);min-height:14px">${w.count || ''}</div>
+                  <div style="width:100%;height:${h}%;min-height:${w.count?3:0}px;background:${isThis ? 'var(--accent-bg)' : 'var(--border2)'};border-radius:2px 2px 0 0;transition:height 0.3s ease"></div>
+                </div>`;
+              }).join('')}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              ${weeks.map(w => `<div style="flex:1;text-align:center;font-size:9px;font-family:var(--mono);color:var(--text3);letter-spacing:0.04em">${w.label}</div>`).join('')}
+            </div>
+          </div>
         </div>
+
       </div>
-
-      <!-- Pipeline funnel -->
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">Hiring pipeline funnel</div>
-        <div style="display:flex;align-items:flex-end;justify-content:center;gap:8px;height:120px">
-          ${[
-            {label:'Applied', key:'applied', color:'#3b82f6'},
-            {label:'Screening', key:'screening', color:'#8b5cf6'},
-            {label:'Interview', key:'interviewing', color:'#f59e0b'},
-            {label:'Offer', key:'offer', color:'#10b981'},
-          ].map(({label, key, color}) => {
-            const v = bySt[key] || 0;
-            const pct = total ? Math.round((v/total)*100) : 0;
-            const h = Math.max(20, Math.round((v / Math.max(total, 1)) * 100));
-            return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;cursor:pointer" onclick="filterAndClose('${key}')">
-              <div style="font-size:12px;font-weight:600;color:var(--text)">${v}</div>
-              <div style="width:100%;border-radius:4px 4px 0 0;background:${color}" style="height:${h}px" data-h="${h}"></div>
-              <div style="font-size:10px;font-family:var(--mono);color:var(--text3);text-align:center">${label}<br>${pct}%</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-
     </div>`;
-
-  // Fix funnel bar heights after render
-  setTimeout(() => {
-    overlay.querySelectorAll('[data-h]').forEach(el => {
-      el.style.height = el.getAttribute('data-h') + 'px';
-    });
-  }, 50);
 }
 
 function filterAndClose(status) {
-  closeAnalytics();
+  closeSection();
   currentFilter = status;
   document.querySelectorAll('.filter-tab').forEach(t => {
-    t.classList.toggle('active', t.textContent.trim() === status);
+    t.classList.toggle('active', t.dataset.filter === status);
   });
   renderJobList();
 }
 
 function openJobFromAnalytics(jobId) {
-  closeAnalytics();
+  closeSection();
   // Reset filter to all so the job is visible
   currentFilter = 'all';
   document.querySelectorAll('.filter-tab').forEach(t => {
-    t.classList.toggle('active', t.textContent.trim() === 'all');
+    t.classList.toggle('active', t.dataset.filter === 'all');
   });
   selectJob(jobId);
 }
@@ -4026,7 +4136,7 @@ let checkingPostings = false;
 
 async function checkAllPostings() {
   if (checkingPostings) return;
-  const toCheck = Object.values(jobs).filter(j => j.url && !['rejected','withdrawn','expired'].includes(j.status));
+  const toCheck = Object.values(jobs).filter(j => j.url && j.status !== 'rejected');
   if (!toCheck.length) {
     // Update UI to reflect no active postings to check
     const statusEl = document.getElementById('check-postings-status');
@@ -4755,7 +4865,7 @@ function renderInterviewTab(j) {
   const practiced = j.interviews.filter(q=>q.practiced).length;
   const total = j.interviews.length;
 
-  return `<div style="max-width:680px;margin:0 auto">
+  return `<div class="interview-wrap"><div style="max-width:680px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">Interview Prep</div>
@@ -4798,7 +4908,7 @@ function renderInterviewTab(j) {
             </div>`).join('')}
         </div>`;
       }).join('')}`}
-  </div>`;
+  </div></div>`;
 }
 
 function togglePracticed(jobId, qId) {
@@ -5448,69 +5558,93 @@ function bulkExport() {
 function showHelp() {
   openSection('help');
   const sv = document.getElementById('section-view');
-  sv.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 28px 0;flex-shrink:0">
-      <div style="font-size:16px;font-weight:600;color:var(--text)">Help</div>
-      <button onclick="closeSection()" style="width:28px;height:28px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:16px;display:flex;align-items:center;justify-content:center" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">×</button>
-    </div>
-    <div style="flex:1;overflow-y:auto;padding:20px 28px 40px;max-width:680px">
 
-      <!-- TOC -->
-      <div style="margin-bottom:28px;padding:16px 18px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">
-        <div style="font-size:11px;font-weight:600;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;margin-bottom:10px">CONTENTS</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <a href="#h-adding" style="font-size:13px;color:var(--blue);text-decoration:none">Adding a job</a>
-          <a href="#h-pipeline" style="font-size:13px;color:var(--blue);text-decoration:none">Tracking your pipeline</a>
-          <a href="#h-tailoring" style="font-size:13px;color:var(--blue);text-decoration:none">AI resume tailoring</a>
-          <a href="#h-research" style="font-size:13px;color:var(--blue);text-decoration:none">Company research</a>
-          <a href="#h-interview" style="font-size:13px;color:var(--blue);text-decoration:none">Interview prep</a>
-          <a href="#h-library" style="font-size:13px;color:var(--blue);text-decoration:none">Library</a>
-          <a href="#h-analytics" style="font-size:13px;color:var(--blue);text-decoration:none">Analytics &amp; stale check</a>
+  // Help sections — data-first so the layout stays consistent and tweakable
+  const helpSections = [
+    { id: 'h-adding', title: 'Adding a job', body:
+      `Click <strong>Add job</strong> and paste the URL from any job board — Summit will automatically pull the title, company, location, and salary. Edit anything it got wrong before saving. For better results, open the <strong>Job Posting</strong> tab on the job and click <em>refresh cache</em> so Summit has the full description to work with later. Even better, install the <strong>browser extension</strong> (Settings → Browser Extensions) — one click captures the posting while you're browsing, which makes tailoring significantly more accurate.` },
+    { id: 'h-pipeline', title: 'Tracking your pipeline', body:
+      `Each job moves through five statuses: <em>to apply → applied → interview → offer → rejected</em>. Change the status using the dropdown at the top of any job. The <strong>filter bar</strong> above the job list focuses you on a stage. The <strong>★ watchlist</strong> pill filters to starred jobs only; click the star on any row to add or remove without opening the job. <em>Stale</em> is a separate toggle — a flag that a posting appears closed or expired. Jobs can be stale at any status.` },
+    { id: 'h-tailoring', title: 'Resume tailoring', body:
+      `Open any job and go to the <strong>Documents</strong> tab, then click <strong>Tailor ✦</strong>. Summit reads the job posting and rewrites your resume or cover letter to match — about ten to twenty seconds. The result opens in a full-screen editor so you can review and tweak before downloading a .docx. If you want a different emphasis, adjust the context field and tailor again. Each version is saved under that job; your originals in the Library are never touched.` },
+    { id: 'h-research', title: 'Company research', body:
+      `Open the <strong>Insights</strong> tab on any job and click <strong>Research this role</strong>. Summit generates a company overview, Glassdoor culture and ratings, recent news, workforce demographics, and a short list of green flags and things to watch for — all in one place. For publicly traded companies, add a free <strong>Finnhub API key</strong> in Settings → Financial Data to also pull live stock price and market cap alongside the research.` },
+    { id: 'h-interview', title: 'Interview prep', body:
+      `Open the <strong>Interview Prep</strong> tab on any job and click <strong>Generate questions</strong>. Summit writes role-specific questions organised by category: behavioural, technical, culture fit, role-specific, and questions you should ask the interviewer. Check off questions as you practice so you can see at a glance where you still need to prepare.` },
+    { id: 'h-library', title: 'Library', body:
+      `The <strong>Library</strong> (sidebar) is where your master resumes and cover letters live. Upload your base versions once and they're available to attach to any job. When you tailor a document for a specific job, Summit saves the tailored version under that job — the originals in the Library are always preserved. You can also create and edit documents directly in the built-in editor.` },
+    { id: 'h-analytics', title: 'Analytics & stale check', body:
+      `Open <strong>Analytics</strong> from the sidebar to see your application funnel — how many jobs at each stage, trends over time, response rate patterns. It's useful for noticing things like consistently stalling at the phone screen. The <strong>Check postings</strong> button scans all your active job URLs and flags any that appear taken down or filled, so you don't chase closed roles.` },
+  ];
+
+  // Show the mountain background behind Help for atmosphere — toned down with a scrim
+  const bg = document.getElementById('mountain-bg');
+  if (bg) bg.style.display = '';
+
+  sv.style.position = 'relative';
+  sv.innerHTML = `
+    <!-- Dark parchment scrim over the mountain so body copy stays legible -->
+    <div id="help-scrim" style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(18,10,4,0.88) 0%,rgba(18,10,4,0.93) 100%);z-index:0;pointer-events:none"></div>
+
+    <div style="position:relative;z-index:1;display:flex;flex-direction:column;flex:1;overflow:hidden">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:baseline;justify-content:space-between;padding:36px 40px 8px;flex-shrink:0">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:#e8a838;letter-spacing:0.25em;margin-bottom:14px">FIELD GUIDE</div>
+          <div style="font-family:var(--font-display);font-size:34px;font-weight:500;color:#f2ead8;letter-spacing:-0.02em;line-height:1.1">Help</div>
         </div>
+        <button onclick="closeHelp()" style="width:32px;height:32px;background:rgba(255,255,255,0.06);border:1px solid rgba(242,234,216,0.18);border-radius:var(--radius-sm);cursor:pointer;color:rgba(242,234,216,0.7);font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.12)';this.style.color='#f2ead8'" onmouseout="this.style.background='rgba(255,255,255,0.06)';this.style.color='rgba(242,234,216,0.7)'">×</button>
+      </div>
+
+      <!-- Tagline -->
+      <div style="padding:0 40px;flex-shrink:0">
+        <div style="font-family:var(--font-display);font-style:italic;font-weight:300;font-size:17px;color:rgba(242,234,216,0.6);letter-spacing:-0.005em;max-width:560px;line-height:1.5;margin-bottom:32px">A brief field guide to Summit — what every tab does, and how the pieces fit together.</div>
+        <div style="border-top:1px solid rgba(242,234,216,0.12);margin-bottom:0"></div>
       </div>
 
       <!-- Body -->
-      <div style="font-size:13px;color:var(--text2);line-height:1.8;display:flex;flex-direction:column;gap:24px">
+      <div style="flex:1;overflow-y:auto;padding:36px 40px 60px">
+        <div style="max-width:640px">
+          ${helpSections.map((s, i) => `
+            <section id="${s.id}" style="margin-bottom:40px">
+              <div style="display:flex;align-items:center;margin-bottom:14px">
+                <div style="width:3px;height:14px;background:#e8a838;border-radius:1px;margin-right:12px;flex-shrink:0"></div>
+                <div style="font-family:var(--mono);font-size:11px;color:#e8a838;letter-spacing:0.2em;margin-right:14px">${String(i+1).padStart(2,'0')}</div>
+                <h3 style="font-family:var(--font-display);font-size:22px;font-weight:500;color:#f2ead8;letter-spacing:-0.015em;margin:0;line-height:1.2">${s.title}</h3>
+              </div>
+              <p style="font-family:var(--font);font-size:15px;line-height:1.8;color:rgba(242,234,216,0.72);margin:0 0 0 29px">${s.body}</p>
+            </section>
+          `).join('')}
 
-        <div id="h-adding">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Adding a job</div>
-          Click <strong style="color:var(--text)">Add job</strong> and paste the URL from any job board — Summit will automatically pull the title, company, location, and salary. You can edit anything it gets wrong before saving. For the best results, make sure the job posting is cached: open the <strong style="color:var(--text)">Job Posting tab</strong> on the job and click <strong style="color:var(--text)">refresh cache</strong> so Summit has the full description text to work with later. Even better, install the <strong style="color:var(--text)">browser extension</strong> (Settings → Browser Extensions) — it captures the full posting in one click while you're browsing, which makes tailoring significantly more accurate.
+          <!-- Colophon -->
+          <div style="margin-top:72px;padding-top:36px;border-top:1px solid rgba(242,234,216,0.12);text-align:center">
+            <div style="font-family:var(--mono);font-size:10px;color:rgba(242,234,216,0.32);letter-spacing:0.35em">JOBSUMMIT.APP</div>
+          </div>
         </div>
-
-        <div id="h-pipeline">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Tracking your pipeline</div>
-          Each job moves through statuses: <em>to apply → applied → interview → offer</em>. Change the status using the dropdown at the top of any job. Use the <strong style="color:var(--text)">filter bar</strong> above the job list to focus on a particular stage — you can also filter to just the jobs you've starred using the <strong style="color:var(--text)">★ watchlist</strong> filter. Click the star on any job row to add or remove it from your watchlist without opening the job. The <strong style="color:var(--text)">stale</strong> tag appears automatically on postings that look expired or taken down — Summit checks these in the background and you can also mark a job stale manually.
-        </div>
-
-        <div id="h-tailoring">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">AI resume tailoring</div>
-          Open any job and go to the <strong style="color:var(--text)">Documents tab</strong>, then click <strong style="color:var(--text)">Tailor ✦</strong>. Summit reads the job posting and rewrites your resume or cover letter to match the role — this takes about 10–20 seconds. The result opens in a full-screen editor so you can review and tweak it before downloading as a .docx. If you want to try again with different emphasis, adjust the context field and click Tailor again. Each version is saved separately under that job, so your original document in the Library is never touched.
-        </div>
-
-        <div id="h-research">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Company research</div>
-          Open the <strong style="color:var(--text)">Insights tab</strong> on any job and click <strong style="color:var(--text)">Research this role</strong>. Summit generates a company overview, Glassdoor culture and ratings data, recent news, workforce demographics, and a list of green flags and things to watch out for — all in one place. For publicly traded companies, you can add a free <strong style="color:var(--text)">Finnhub API key</strong> in Settings → Financial Data to also pull in live stock price and market cap alongside the research.
-        </div>
-
-        <div id="h-interview">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Interview prep</div>
-          Open the <strong style="color:var(--text)">Interview Prep tab</strong> on any job and click <strong style="color:var(--text)">Generate questions</strong>. Summit writes role-specific questions organised into categories: behavioural, technical, culture fit, role-specific, and questions you should ask the interviewer. Check off questions as you practice them so you can see at a glance where you still need to prepare.
-        </div>
-
-        <div id="h-library">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Library</div>
-          The <strong style="color:var(--text)">Library</strong> (sidebar) is where your master resumes and cover letters live. Upload your base versions once and they're available to attach to any job. When you tailor a document for a specific job, Summit saves the tailored version under that job — the originals in your Library are always preserved. You can also create and edit documents directly in the built-in editor.
-        </div>
-
-        <div id="h-analytics">
-          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">Analytics &amp; stale check</div>
-          Open <strong style="color:var(--text)">Analytics</strong> from the sidebar to see your full application funnel — how many jobs at each stage, trends over time, and response rate patterns. It's useful for noticing things like consistently stalling at the phone screen. The <strong style="color:var(--text)">Check postings</strong> button scans all your active job URLs and flags any that appear to have been taken down or filled. This saves you from following up on roles that are already closed.
-        </div>
-
       </div>
+
     </div>`;
 
+  // Style strong / em tags inside the help body — brighter text for strong, accent for em
+  const helpStyle = document.getElementById('help-style-scoped') || document.createElement('style');
+  helpStyle.id = 'help-style-scoped';
+  helpStyle.textContent = `
+    #section-view section strong { color: #f2ead8; font-weight: 600; }
+    #section-view section em { color: #e8a838; font-style: italic; font-family: var(--font-display); }
+  `;
+  if (!helpStyle.parentElement) document.head.appendChild(helpStyle);
+
   _setMobileActiveBtn('help');
+}
+
+// Close Help — hides the mountain bg (in-app pages don't show it) before returning
+function closeHelp() {
+  const bg = document.getElementById('mountain-bg');
+  if (bg) bg.style.display = 'none';
+  const scoped = document.getElementById('help-style-scoped');
+  if (scoped) scoped.remove();
+  closeSection();
 }
 
 function showWatchlist() {
@@ -5771,14 +5905,15 @@ function computeVelocity() {
   const sevenDaysAgo  = now - 7  * 86400000;
   const last30 = all.filter(j => j.createdAt > thirtyDaysAgo);
   const last7  = all.filter(j => j.createdAt > sevenDaysAgo);
-  const responded = all.filter(j => ['screening','interviewing','offer'].includes(j.status));
+  // Response = anyone who moved past "applied" into interview or offer
+  const responded = all.filter(j => ['interview','offer'].includes(j.status));
   const responseRate = all.length ? Math.round(responded.length / all.length * 100) : 0;
   const avgDaysToResponse = responded.length ? Math.round(
     responded.reduce((s,j) => s + ((j.updatedAt||j.createdAt||now) - (j.createdAt||now)), 0)
     / responded.length / 86400000
   ) : null;
   return { last30: last30.length, last7: last7.length, responseRate, avgDaysToResponse,
-    total: all.length, active: all.filter(j => !['rejected','ghosted','withdrawn','expired'].includes(j.status)).length };
+    total: all.length, active: all.filter(j => j.status !== 'rejected').length };
 }
 
 async function checkAIProviders() {
@@ -5798,6 +5933,15 @@ async function checkAIProviders() {
 }
 
 function openSettings(section) {
+  // SAFEGUARD: openSection('settings') will wipe section-view's innerHTML.
+  // If settings-panel-inner is still parked there from a previous open (user
+  // navigated away without calling closeSettings), the wipe destroys it and
+  // subsequent lookups return null → blank settings window. Rescue it first.
+  const innerPre = document.getElementById('settings-panel-inner');
+  const overlayPre = document.getElementById('settings-overlay');
+  if (innerPre && overlayPre && innerPre.parentElement !== overlayPre) {
+    overlayPre.appendChild(innerPre);
+  }
   // Render settings inside section-view (same as analytics/library)
   openSection('settings');
   const sv = document.getElementById('section-view');
@@ -6304,23 +6448,28 @@ setInterval(() => {
   <div style="background:var(--bg2);border-left:1px solid var(--border2);width:min(860px,100vw);height:100%;display:flex;overflow:hidden;box-shadow:-8px 0 32px rgba(0,0,0,0.18);transform:translateX(100%);transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);pointer-events:auto" id="settings-panel-inner">
 
     <!-- Sidebar nav -->
-    <div style="width:200px;flex-shrink:0;background:var(--bg3);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 0">
-      <!-- Settings nav header (user info removed per UX cleanup) -->
+    <div style="width:220px;flex-shrink:0;background:var(--bg3);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0 20px">
       <div style="flex:1;overflow-y:auto">
-        <button id="snav-account"   onclick="showSettingsSection('account')"   class="snav-btn">Account</button>
-        <button id="snav-extension" onclick="showSettingsSection('extension')" class="snav-btn">Browser Extensions</button>
-        <button id="snav-tailoring" onclick="showSettingsSection('tailoring')" class="snav-btn">Tailoring</button>
-        <button id="snav-financial" onclick="showSettingsSection('financial')" class="snav-btn">Financial Data</button>
-        <button id="snav-data"      onclick="showSettingsSection('data')"      class="snav-btn">Data &amp; Export</button>
-        <button id="snav-feedback"  onclick="showSettingsSection('feedback')"  class="snav-btn">Feedback</button>
-        <button id="snav-recovery"  onclick="showSettingsSection('recovery')"  class="snav-btn">Recovery Codes</button>
-        <!-- Mobile-only quick actions -->
-        <div class="sidebar-section-label" style="margin-top:8px;display:none" id="mobile-more-label">TOOLS</div>
-        <button onclick="closeSettings();showWatchlist()" class="snav-btn" id="mobile-watchlist-btn" style="display:none">Watchlist</button>
-        <button onclick="closeSettings();showEmailTemplates(currentJobId||Object.keys(jobs)[0])" class="snav-btn" id="mobile-email-btn" style="display:none">Email Templates</button>
-        <button id="snav-danger"    onclick="showSettingsSection('danger')"    class="snav-btn" style="color:var(--red)">Danger Zone</button>
-      </div>
 
+        <div class="snav-group-label">SECURITY</div>
+        <button id="snav-account"   onclick="showSettingsSection('account')"   class="snav-btn">Account</button>
+        <button id="snav-recovery"  onclick="showSettingsSection('recovery')"  class="snav-btn">Recovery codes</button>
+
+        <div class="snav-group-label">PREFERENCES</div>
+        <button id="snav-tailoring" onclick="showSettingsSection('tailoring')" class="snav-btn">Tailoring</button>
+        <button id="snav-extension" onclick="showSettingsSection('extension')" class="snav-btn">Browser extension</button>
+        <button id="snav-financial" onclick="showSettingsSection('financial')" class="snav-btn">Financial data</button>
+
+        <div class="snav-group-label">YOUR DATA</div>
+        <button id="snav-data"      onclick="showSettingsSection('data')"      class="snav-btn">Import &amp; export</button>
+        <button id="snav-feedback"  onclick="showSettingsSection('feedback')"  class="snav-btn">Send feedback</button>
+        <button id="snav-danger"    onclick="showSettingsSection('danger')"    class="snav-btn" style="color:var(--red)">Danger zone</button>
+
+        <!-- Mobile-only quick actions -->
+        <div class="snav-group-label" style="display:none" id="mobile-more-label">TOOLS</div>
+        <button onclick="closeSettings();showWatchlist()" class="snav-btn" id="mobile-watchlist-btn" style="display:none">Watchlist</button>
+        <button onclick="closeSettings();showEmailTemplates(currentJobId||Object.keys(jobs)[0])" class="snav-btn" id="mobile-email-btn" style="display:none">Email templates</button>
+      </div>
     </div>
 
     <!-- Content -->

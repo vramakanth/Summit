@@ -1,6 +1,10 @@
-// Summit Chrome Extension — content.js v3.0
+// Summit Chrome Extension — content.js v3.1
 // New unified architecture: browser reads rendered DOM, AI extracts fields.
 // No site-specific selectors needed — works on any job board automatically.
+//
+// On jobsummit.app specifically, this script also acts as a bridge: the webapp
+// cannot call chrome.runtime directly, so it posts window messages which we
+// relay to background.js and post the response back.
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action !== 'extractJob') return;
@@ -73,3 +77,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   sendResponse({ bodyText, salary, url: location.href });
   return true;
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BRIDGE — only active on jobsummit.app
+// Webapp can't use chrome.runtime directly. We relay window.postMessage → background.
+// ──────────────────────────────────────────────────────────────────────────────
+(function initBridge() {
+  const host = location.hostname;
+  const isAppOrigin = host === 'jobsummit.app' || host === 'localhost' || host === '127.0.0.1';
+  if (!isAppOrigin) return;
+
+  // Announce ourselves so the webapp knows the extension is installed and reachable
+  const announce = () => window.postMessage(
+    { type: 'summit-ext-ready', version: chrome.runtime.getManifest().version },
+    location.origin
+  );
+  announce();
+  // Also respond to explicit pings (covers late-loading webapp scripts)
+  // and re-announce if the webapp asks us to.
+
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window) return;
+    const msg = ev.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type !== 'summit-bridge') return;
+    const { nonce, action, url } = msg;
+    if (!nonce) return;
+
+    if (action === 'ping') {
+      window.postMessage({ type: 'summit-bridge-response', nonce, ok: true, version: chrome.runtime.getManifest().version }, location.origin);
+      return;
+    }
+
+    if (action === 'fetchPosting' && typeof url === 'string') {
+      try {
+        chrome.runtime.sendMessage({ action: 'fetchPosting', url }, (resp) => {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'summit-bridge-response', nonce, ok: false, error: chrome.runtime.lastError.message || 'runtime-error' }, location.origin);
+            return;
+          }
+          window.postMessage({ type: 'summit-bridge-response', nonce, ...(resp || { ok: false, error: 'no-response' }) }, location.origin);
+        });
+      } catch (e) {
+        window.postMessage({ type: 'summit-bridge-response', nonce, ok: false, error: String(e?.message || e) }, location.origin);
+      }
+    }
+  });
+})();
