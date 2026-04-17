@@ -328,6 +328,135 @@ t('.insight-card-value uses display serif', () => {
   const m = src.match(/\.insight-card-value\s*\{[^}]*\}/);
   if (!m || !m[0].includes('var(--font-display)')) throw new Error('.insight-card-value missing font-display');
 });
+
+// ── Insights tab: editorial layout + readable type ──────────────────────────
+console.log('\n── Insights tab layout');
+t('Overview strip uses hairline top/bottom — no card box', () => {
+  const m = src.match(/\.insights-grid\s*\{[^}]*\}/);
+  if (!m) throw new Error('.insights-grid rule missing');
+  if (/\bborder\s*:\s*1px/.test(m[0])) throw new Error('outer box border still present on .insights-grid');
+  if (!/border-top:\s*1px/.test(m[0]))    throw new Error('top hairline missing');
+  if (!/border-bottom:\s*1px/.test(m[0])) throw new Error('bottom hairline missing');
+});
+t('.insight-card has no right-border or background', () => {
+  const m = src.match(/^\.insight-card\s*\{[^}]*\}/m);
+  if (!m) throw new Error('.insight-card rule missing');
+  if (/border-right/.test(m[0]))         throw new Error('per-field right-border still present');
+  if (/background:\s*var\(--bg2\)/.test(m[0])) throw new Error('per-field background still present');
+});
+t('.insight-section has no bottom border (editorial de-box)', () => {
+  const m = src.match(/^\.insight-section\s*\{[^}]*\}/m);
+  if (!m) throw new Error('.insight-section rule missing');
+  if (/border-bottom/.test(m[0])) throw new Error('section bottom border still present');
+});
+t('.insight-section-header has amber leading tick (::before)', () => {
+  if (!/\.insight-section-header::before\s*\{[^}]*background:\s*var\(--accent-bg\)/s.test(src)) {
+    throw new Error('amber tick ::before missing');
+  }
+});
+t('.insight-section-icon hidden (replaced by tick)', () => {
+  const m = src.match(/\.insight-section-icon\s*\{[^}]*\}/);
+  if (!m || !m[0].includes('display: none')) throw new Error('.insight-section-icon not hidden');
+});
+t('.insight-card-label bumped to 11px (was 9px)', () => {
+  const m = src.match(/\.insight-card-label\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*11px/.test(m[0])) throw new Error('.insight-card-label not 11px');
+});
+t('.insight-card-value bumped to 20px (was 18px)', () => {
+  const m = src.match(/\.insight-card-value\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*20px/.test(m[0])) throw new Error('.insight-card-value not 20px');
+});
+t('.insight-section-title bumped to 12px (was 11px)', () => {
+  const m = src.match(/\.insight-section-title\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*12px/.test(m[0])) throw new Error('.insight-section-title not 12px');
+});
+t('.insight-ai-text bumped to 15px (was 13px)', () => {
+  const m = src.match(/\.insight-ai-text\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('.insight-ai-text not 15px');
+});
+t('.insight-news-headline bumped to 15px (was 13px)', () => {
+  const m = src.match(/\.insight-news-headline\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('.insight-news-headline not 15px');
+});
+t('Orphan .insight-section radius override removed', () => {
+  if (src.includes('.insight-section { border-radius: 8px !important; }')) {
+    throw new Error('orphan radius override still present');
+  }
+});
+
+// ── App-wide typography consistency with insights pass ──────────────────────
+console.log('\n── App-wide body text scale');
+t('.notes-textarea bumped to 15px', () => {
+  const m = src.match(/\.notes-textarea\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('notes textarea not 15px');
+});
+t('.posting-body bumped to 15px + text color (was 13px/text2)', () => {
+  const m = src.match(/\.posting-body\s*\{[^}]*\}/);
+  if (!m) throw new Error('.posting-body rule missing');
+  if (!/font-size:\s*15px/.test(m[0]))      throw new Error('posting-body not 15px');
+  if (!/color:\s*var\(--text\)/.test(m[0])) throw new Error('posting-body not var(--text)');
+  if (/var\(--text2\)/.test(m[0]))          throw new Error('posting-body still using low-contrast text2');
+});
+t('.doc-list-name bumped to 15px', () => {
+  const m = src.match(/\.doc-list-name\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('doc-list-name not 15px');
+});
+t('.interview-q-text bumped to 15px', () => {
+  const m = src.match(/\.interview-q-text\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('interview-q-text not 15px');
+});
+t('.contact-name bumped to 15px', () => {
+  const m = src.match(/\.contact-name\s*\{[^}]*\}/);
+  if (!m || !/font-size:\s*15px/.test(m[0])) throw new Error('contact-name not 15px');
+});
+
+console.log('\n── App-wide display-number consistency (Fraunces)');
+t('.analytics-kpi-value uses Fraunces display serif', () => {
+  const m = src.match(/\.analytics-kpi-value\s*\{[^}]*\}/);
+  if (!m || !m[0].includes('var(--font-display)')) throw new Error('analytics-kpi-value missing font-display');
+});
+t('.analytics-kpi-card de-boxed (no background/border/radius)', () => {
+  const m = src.match(/\.analytics-kpi-card\s*\{[^}]*\}/);
+  if (!m) throw new Error('.analytics-kpi-card rule missing');
+  if (/background:\s*var\(--bg2\)/.test(m[0])) throw new Error('kpi card still has bg2 background');
+  if (/\bborder:\s*1px/.test(m[0]))            throw new Error('kpi card still has border');
+  if (/border-radius:/.test(m[0]))             throw new Error('kpi card still has radius');
+});
+t('.analytics-kpi-grid uses hairline top/bottom (stat-strip pattern)', () => {
+  const m = src.match(/\.analytics-kpi-grid\s*\{[^}]*\}/);
+  if (!m || !/border-top:\s*1px/.test(m[0]) || !/border-bottom:\s*1px/.test(m[0])) {
+    throw new Error('analytics grid not using hairline strip pattern');
+  }
+});
+
+console.log('\n── App-wide page titles (Fraunces display)');
+t('.docs-title uses Fraunces display', () => {
+  const m = src.match(/\.docs-title\s*\{[^}]*\}/);
+  if (!m || !m[0].includes('var(--font-display)')) throw new Error('docs-title missing font-display');
+});
+t('.interview-title uses Fraunces display', () => {
+  const m = src.match(/\.interview-title\s*\{[^}]*\}/);
+  if (!m || !m[0].includes('var(--font-display)')) throw new Error('interview-title missing font-display');
+});
+
+console.log('\n── App-wide section headers (amber tick pattern)');
+t('.docs-section-header has amber tick', () => {
+  if (!/\.docs-section-header::before\s*\{[^}]*background:\s*var\(--accent-bg\)/s.test(src)) {
+    throw new Error('docs section-header amber tick missing');
+  }
+});
+t('.interview-category has amber tick', () => {
+  if (!/\.interview-category::before\s*\{[^}]*background:\s*var\(--accent-bg\)/s.test(src)) {
+    throw new Error('interview-category amber tick missing');
+  }
+});
+t('.docs-section-title matches insight-section-title scale (12px mono uppercase)', () => {
+  const m = src.match(/\.docs-section-title\s*\{[^}]*\}/);
+  if (!m) throw new Error('docs-section-title rule missing');
+  if (!/font-size:\s*12px/.test(m[0]))     throw new Error('not 12px');
+  if (!/var\(--mono\)/.test(m[0]))         throw new Error('not mono');
+  if (!/text-transform:\s*uppercase/.test(m[0])) throw new Error('not uppercase');
+});
 t('.auth-logo-text uses display serif', () => {
   const m = src.match(/\.auth-logo-text\s*\{[^}]*\}/);
   if (!m || !m[0].includes('var(--font-display)')) throw new Error('.auth-logo-text missing font-display');
