@@ -280,3 +280,72 @@ t('Landing hero <h1>Summit uses display serif', () => {
 });
 t('font-optical-sizing enabled on body', () => has('font-optical-sizing: auto'));
 t('text-rendering optimizeLegibility on body', () => has('text-rendering: optimizeLegibility'));
+
+// ── User settings sync (Finnhub key server-synced via zero-knowledge) ──────
+console.log('\n── User settings sync');
+t('SYNCED_SETTING_KEYS array declared',      () => has('SYNCED_SETTING_KEYS ='));
+t('finnhub_key listed in SYNCED_SETTING_KEYS', () => {
+  const m = src.match(/SYNCED_SETTING_KEYS\s*=\s*\[([^\]]+)\]/);
+  if (!m || !m[1].includes("'finnhub_key'")) throw new Error('finnhub_key not in SYNCED_SETTING_KEYS');
+});
+t('loadUserSettings() function exists',      () => has('async function loadUserSettings()'));
+t('saveUserSettings() function exists',      () => has('async function saveUserSettings()'));
+t('loadUserSettings hits /api/user-settings', () => {
+  const idx = src.indexOf('async function loadUserSettings');
+  const body = src.slice(idx, idx + 2000);
+  if (!body.includes("'/api/user-settings'")) throw new Error('wrong endpoint');
+});
+t('loadUserSettings handles 404 as migration', () => {
+  const idx = src.indexOf('async function loadUserSettings');
+  const body = src.slice(idx, idx + 2000);
+  if (!body.includes('404')) throw new Error('no 404 branch');
+  if (!body.includes('saveUserSettings()')) throw new Error('404 branch does not push localStorage up');
+});
+t('loadUserSettings decrypts for zero-knowledge accounts', () => {
+  const idx = src.indexOf('async function loadUserSettings');
+  const body = src.slice(idx, idx + 2000);
+  if (!body.includes('CryptoEngine.decrypt(dataKey')) throw new Error('no client-side decrypt');
+});
+t('loadUserSettings removes cleared keys from localStorage (clear propagation)', () => {
+  const idx = src.indexOf('async function loadUserSettings');
+  const body = src.slice(idx, idx + 2000);
+  if (!body.includes('localStorage.removeItem(k)')) throw new Error('missing clear-propagation');
+});
+t('saveUserSettings encrypts for zero-knowledge accounts', () => {
+  const idx = src.indexOf('async function saveUserSettings');
+  const body = src.slice(idx, idx + 1200);
+  if (!body.includes('isEncrypted && dataKey')) throw new Error('no encrypted branch');
+  if (!body.includes('CryptoEngine.encrypt(dataKey')) throw new Error('no client-side encrypt');
+  if (!body.includes('__enc: true')) throw new Error('no __enc wrapper');
+});
+t('saveUserSettings PUTs to /api/user-settings', () => {
+  const idx = src.indexOf('async function saveUserSettings');
+  const body = src.slice(idx, idx + 1200);
+  if (!body.includes("method: 'PUT'") && !body.includes('method:"PUT"')) throw new Error('not PUT');
+  if (!body.includes("'/api/user-settings'")) throw new Error('wrong endpoint');
+});
+t('saveFinnhubKeySetting calls saveUserSettings', () => {
+  const idx = src.indexOf('function saveFinnhubKeySetting');
+  const body = src.slice(idx, idx + 600);
+  if (!body.includes('saveUserSettings()')) throw new Error('no sync call on save');
+});
+t('clearFinnhubKey calls saveUserSettings', () => {
+  const idx = src.indexOf('function clearFinnhubKey');
+  const body = src.slice(idx, idx + 400);
+  if (!body.includes('saveUserSettings()')) throw new Error('no sync call on clear');
+});
+t('loadUserSettings wired into session restore', () => {
+  // The page-load branch: if (token && currentUser) { ... loadUserSettings(); }
+  const m = src.match(/if \(token && currentUser\) \{[^}]*loadUserSettings\(\)[^}]*\}/);
+  if (!m) throw new Error('loadUserSettings not called on session restore');
+});
+t('loadUserSettings wired into login success', () => {
+  const idx = src.indexOf('async function doLogin');
+  const body = src.slice(idx, idx + 3000);
+  if (!body.includes('loadUserSettings()')) throw new Error('loadUserSettings not called after login');
+});
+t('enableEncryption re-encrypts settings after upgrade', () => {
+  const idx = src.indexOf('async function enableEncryption');
+  const body = src.slice(idx, idx + 3500);
+  if (!body.includes('saveUserSettings()')) throw new Error('no saveUserSettings call after upgrade');
+});

@@ -1205,7 +1205,7 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
-  if (token && currentUser) { showApp(); loadJobs(); }
+  if (token && currentUser) { showApp(); loadJobs(); loadUserSettings(); }
   else {
     const hash = location.hash.replace('#','');
     const valid = ['login','register','forgot','recover'];
@@ -1296,7 +1296,7 @@ async function doLogin() {
       dataKey = null; isEncrypted = false;
     }
 
-    showApp(); loadJobs();
+    showApp(); loadJobs(); loadUserSettings();
   } catch(e) { showErr(err,'Could not connect to server.'); }
   finally { btn.disabled=false; btn.textContent='Sign in'; }
 }
@@ -1382,7 +1382,7 @@ async function doRecover() {
       });
       const remaining = d2.codesRemaining || 0;
       alert('Recovery successful! You have ' + remaining + ' code' + (remaining===1?'':'s') + ' remaining. Visit Settings > Recovery Codes to generate a fresh set.');
-      showApp(); loadJobs();
+      showApp(); loadJobs(); loadUserSettings();
     } else if (d1.token) {
       // Non-encrypted account recovery
       token = d1.token; currentUser = d1.username;
@@ -1392,7 +1392,7 @@ async function doRecover() {
       ['recover-username','recover-code','recover-newpw','recover-confirmpw'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
-      showApp(); loadJobs();
+      showApp(); loadJobs(); loadUserSettings();
     }
   } catch(e) { showErr(err, 'Recovery failed: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = 'Reset password'; }
@@ -1580,7 +1580,7 @@ async function doRegister() {
     localStorage.setItem('applied_user',currentUser);
 
     // Show recovery codes — must be saved before entering app
-    showRecoveryCodesModal(formattedCodes, () => { showApp(); loadJobs(); }, true);
+    showRecoveryCodesModal(formattedCodes, () => { showApp(); loadJobs(); loadUserSettings(); }, true);
   } catch(ex) { showErr(err, 'Could not create account: ' + ex.message); }
   finally { btn.disabled=false; btn.textContent='Create account'; }
 }
@@ -1787,6 +1787,74 @@ async function loadJobs() {
   } catch(e) { console.error('loadJobs error:', e); jobs={}; }
   renderJobList();
   renderStaleNudge();
+}
+
+// ── User settings (account-synced, zero-knowledge for encrypted accounts) ──
+// Current synced keys: finnhub_key. Add to SYNCED_SETTING_KEYS to sync more.
+// For encrypted accounts, the settings blob is client-encrypted with dataKey
+// before PUT — the server only ever sees ciphertext.
+const SYNCED_SETTING_KEYS = ['finnhub_key'];
+
+async function loadUserSettings() {
+  if (!token) return;
+  try {
+    const res = await fetch(API+'/api/user-settings', {headers:{Authorization:'Bearer '+token}});
+
+    if (res.status === 401) { doLogout(); return; }
+
+    if (res.status === 404) {
+      // Server has never stored settings for this account. If localStorage
+      // has values, push them up so they follow the account going forward.
+      const hasLocal = SYNCED_SETTING_KEYS.some(k => localStorage.getItem(k));
+      if (hasLocal) await saveUserSettings();
+      return;
+    }
+
+    if (!res.ok) return;
+    const blob = await res.json();
+
+    // Unwrap whatever format the server returned
+    let settings = {};
+    if (blob && blob.__enc === true && dataKey) {
+      try { settings = (await CryptoEngine.decrypt(dataKey, blob.data)) || {}; }
+      catch(e) { console.error('Settings decrypt failed:', e); return; }
+    } else if (blob && blob.__enc === false) {
+      settings = blob.data || {};
+    } else if (blob && typeof blob === 'object') {
+      settings = blob;
+    }
+
+    // Server is authoritative — hydrate localStorage, clearing any missing keys
+    // so a cleared-on-device-A state propagates to device B on next login.
+    for (const k of SYNCED_SETTING_KEYS) {
+      if (settings[k]) localStorage.setItem(k, settings[k]);
+      else             localStorage.removeItem(k);
+    }
+  } catch(e) { console.error('loadUserSettings error:', e); }
+}
+
+async function saveUserSettings() {
+  if (!token) return;
+  // Snapshot current synced settings from localStorage
+  const settings = {};
+  for (const k of SYNCED_SETTING_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v) settings[k] = v;
+  }
+  try {
+    let payload;
+    if (isEncrypted && dataKey) {
+      const ciphertext = await CryptoEngine.encrypt(dataKey, settings);
+      payload = { __enc: true, data: ciphertext };
+    } else {
+      payload = { __enc: false, data: settings };
+    }
+    await fetch(API+'/api/user-settings', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json', Authorization: 'Bearer '+token},
+      body: JSON.stringify(payload)
+    });
+  } catch(e) { console.error('saveUserSettings error:', e); }
 }
 
 // ── STATUS UPDATE ──
@@ -5869,6 +5937,10 @@ async function enableEncryption() {
     dataKey     = genDataKey;
     isEncrypted = true;
 
+    // Re-encrypt existing settings on server using the new data key
+    // (they were stored plaintext before upgrade; now they get zero-knowledge treatment)
+    saveUserSettings();
+
     // Show recovery codes
     showRecoveryCodesModal(formattedCodes, () => {
       renderEncryptionStatus();
@@ -5994,6 +6066,7 @@ function saveFinnhubKeySetting() {
   const key = document.getElementById('s-finnhub-key').value.trim();
   if (key) {
     localStorage.setItem('finnhub_key', key);
+    saveUserSettings(); // sync to account (encrypted for zero-knowledge accounts)
     setSettingsStatus('finnhub-status','success','Finnhub API key saved.');
     renderDetail(); // refresh insights tab so "API key required" prompt disappears immediately
   } else {
@@ -6003,6 +6076,7 @@ function saveFinnhubKeySetting() {
 
 function clearFinnhubKey() {
   localStorage.removeItem('finnhub_key');
+  saveUserSettings(); // sync removal to account
   document.getElementById('s-finnhub-key').value = '';
   setSettingsStatus('finnhub-status','success','Finnhub key removed.');
   renderDetail(); // refresh insights tab so it reflects cleared state

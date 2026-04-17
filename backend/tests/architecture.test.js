@@ -134,5 +134,36 @@ urls.forEach(([name, url]) => {
   t('slug:  ' + name, () => { const c = cleanJobUrl(url); if (c.includes('share.google')) return; const r = slugFallback(c); if (!r || (!r.title && !r.company)) throw new Error('nothing extracted'); });
 });
 
+// ── User settings endpoint (Finnhub key sync) ───────────────────────────────
+console.log('\n── User settings sync');
+t('SETTINGS_DIR constant defined',          () => has(serverSrc, "SETTINGS_DIR = path.join(DATA_DIR, 'settings')"));
+t('SETTINGS_DIR in mkdir bootstrap',        () => {
+  const m = serverSrc.match(/for\s*\(const d of \[([^\]]+)\]\)/);
+  if (!m || !m[1].includes('SETTINGS_DIR')) throw new Error('SETTINGS_DIR not in bootstrap list');
+});
+t('loadUserSettings helper defined',        () => has(serverSrc, 'function loadUserSettings(userId, dataKey)'));
+t('saveUserSettings helper defined',        () => has(serverSrc, 'function saveUserSettings(userId, data, dataKey)'));
+t('loadUserSettings decrypts at rest',      () => {
+  const idx = serverSrc.indexOf('function loadUserSettings');
+  const body = serverSrc.slice(idx, idx + 500);
+  if (!body.includes('decryptData')) throw new Error('not decrypting at rest');
+});
+t('saveUserSettings encrypts at rest',      () => {
+  const idx = serverSrc.indexOf('function saveUserSettings');
+  const body = serverSrc.slice(idx, idx + 300);
+  if (!body.includes('encryptData')) throw new Error('not encrypting at rest');
+});
+t('GET /api/user-settings is authMiddleware-protected', () => {
+  has(serverSrc, "app.get('/api/user-settings', authMiddleware");
+});
+t('PUT /api/user-settings is authMiddleware-protected', () => {
+  has(serverSrc, "app.put('/api/user-settings', authMiddleware");
+});
+t('GET /api/user-settings returns 404 for missing file', () => {
+  const idx = serverSrc.indexOf("app.get('/api/user-settings'");
+  const body = serverSrc.slice(idx, idx + 400);
+  if (!body.includes('404')) throw new Error('no 404 for missing settings');
+});
+
 console.log(`\n${pass}/${pass+fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
 if (fail) process.exit(1);

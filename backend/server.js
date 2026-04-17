@@ -31,8 +31,9 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const USERS_FILE  = path.join(DATA_DIR, 'users.json');
 const JOBS_DIR    = path.join(DATA_DIR, 'jobs');
 const DOCS_DIR    = path.join(DATA_DIR, 'docs');
+const SETTINGS_DIR = path.join(DATA_DIR, 'settings');
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
-for (const d of [DATA_DIR, JOBS_DIR, DOCS_DIR]) {
+for (const d of [DATA_DIR, JOBS_DIR, DOCS_DIR, SETTINGS_DIR]) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
@@ -114,6 +115,25 @@ function loadUserDocs(userId) {
 }
 function saveUserDocs(userId, docs) {
   fs.writeFileSync(path.join(DOCS_DIR, `${userId}.json`), JSON.stringify(docs));
+}
+
+// ── User settings (account-level preferences like Finnhub key) ─────────────
+// Mirrors jobs: body may be a plain object OR { __enc: true, data: ciphertext }
+// for zero-knowledge accounts. Server stores whatever opaquely and never
+// inspects the contents for encrypted accounts. Server-side at-rest encryption
+// is also applied when req.dataKey is available (double-wrap, same as jobs).
+function loadUserSettings(userId, dataKey) {
+  const f = path.join(SETTINGS_DIR, `${userId}.json`);
+  if (!fs.existsSync(f)) return {};
+  const raw = fs.readFileSync(f, 'utf8');
+  if (dataKey && raw.includes(':') && !raw.startsWith('{')) {
+    try { return JSON.parse(decryptData(raw, dataKey)); } catch {}
+  }
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+function saveUserSettings(userId, data, dataKey) {
+  const json = JSON.stringify(data);
+  fs.writeFileSync(path.join(SETTINGS_DIR, `${userId}.json`), dataKey ? encryptData(json, dataKey) : json);
 }
 
 function loadTokens() {
@@ -379,6 +399,19 @@ app.get('/api/jobs', authMiddleware, (req, res) => {
 app.put('/api/jobs', authMiddleware, (req, res) => {
   if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Invalid data' });
   saveUserJobs(req.user.id, req.body, req.dataKey);
+  res.json({ ok: true });
+});
+
+// ── User settings (Finnhub key and future account-level prefs) ──────────────
+app.get('/api/user-settings', authMiddleware, (req, res) => {
+  const f = path.join(SETTINGS_DIR, `${req.user.id}.json`);
+  if (!fs.existsSync(f)) return res.status(404).json({ error: 'No settings saved' });
+  res.json(loadUserSettings(req.user.id, req.dataKey));
+});
+
+app.put('/api/user-settings', authMiddleware, (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Invalid data' });
+  saveUserSettings(req.user.id, req.body, req.dataKey);
   res.json({ ok: true });
 });
 
