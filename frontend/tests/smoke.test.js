@@ -498,9 +498,40 @@ t('Sidebar nav removed — no .snav-btn buttons anywhere', () => {
   if (/class="snav-group-label"/.test(src)) throw new Error('stale .snav-group-label classes still present');
 });
 t('.settings-group-label CSS class defined', () => has('.settings-group-label'));
-t('Settings panel has inline group labels (SECURITY / PREFERENCES / YOUR DATA)', () => {
-  for (const label of ['>SECURITY<', '>PREFERENCES<', '>YOUR DATA<']) {
-    if (!src.includes(label)) throw new Error(`missing inline group label: ${label}`);
+t('Settings panel has 6 inline group labels in logical order', () => {
+  // ACCOUNT group was dropped — its one card (CHANGE PASSWORD) moved into SECURITY.
+  // Sign out is now accessed exclusively from the top-right cluster (mobile) or
+  // the bottom user-bar (desktop), so the redundant SIGN OUT card was removed.
+  const expected = ['SECURITY','AUTOMATION','INTEGRATIONS','DATA','SUPPORT','DANGER ZONE'];
+  for (const label of expected) {
+    if (!src.includes(`>${label}<`)) throw new Error(`missing group label: ${label}`);
+  }
+  let lastIdx = src.indexOf('>SECURITY<');
+  for (const label of expected.slice(1)) {
+    const idx = src.indexOf(`>${label}<`, lastIdx);
+    if (idx < 0 || idx <= lastIdx) throw new Error(`${label} out of order relative to the previous group`);
+    lastIdx = idx;
+  }
+});
+t('No SIGN OUT card in settings (accessed from top-right cluster instead)', () => {
+  if (/<div class="settings-section-title">SIGN OUT<\/div>/.test(src)) {
+    throw new Error('SIGN OUT card should have been removed — redundant with top-right logout button');
+  }
+  // Element whose only purpose was the SIGN OUT card should be gone too
+  if (/id="s-session-user"/.test(src)) {
+    throw new Error('s-session-user element still present — should have been removed with SIGN OUT card');
+  }
+});
+t('Settings colophon shows version + brand (replaces mobile-invisible version label)', () => {
+  if (!/id="settings-colophon"/.test(src))        throw new Error('no colophon');
+  if (!/id="settings-version-label"/.test(src))   throw new Error('no version label in colophon');
+  if (!/>JOBSUMMIT\.APP</.test(src))              throw new Error('no brand text in colophon');
+  // Must be populated on openSettings
+  const openIdx = src.indexOf('function openSettings');
+  const body = src.slice(openIdx, openIdx + 2500);
+  if (!body.includes("getElementById('settings-version-label')") ||
+      !body.includes("APP_VERSION")) {
+    throw new Error('settings-version-label not populated on openSettings');
   }
 });
 t('Sticky settings header with "Settings" title', () => {
@@ -528,13 +559,13 @@ t('No-matches empty state element + styling', () => {
   if (!/id="settings-no-matches"/.test(src)) throw new Error('no settings-no-matches element');
   has('.settings-no-matches {'); // CSS rule for the empty state
 });
-t('All settings panes are visible by default (no inline display:none)', () => {
-  // Grab all .settings-pane opening tags and assert none carry style="display:none"
-  const matches = src.match(/<div class="settings-pane"[^>]*>/g) || [];
-  for (const m of matches) {
-    if (/style="display:none/.test(m)) throw new Error('found pane with inline display:none: ' + m.slice(0, 120));
+t('Settings uses flat cards — no .settings-pane wrappers (too-pane-intense fix)', () => {
+  if (/class="settings-pane"/.test(src)) throw new Error('found .settings-pane wrapper — should be flat cards under group labels');
+  // Must still have the primary deep-link target IDs on section cards
+  const deepLinkIds = ['spane-account','spane-recovery','spane-tailoring','spane-extension','spane-financial','spane-data','spane-feedback','spane-danger'];
+  for (const id of deepLinkIds) {
+    if (!src.includes(`id="${id}"`)) throw new Error(`deep-link target lost: ${id}`);
   }
-  if (matches.length < 5) throw new Error('expected at least 5 settings panes, found ' + matches.length);
 });
 t('showSettingsSection scrolls into view + flashes amber outline', () => {
   const idx = src.indexOf('function showSettingsSection');
@@ -553,9 +584,45 @@ t('openSettings runs ALL lazy loads on open (flat layout = all visible)', () => 
   if (!body.includes('renderEncryptionStatus()')) throw new Error('account lazy load missing on open');
   if (!body.includes('loadRecoveryStatus()'))     throw new Error('recovery lazy load missing on open');
 });
-t('.settings-pane has scroll-margin-top for sticky-header offset', () => {
-  if (!/\.settings-pane\s*\{[^}]*scroll-margin-top/.test(src)) {
-    throw new Error('no scroll-margin-top — sticky header will overlap scroll targets');
+t('.settings-section has scroll-margin-top for sticky-header offset', () => {
+  if (!/\.settings-section\s*\{[^}]*scroll-margin-top/.test(src)) {
+    throw new Error('no scroll-margin-top on flat cards — sticky header will overlap scroll targets');
+  }
+});
+t('Pane titles (Account/Recovery codes/Tailoring/...) removed — group labels + card titles are the hierarchy', () => {
+  // The redundant 18px pane titles used to appear above every pane. Now they're gone.
+  // Spot-check the biggest offenders: "Account" and "Tailoring" should no longer be
+  // present as bold 18px headings at the top of their panes.
+  const paneIds = ['account','recovery','tailoring','extension','financial','data','feedback','danger'];
+  for (const id of paneIds) {
+    const idx = src.indexOf(`id="spane-${id}"`);
+    if (idx < 0) throw new Error('pane not found: ' + id);
+    // Peek the 200 chars just after the pane opening — should NOT contain a font-size:18px heading
+    const peek = src.slice(idx, idx + 400);
+    if (/font-size:18px[^<]{0,60};[^<]*margin-bottom:\s*(20px|6px)[^<]*>[A-Z]/.test(peek)) {
+      throw new Error(`spane-${id} still has a 18px pane-title heading — should be removed`);
+    }
+  }
+});
+t('Danger zone is its own group with red styling (replaces stripped red pane title)', () => {
+  if (!src.includes('>DANGER ZONE<')) throw new Error('DANGER ZONE group label missing');
+  if (!/\.settings-group-label--danger\s*\{[^}]*color:\s*var\(--red\)/.test(src)) {
+    throw new Error('danger group label lacks red styling');
+  }
+});
+t('openSettings/closeSettings inline cssText includes flex-direction:column', () => {
+  // Without it, display:flex defaults to row and header+content render as
+  // side-by-side columns instead of stacked. Regression-prone because the
+  // static inline style on the markup is right but these runtime-set cssText
+  // strings are a separate code path.
+  for (const fn of ['openSettings', 'closeSettings']) {
+    const idx = src.indexOf('function ' + fn);
+    const body = src.slice(idx, idx + 2500);
+    const m = body.match(/inner\.style\.cssText\s*=\s*['"`]([^'"`]+)['"`]/);
+    if (!m) throw new Error(`${fn} missing inner.style.cssText`);
+    if (!/flex-direction:\s*column/.test(m[1])) {
+      throw new Error(`${fn} inline cssText missing flex-direction:column — settings will render as two columns`);
+    }
   }
 });
 

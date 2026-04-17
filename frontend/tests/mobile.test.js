@@ -202,6 +202,53 @@ t('bottom bar shown only in mobile media query', () => {
   }
 });
 
+// ── Top-right user cluster (mobile avatar + logout moved out of user-bar) ────
+console.log('\n── Mobile user cluster at top-right');
+
+t('#mobile-user-cluster exists and is inline-hidden on desktop', () => {
+  has('id="mobile-user-cluster"');
+  const m = src.match(/id="mobile-user-cluster"[^>]*style="([^"]+)"/);
+  if (!m) throw new Error('no inline style on cluster');
+  if (!/display:\s*none/.test(m[1])) throw new Error('cluster should be hidden by default (desktop)');
+  if (!/margin-left:\s*auto/.test(m[1])) throw new Error('cluster should push right via margin-left:auto');
+});
+
+t('Mobile cluster contains BOTH logout button and avatar button', () => {
+  const idx = src.indexOf('id="mobile-user-cluster"');
+  // The cluster is short; peek 2000 chars forward
+  const cluster = src.slice(idx, idx + 2000);
+  // End of cluster is the first </div> at the depth we care about — but
+  // easier to just check whether the logout + avatar markup appear before
+  // any sibling element that would mean we've exited the cluster.
+  if (!/onclick="doLogout\(\)"[\s\S]{0,800}id="mobile-avatar-btn"/.test(cluster)) {
+    throw new Error('cluster markup order broken — expected logout button then avatar button');
+  }
+  if (!/onclick="openSettings\(\)"/.test(cluster)) throw new Error('avatar button not wired to openSettings');
+});
+
+t('Mobile CSS shows the cluster AND hides the entire .user-bar (frees the row)', () => {
+  const mobileBlock = src.slice(
+    src.indexOf('@media (max-width: 680px)'),
+    src.indexOf('@media (max-width: 680px)') + 3000
+  );
+  if (!/#mobile-user-cluster\s*\{[^}]*display:\s*flex\s*!important/.test(mobileBlock)) {
+    throw new Error('cluster not shown in mobile media query');
+  }
+  if (!/\.user-bar\s*\{[^}]*display:\s*none\s*!important/.test(mobileBlock)) {
+    throw new Error('.user-bar not hidden on mobile — row not freed');
+  }
+});
+
+t('No duplicate #mobile-avatar-btn in DOM', () => {
+  const matches = src.match(/id="mobile-avatar-btn"/g) || [];
+  if (matches.length !== 1) throw new Error(`expected exactly 1 mobile-avatar-btn, found ${matches.length}`);
+});
+
+t('No duplicate #mobile-avatar span in DOM', () => {
+  const matches = src.match(/id="mobile-avatar"/g) || [];
+  if (matches.length !== 1) throw new Error(`expected exactly 1 mobile-avatar span, found ${matches.length}`);
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass}/${pass + fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
 if (fail) process.exit(1);
