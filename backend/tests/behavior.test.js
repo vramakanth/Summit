@@ -1002,16 +1002,48 @@ t('Account deletion cleans up user notes dir', () => {
   if (!/rmSync.*recursive/.test(body)) throw new Error('delete does not recursively clean');
 });
 
-t('Frontend uses TipTap with StarterKit + Link + Table + TaskList', () => {
+t('Frontend uses TipTap with StarterKit + Link (minimal reliable extension set)', () => {
   if (!/loadTipTap/.test(feSrc))                   throw new Error('loadTipTap missing');
-  if (!/['"]https:\/\/esm\.sh['"]/.test(feSrc))    throw new Error('esm.sh not used as CDN base');
   if (!/@tiptap\/core/.test(feSrc))                throw new Error('tiptap core not imported');
-  if (!/extension-table/.test(feSrc))              throw new Error('table extension not imported');
-  if (!/extension-task-list/.test(feSrc))          throw new Error('task list not imported');
-  if (!/extension-link/.test(feSrc))               throw new Error('link extension not imported');
-  // New architecture: single _notes object tracks current state. Remount
-  // guard checks _notes.editor && _notes.jobId === jobId.
+  if (!/@tiptap\/starter-kit/.test(feSrc))         throw new Error('starter-kit not imported');
+  if (!/@tiptap\/extension-link/.test(feSrc))      throw new Error('link extension not imported');
+  // Table and TaskList extensions were deliberately dropped — each
+  // additional module is another CDN-bundle failure mode. StarterKit alone
+  // covers headings, bold/italic/strike, lists, blockquote, code blocks,
+  // and horizontal rules. Adding extensions back requires a deliberate
+  // decision to trade reliability for feature richness.
+  if (/@tiptap\/extension-table/.test(feSrc))      throw new Error('table extension re-added — reliability risk');
+  if (/@tiptap\/extension-task-list/.test(feSrc))  throw new Error('task-list extension re-added — reliability risk');
+  // New architecture: single _notes object tracks current state.
   if (!/_notes\.jobId\s*===\s*jobId/.test(feSrc))  throw new Error('mountNotesEditor missing same-job guard');
+});
+
+t('loadTipTap validates each module exports before returning', () => {
+  // "undefined is not a function" from deep inside TipTap is useless. Before
+  // constructing the _tiptap object, validate each expected export so we can
+  // throw with a specific message pointing at the broken module.
+  const idx = feSrc.indexOf('async function loadTipTap');
+  const body = feSrc.slice(idx, idx + 3000);
+  if (!/typeof\s+Editor\s*!==\s*['"]function['"]/.test(body)) {
+    throw new Error('loadTipTap does not validate Editor export');
+  }
+  if (!/starter-kit\s+export\s+missing|StarterKit.*missing/i.test(body)) {
+    throw new Error('loadTipTap does not validate StarterKit export');
+  }
+});
+
+t('loadTipTap has a fallback CDN (resilience to single-CDN outages)', () => {
+  // esm.sh has had outages. jsdelivr is a reasonable fallback. Without a
+  // fallback, a CDN hiccup is a hard break for the feature.
+  const idx = feSrc.indexOf('async function loadTipTap');
+  const body = feSrc.slice(idx, idx + 3000);
+  if (!/cdn\.jsdelivr\.net|unpkg\.com|skypack\.dev/.test(body)) {
+    throw new Error('loadTipTap has no fallback CDN configured');
+  }
+  // Must actually iterate the CDN list, not just have both URLs written
+  if (!/for\s*\(\s*const\s+\w+\s+of\s+\w+\s*\)/.test(body)) {
+    throw new Error('loadTipTap does not actually try multiple CDNs in sequence');
+  }
 });
 
 t('Frontend autosave: debounce + max-interval + snapshot scheduler', () => {

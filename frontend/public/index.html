@@ -3526,33 +3526,56 @@ const NOTES_IDLE_FOR_SNAPSHOT = 30 * 1000;       // user idle this long → snap
 
 async function loadTipTap() {
   if (_tiptap) return _tiptap;
-  // Bundled ESM imports via esm.sh — all transitive deps resolved in one bundle per module
-  const base = 'https://esm.sh';
-  const ver  = '2.11.7';
-  // Parallel load everything we need
-  const [core, starter, link, table, trow, tcell, thead, tlist, titem] = await Promise.all([
-    import(`${base}/@tiptap/core@${ver}?bundle`),
-    import(`${base}/@tiptap/starter-kit@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-link@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-table@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-table-row@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-table-cell@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-table-header@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-task-list@${ver}?bundle`),
-    import(`${base}/@tiptap/extension-task-item@${ver}?bundle`),
-  ]);
-  _tiptap = {
-    Editor:      core.Editor,
-    StarterKit:  starter.default || starter.StarterKit,
-    Link:        link.default || link.Link,
-    Table:       table.default || table.Table,
-    TableRow:    trow.default || trow.TableRow,
-    TableCell:   tcell.default || tcell.TableCell,
-    TableHeader: thead.default || thead.TableHeader,
-    TaskList:    tlist.default || tlist.TaskList,
-    TaskItem:    titem.default || titem.TaskItem,
-  };
-  return _tiptap;
+
+  // Load only what we absolutely need: core + starter-kit + link. Fewer
+  // modules = fewer failure modes. We previously loaded 9 modules (table,
+  // task-list, etc.) which added complexity without being essential to
+  // jotting notes for a job application. The basic editor gives headings,
+  // bold/italic, lists, quotes, code blocks, horizontal rules — more than
+  // enough for the use case.
+  const CDNS = [
+    'https://esm.sh',
+    'https://cdn.jsdelivr.net/npm',
+  ];
+  const ver = '2.11.7';
+
+  // Try each CDN in order. esm.sh has been the default; jsdelivr is the
+  // fallback for cases where esm.sh is slow/blocked. If both fail the
+  // thrown error carries enough info for the user's network admin to debug.
+  let lastErr = null;
+  for (const base of CDNS) {
+    try {
+      const suffix = base.includes('esm.sh') ? '?bundle' : '/+esm';
+      const [core, starter, link] = await Promise.all([
+        import(/* @vite-ignore */ `${base}/@tiptap/core@${ver}${suffix}`),
+        import(/* @vite-ignore */ `${base}/@tiptap/starter-kit@${ver}${suffix}`),
+        import(/* @vite-ignore */ `${base}/@tiptap/extension-link@${ver}${suffix}`),
+      ]);
+
+      // Validate each export. If any is missing, throw with a specific
+      // message pointing at the broken module — much easier to debug than
+      // "undefined is not a function" deep inside TipTap.
+      const Editor     = core.Editor;
+      const StarterKit = starter.default || starter.StarterKit;
+      const Link       = link.default   || link.Link;
+      const issues = [];
+      if (typeof Editor     !== 'function') issues.push(`core.Editor missing (keys: ${Object.keys(core).slice(0,8).join(',')})`);
+      if (typeof StarterKit !== 'function' && typeof StarterKit !== 'object') issues.push(`starter-kit export missing (keys: ${Object.keys(starter).slice(0,8).join(',')})`);
+      if (typeof Link       !== 'function' && typeof Link       !== 'object') issues.push(`link export missing (keys: ${Object.keys(link).slice(0,8).join(',')})`);
+      if (issues.length) throw new Error('TipTap module validation failed: ' + issues.join('; '));
+
+      _tiptap = { Editor, StarterKit, Link, _cdn: base };
+      // Expose for post-mortem debugging from devtools — users/testers
+      // can inspect the module shapes if something still breaks.
+      window.__tiptap_raw = { core, starter, link, cdn: base };
+      return _tiptap;
+    } catch (e) {
+      console.warn(`TipTap load from ${base} failed:`, e.message);
+      lastErr = e;
+      // Try next CDN
+    }
+  }
+  throw lastErr || new Error('TipTap failed to load from all CDNs');
 }
 
 function renderNotesTab(j) {
@@ -3731,9 +3754,6 @@ function mountNotesEditor(jobId) {
         extensions: [
           T.StarterKit.configure({ codeBlock: { HTMLAttributes: { class: 'notes-code-block' } } }),
           T.Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' } }),
-          T.Table.configure({ resizable: false, HTMLAttributes: { class: 'notes-table' } }),
-          T.TableRow, T.TableHeader, T.TableCell,
-          T.TaskList, T.TaskItem.configure({ nested: true }),
         ],
         content: remoteDoc || '',
         editorProps: {
@@ -3772,10 +3792,14 @@ function mountNotesEditor(jobId) {
       loadNotesHistory(jobId);
     } catch (e) {
       console.error('TipTap construction failed:', e);
-      // Restore a minimal error state — don't leave the container empty.
-      container2.innerHTML = `<div class="notes-editor-loading">
-        <div class="notes-editor-loading-text" style="color:var(--red)">Editor failed to start</div>
-        <div class="notes-editor-loading-hint">${esc(e.message)}</div>
+      console.error('TipTap module state:', window.__tiptap_raw);
+      // Show a clear error with a RETRY button so the user isn't permanently
+      // stuck. Also log the raw module state for post-mortem debugging.
+      container2.innerHTML = `<div class="notes-editor-loading" style="padding:24px">
+        <div class="notes-editor-loading-text" style="color:var(--red);margin-bottom:8px">Editor failed to start</div>
+        <div class="notes-editor-loading-hint" style="margin-bottom:16px;max-width:400px">${esc(e.message)}</div>
+        <button onclick="_notes.jobId = null; mountNotesEditor('${jobId}')" style="padding:8px 16px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer">Retry</button>
+        <div class="notes-editor-loading-hint" style="margin-top:12px;font-size:10px;opacity:0.7">Open DevTools console for diagnostic details</div>
       </div>`;
     } finally {
       _notes.mountPromise = null;
@@ -3802,14 +3826,12 @@ function renderNotesToolbar(jobId) {
     <div class="sep"></div>
     <button class="${is('bulletList')}" title="Bullet list" onclick="notesCmd('toggleBulletList')">•</button>
     <button class="${is('orderedList')}" title="Numbered list" onclick="notesCmd('toggleOrderedList')">1.</button>
-    <button class="${is('taskList')}" title="Task list" onclick="notesCmd('toggleTaskList')">☑</button>
     <div class="sep"></div>
     <button class="${is('blockquote')}" title="Quote" onclick="notesCmd('toggleBlockquote')">&rdquo;</button>
     <button class="${is('codeBlock')}" title="Code block" onclick="notesCmd('toggleCodeBlock')" style="font-family:var(--mono);font-size:10px">&lt;/&gt;</button>
     <button title="Horizontal rule" onclick="notesCmd('setHorizontalRule')">—</button>
     <div class="sep"></div>
     <button title="Link" onclick="notesLinkPrompt()">🔗</button>
-    <button title="Insert table" onclick="notesInsertTable()">⌗</button>
     <div class="sep"></div>
     <button title="Undo (Cmd+Z)" onclick="notesCmd('undo')" ${ed.can().undo() ? '' : 'disabled'}>↶</button>
     <button title="Redo (Cmd+Shift+Z)" onclick="notesCmd('redo')" ${ed.can().redo() ? '' : 'disabled'}>↷</button>
@@ -3829,10 +3851,6 @@ function notesLinkPrompt() {
   if (url === '') { _notes.editor.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
   if (!/^(https?:|mailto:)/i.test(url)) { alert('Link must start with http://, https:// or mailto:'); return; }
   _notes.editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-}
-function notesInsertTable() {
-  if (!_notes.editor) return;
-  _notes.editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
 }
 
 function setNotesStatus(state, msg) {
