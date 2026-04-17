@@ -1167,7 +1167,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -3514,6 +3514,11 @@ const _notes = {
   lastSavedJson:   '',      // JSON string of last synced content — dedupes identical saves
   remoteVersion:   0,       // server-assigned version of last saved state
 };
+// Expose for debugging from browser devtools. Users/testers hitting "stuck
+// on loading" can open the console and run `_notes` or `window._notes` to
+// see current state, mount-promise status, and the _cdn the TipTap came from.
+window._notes = _notes;
+console.log('[notes] module initialized (v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?') + ')');
 
 // Cached TipTap module exports. loadTipTap populates this on first call.
 let _tiptap = null;
@@ -3526,6 +3531,7 @@ const NOTES_IDLE_FOR_SNAPSHOT = 30 * 1000;       // user idle this long → snap
 
 async function loadTipTap() {
   if (_tiptap) return _tiptap;
+  console.log('[notes] loadTipTap starting');
 
   // Load only what we absolutely need: core + starter-kit + link. Fewer
   // modules = fewer failure modes. We previously loaded 9 modules (table,
@@ -3539,17 +3545,34 @@ async function loadTipTap() {
   ];
   const ver = '2.11.7';
 
+  // Helper: dynamic import with a hard timeout. The user has reported
+  // "stuck on loading" — if a CDN slow-rolls a response (TCP connection
+  // opens but body never completes), a plain `await import()` would hang
+  // the notes mount forever. This races the import against a 12-second
+  // timer; if timer wins, we reject and the caller tries the next CDN.
+  const importWithTimeout = (url, ms = 12000) => {
+    let timer;
+    const timeoutP = new Promise((_, rej) => {
+      timer = setTimeout(() => rej(new Error(`import timeout (${ms}ms): ${url}`)), ms);
+    });
+    return Promise.race([
+      import(/* @vite-ignore */ url).finally(() => clearTimeout(timer)),
+      timeoutP,
+    ]);
+  };
+
   // Try each CDN in order. esm.sh has been the default; jsdelivr is the
   // fallback for cases where esm.sh is slow/blocked. If both fail the
   // thrown error carries enough info for the user's network admin to debug.
   let lastErr = null;
   for (const base of CDNS) {
     try {
+      console.log('[notes] trying CDN', base);
       const suffix = base.includes('esm.sh') ? '?bundle' : '/+esm';
       const [core, starter, link] = await Promise.all([
-        import(/* @vite-ignore */ `${base}/@tiptap/core@${ver}${suffix}`),
-        import(/* @vite-ignore */ `${base}/@tiptap/starter-kit@${ver}${suffix}`),
-        import(/* @vite-ignore */ `${base}/@tiptap/extension-link@${ver}${suffix}`),
+        importWithTimeout(`${base}/@tiptap/core@${ver}${suffix}`),
+        importWithTimeout(`${base}/@tiptap/starter-kit@${ver}${suffix}`),
+        importWithTimeout(`${base}/@tiptap/extension-link@${ver}${suffix}`),
       ]);
 
       // Validate each export. If any is missing, throw with a specific
@@ -3568,9 +3591,11 @@ async function loadTipTap() {
       // Expose for post-mortem debugging from devtools — users/testers
       // can inspect the module shapes if something still breaks.
       window.__tiptap_raw = { core, starter, link, cdn: base };
+      console.log('[notes] TipTap loaded from', base, '— exports:',
+                  { Editor: typeof Editor, StarterKit: typeof StarterKit, Link: typeof Link });
       return _tiptap;
     } catch (e) {
-      console.warn(`TipTap load from ${base} failed:`, e.message);
+      console.warn(`[notes] TipTap load from ${base} failed:`, e.message);
       lastErr = e;
       // Try next CDN
     }
