@@ -1032,21 +1032,6 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 </div>
 
 <!-- CONTACT MODAL -->
-<div id="contact-modal-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeContactModal()">
-  <div class="modal">
-    <div class="modal-title">Add contact</div>
-    <div class="field"><label>NAME</label><input id="cm-name" type="text" placeholder="Jane Smith"></div>
-    <div class="field"><label>ROLE</label><input id="cm-role" type="text" placeholder="Engineering Manager"></div>
-    <div class="field"><label>EMAIL</label><input id="cm-email" type="email" placeholder="jane@company.com"></div>
-    <div class="field"><label>LINKEDIN</label><input id="cm-linkedin" type="text" placeholder="linkedin.com/in/jane"></div>
-    <div class="field"><label>NOTES</label><input id="cm-notes" type="text" placeholder="Met at conference…"></div>
-    <div class="modal-actions">
-      <button class="cancel-btn" onclick="closeContactModal()">Cancel</button>
-      <button class="create-btn" onclick="saveContact()">Add contact</button>
-    </div>
-  </div>
-</div>
-
 <!-- INTERVIEW QUESTION MODAL -->
 <div id="question-modal-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQuestionModal()">
   <div class="modal">
@@ -1397,6 +1382,14 @@ function showApp() {
   if (mav) mav.textContent = (currentUser||'?').slice(0,2).toUpperCase();
   if (mun) mun.textContent = currentUser || '';
   if (mabtn) mabtn.style.display = window.innerWidth <= 680 ? 'flex' : 'none';
+
+  // Warm the Render backend immediately. If the instance was spun down,
+  // the first request after login can take 10-30 seconds to respond. Firing
+  // a cheap public ping now means by the time the user clicks anything that
+  // needs the server (Notes, Insights, etc.) the instance is usually awake.
+  // loadJobs() below also hits the server but it's async and we don't want
+  // to block critical paths on its cold-start time.
+  fetch(API + '/api/ping').catch(() => {});
 
   // Prefetch TipTap modules ~1s after login so the Notes tab opens instantly
   // for most users. The import is fire-and-forget — if the user never opens
@@ -3672,9 +3665,24 @@ async function mountNotesEditor(jobId) {
     }
   }
 
-  // Always refetch in background to catch any multi-device updates — but don't
-  // block the editor from being visible. If we already built the editor from
-  // cache, we only swap content if the server returns a newer version.
+  // CRITICAL: do not await the fetch before building the editor. If the
+  // backend is cold-starting on Render (free-tier instances spin down after
+  // idle), the first request can take 10-30 seconds. Blocking editor mount
+  // on it means users stare at "Preparing editor…" for 10+ seconds. Instead:
+  // if we haven't mounted yet, mount with empty content NOW, then fetch in
+  // the background and swap content in when it arrives.
+  let mountedEmpty = false;
+  if (!_notesEditor) {
+    buildEditor(T, null);
+    mountedEmpty = true;
+    // Give the user visible feedback that content is being loaded (not just
+    // that the editor is ready and empty). Uses setNotesStatus's syncing state.
+    setNotesStatus('saving', 'syncing…');
+  }
+
+  // Always refetch in background to catch any multi-device updates. This no
+  // longer blocks the user from SEEING the editor — only from seeing content
+  // if this is the first visit and we had no cache.
   let remoteDoc = null;
   let remoteVersion = 0;
   try {
@@ -3688,17 +3696,22 @@ async function mountNotesEditor(jobId) {
     }
   } catch {}
 
-  // If we haven't mounted yet (first visit), mount now with the fetched doc.
-  if (!_notesEditor) {
-    buildEditor(T, remoteDoc);
+  // If we mounted empty and the fetch returned content, swap it in. We use
+  // setContent with `false` to avoid firing the onUpdate handler (which would
+  // schedule a save for content we JUST received from the server).
+  if (mountedEmpty && _notesEditor && remoteDoc) {
+    _notesEditor.commands.setContent(remoteDoc, false);
     _notesRemoteVersion = remoteVersion;
+    _notesLastSavedContent = JSON.stringify(_notesEditor.getJSON());
+    setNotesStatus('saved');
+  } else if (mountedEmpty && _notesEditor) {
+    // Empty doc on server too — clear the syncing indicator
+    setNotesStatus('saved');
   } else if (cached && remoteVersion > (cached.version || 0) && remoteDoc) {
-    // Cache was stale — rebuild editor with fresh content. This is rare
-    // (requires multi-device or cross-session editing) and worth the jank.
-    _notesEditor.destroy();
-    _notesEditor = null;
-    buildEditor(T, remoteDoc);
+    // Cache was stale — swap content with setContent (no editor rebuild; less jank)
+    _notesEditor.commands.setContent(remoteDoc, false);
     _notesRemoteVersion = remoteVersion;
+    _notesLastSavedContent = JSON.stringify(_notesEditor.getJSON());
   }
 
   // Update the cache with whatever we most recently loaded
@@ -5860,7 +5873,9 @@ function renderContactsTab(j) {
               <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
                 ${c.linkedin ? `<a href="${esc(c.linkedin)}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none">LinkedIn ↗</a>` : ''}
                 ${c.email ? `<a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--blue);text-decoration:none">${esc(c.email)}</a>` : ''}
-                ${c.phone ? `<a href="tel:${esc(c.phone)}" style="font-size:11px;color:var(--text2);text-decoration:none;font-family:var(--mono)">${esc(c.phone)}</a>` : ''}
+                ${c.phoneCell ? `<a href="tel:${esc(c.phoneCell)}" style="font-size:11px;color:var(--text2);text-decoration:none;font-family:var(--mono)" title="Cell">📱 ${esc(c.phoneCell)}</a>` : ''}
+                ${c.phoneOffice ? `<a href="tel:${esc(c.phoneOffice)}" style="font-size:11px;color:var(--text2);text-decoration:none;font-family:var(--mono)" title="Office">☎ ${esc(c.phoneOffice)}</a>` : ''}
+                ${!c.phoneCell && !c.phoneOffice && c.phone ? `<a href="tel:${esc(c.phone)}" style="font-size:11px;color:var(--text2);text-decoration:none;font-family:var(--mono)">${esc(c.phone)}</a>` : ''}
                 ${c.lastContact ? `<span style="font-size:11px;color:var(--text3);font-family:var(--mono)">Last contact: ${fmtDate(c.lastContact)}</span>` : ''}
               </div>
             </div>
@@ -5958,8 +5973,10 @@ linkedin.com/in/sarahchen" style="width:100%;padding:10px;background:var(--bg3);
         <input id="cm-email" value="${esc(data.email||'')}" placeholder="email@company.com" type="email" style="width:100%;padding:8px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;box-sizing:border-box"></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
-      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--text3);margin-bottom:4px;font-family:var(--mono)">PHONE</label>
-        <input id="cm-phone" value="${esc(data.phone||'')}" placeholder="+1 555-0123" style="width:100%;padding:8px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;box-sizing:border-box"></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--text3);margin-bottom:4px;font-family:var(--mono)">CELL</label>
+        <input id="cm-phone-cell" value="${esc(data.phoneCell || data.phone || '')}" placeholder="+1 555-0123" style="width:100%;padding:8px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;box-sizing:border-box"></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--text3);margin-bottom:4px;font-family:var(--mono)">OFFICE</label>
+        <input id="cm-phone-office" value="${esc(data.phoneOffice||'')}" placeholder="+1 555-4567" style="width:100%;padding:8px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;box-sizing:border-box"></div>
       <div><label style="display:block;font-size:11px;font-weight:600;color:var(--text3);margin-bottom:4px;font-family:var(--mono)">LAST CONTACT</label>
         <input id="cm-date" value="${data.lastContact||''}" type="date" style="width:100%;padding:8px;background:var(--bg3);border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none;box-sizing:border-box"></div>
     </div>
@@ -6030,7 +6047,8 @@ function saveContact(jobId) {
     role:        document.getElementById('cm-role').value.trim(),
     company:     document.getElementById('cm-company')?.value.trim() || '',
     email:       document.getElementById('cm-email').value.trim(),
-    phone:       document.getElementById('cm-phone')?.value.trim() || '',
+    phoneCell:   document.getElementById('cm-phone-cell')?.value.trim() || '',
+    phoneOffice: document.getElementById('cm-phone-office')?.value.trim() || '',
     linkedin:    document.getElementById('cm-linkedin').value.trim(),
     lastContact: document.getElementById('cm-date').value || null,
   };

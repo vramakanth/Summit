@@ -1069,15 +1069,15 @@ t('showApp prefetches TipTap modules (warms cache for Notes tab)', () => {
   // subsequent Notes opens feel instant for the user.
   const idx = feSrc.indexOf('function showApp');
   if (idx < 0) throw new Error('showApp not found');
-  const body = feSrc.slice(idx, idx + 2000);
+  const body = feSrc.slice(idx, idx + 3000);
   // Must call loadTipTap (fire-and-forget OK) inside a setTimeout — not at
   // the synchronous top of showApp, because that would compete with the
   // initial jobs/settings fetches for network bandwidth.
-  if (!/setTimeout\([\s\S]{0,300}loadTipTap/.test(body)) {
+  if (!/setTimeout\([\s\S]{0,500}loadTipTap/.test(body)) {
     throw new Error('showApp does not defer-prefetch loadTipTap');
   }
   // Delay must be ≥ 500ms so it sits past the critical-path fetches
-  const timerMatch = body.match(/setTimeout\(\(\)\s*=>\s*\{[\s\S]{0,300}?loadTipTap[\s\S]{0,200}?\},\s*(\d+)\s*\)/);
+  const timerMatch = body.match(/setTimeout\(\(\)\s*=>\s*\{[\s\S]{0,500}?loadTipTap[\s\S]{0,300}?\},\s*(\d+)\s*\)/);
   if (!timerMatch)    throw new Error('prefetch setTimeout not in expected shape');
   const delay = parseInt(timerMatch[1], 10);
   if (delay < 500)    throw new Error(`prefetch delay ${delay}ms too eager — should be ≥ 500ms`);
@@ -1918,7 +1918,7 @@ t('Notes doc cache exists + populated on fetch so return visits skip the loading
   // Fast path: if TipTap is cached AND we have cached doc → build editor sync,
   // no await before the container is populated.
   const mountIdx = feSrc.indexOf('async function mountNotesEditor');
-  const mountBody = feSrc.slice(mountIdx, mountIdx + 5000);
+  const mountBody = feSrc.slice(mountIdx, mountIdx + 8000);
   if (!/_notesDocCache\[jobId\]/.test(mountBody))       throw new Error('mount does not consult doc cache');
   if (!/if\s*\(\s*_tiptap\s*&&\s*cached[^)]*\)/.test(mountBody)) {
     throw new Error('mount missing synchronous fast-path when both TipTap and cached doc are present');
@@ -2098,6 +2098,129 @@ t('Contact list rendering does NOT display a notes line', () => {
   const body = feSrc.slice(idx, idx + 4000);
   if (/c\.notes\s*\?/.test(body)) {
     throw new Error('contact list still conditionally renders c.notes');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Additional fixes — orphaned modal, phone split, Notes cold-start
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── Misc fixes');
+
+t('No orphaned static contact modal in HTML (prevents duplicate id=cm-name)', () => {
+  // Regression guard: a hardcoded <div id="contact-modal-overlay"> with fields
+  // inside was shipped before the modal was dynamically built. Both existed
+  // simultaneously, sharing the same ids — getElementById returned the STATIC
+  // empty input, so saveContact's `if (!name) return;` silently aborted.
+  // The dynamic version is constructed in openContactModal; no static markup
+  // with those ids should remain.
+  // Count static occurrences of id="cm-name" OUTSIDE of template literals.
+  // Simple approach: there should be exactly ONE `id="cm-name"` in the file —
+  // the one inside the backtick template literal of _renderContactModalBody.
+  const matches = [...feSrc.matchAll(/id="cm-name"/g)];
+  if (matches.length > 1) {
+    throw new Error(`cm-name appears ${matches.length}× — stale static markup present`);
+  }
+  // Also check for the tell-tale static markup pattern (a div with the overlay
+  // id outside a template-literal backtick)
+  if (/<div\s+id="contact-modal-overlay"[^>]*>[\s\S]*?<\/div>/.test(feSrc)) {
+    // Allow the dynamic .innerHTML assignment — that's in JS, not bare HTML.
+    // Check this match isn't inside a backtick template
+    const match = feSrc.match(/<div\s+id="contact-modal-overlay"[^>]*>[\s\S]*?<\/div>/);
+    const before = feSrc.slice(0, match.index);
+    const backticks = (before.match(/`/g) || []).length;
+    if (backticks % 2 === 0) {
+      // Even number of backticks before → we're at top level HTML, not in a template string
+      throw new Error('static contact-modal-overlay div still in HTML');
+    }
+  }
+});
+
+t('AI prompt extracts phoneCell and phoneOffice as separate fields', () => {
+  const idx = serverSrc.indexOf("app.post('/api/parse-contact-signature'");
+  const body = serverSrc.slice(idx, idx + 3000);
+  if (!/phoneCell\s*\(string\)/.test(body)) throw new Error('prompt does not instruct phoneCell extraction');
+  if (!/phoneOffice\s*\(string\)/.test(body)) throw new Error('prompt does not instruct phoneOffice extraction');
+  // Specifically must tell the model to ignore fax (fax is not a useful contact channel)
+  if (!/\bfax\b/i.test(body)) throw new Error('prompt does not address fax numbers');
+  // Must give guidance for single unlabeled phones
+  if (!/only ONE phone|one phone/i.test(body)) {
+    throw new Error('prompt does not handle the single-unlabeled-phone case');
+  }
+});
+
+t('saveContact reads both phoneCell and phoneOffice from form', () => {
+  const idx = feSrc.indexOf('function saveContact');
+  const body = feSrc.slice(idx, idx + 1500);
+  if (!/cm-phone-cell/.test(body))   throw new Error('saveContact does not read phoneCell input');
+  if (!/cm-phone-office/.test(body)) throw new Error('saveContact does not read phoneOffice input');
+  // Should NOT read the old single cm-phone input
+  if (/getElementById\(['"]cm-phone['"]\)/.test(body)) {
+    throw new Error('saveContact still references removed cm-phone single-phone input');
+  }
+});
+
+t('Contact form has cell + office phone inputs with backward-compat prefill', () => {
+  // The form template must render both inputs. If editing a contact saved
+  // under the OLD schema (phone: "..."), we want that value to appear in the
+  // CELL field as a graceful default rather than being lost.
+  const idx = feSrc.indexOf('function _renderContactModalBody');
+  const body = feSrc.slice(idx, idx + 8000);
+  if (!/id="cm-phone-cell"/.test(body))   throw new Error('CELL input not rendered');
+  if (!/id="cm-phone-office"/.test(body)) throw new Error('OFFICE input not rendered');
+  // Backward compat: if data.phoneCell empty but data.phone set, prefer data.phone
+  if (!/data\.phoneCell\s*\|\|\s*data\.phone/.test(body)) {
+    throw new Error('form does not fall back to legacy data.phone for cell prefill');
+  }
+});
+
+t('Contact list displays both phoneCell and phoneOffice (with legacy phone fallback)', () => {
+  const idx = feSrc.indexOf('function renderContactsTab');
+  const body = feSrc.slice(idx, idx + 8000);
+  if (!/c\.phoneCell/.test(body))   throw new Error('list does not show phoneCell');
+  if (!/c\.phoneOffice/.test(body)) throw new Error('list does not show phoneOffice');
+  // Legacy fallback: show c.phone if neither phoneCell nor phoneOffice present
+  if (!/!c\.phoneCell\s*&&\s*!c\.phoneOffice\s*&&\s*c\.phone/.test(body)) {
+    throw new Error('list does not fall back to legacy c.phone for contacts saved pre-split');
+  }
+});
+
+t('showApp warms up Render backend with a ping before user interacts', () => {
+  // Render's free tier spins down idle instances; first request after idle
+  // can take 10-30 seconds. Firing /api/ping on login wakes the instance
+  // before the user clicks Notes, Insights, etc.
+  const idx = feSrc.indexOf('function showApp');
+  const body = feSrc.slice(idx, idx + 3000);
+  if (!/fetch\([^)]*\/api\/ping/.test(body)) {
+    throw new Error('showApp does not ping /api/ping to warm the backend');
+  }
+  // Must NOT await — warmup is fire-and-forget so it doesn't block the UI.
+  // We check that the ping call is followed by .catch() (standalone statement,
+  // not inside an await). A trailing `.catch(` indicates fire-and-forget.
+  if (!/fetch\(API\s*\+\s*['"]\/api\/ping['"]\)\.catch/.test(body)) {
+    throw new Error('ping should be fire-and-forget (fetch().catch(...))');
+  }
+});
+
+t('mountNotesEditor does NOT block on /api/notes fetch for first-visit UX', () => {
+  // The user saw 10+ seconds of "Preparing editor…" on first Notes visit
+  // during Render cold-starts. Fix: build editor with empty content immediately
+  // after TipTap resolves, then swap in fetched content when it arrives.
+  const idx = feSrc.indexOf('async function mountNotesEditor');
+  const body = feSrc.slice(idx, idx + 8000);
+  // Look for: `buildEditor(T, null)` — mount with null before the fetch awaits.
+  // This is our signal that the editor can appear without waiting on the HTTP round-trip.
+  if (!/buildEditor\(T,\s*null\)/.test(body)) {
+    throw new Error('mount does not build editor with empty content on first visit');
+  }
+  // Must use setContent to swap in content after fetch, NOT rebuild editor
+  // (rebuilding is jankier and discards cursor/selection state).
+  if (!/_notesEditor\.commands\.setContent\(/.test(body)) {
+    throw new Error('mount does not use setContent to swap in fetched content');
+  }
+  // setContent must pass `false` to suppress onUpdate — otherwise the content
+  // swap would schedule a save for the content we just received from the server.
+  if (!/\.commands\.setContent\([^,)]+,\s*false\)/.test(body)) {
+    throw new Error('setContent does not pass emitUpdate=false — would trigger spurious save');
   }
 });
 

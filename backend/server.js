@@ -1419,9 +1419,15 @@ Fields (use null for anything not present — NEVER guess or infer):
 - role (string): job title like "Senior Recruiter" or "Head of Engineering"
 - company (string): employer name
 - email (string): email address — exactly as written, no cleanup
-- phone (string): phone number — exactly as written, no formatting changes
+- phoneCell (string): cell/mobile/direct phone number — exactly as written. Look for labels like "cell:", "mobile:", "m:", "direct:", "c:".
+- phoneOffice (string): office/work phone number — exactly as written. Look for labels like "office:", "work:", "w:", "tel:", "o:".
 - linkedin (string): full LinkedIn profile URL. If you see only "linkedin.com/in/xxx" without https://, prepend "https://"
 - location (string): city or city+state like "San Francisco, CA" — null for country-only or generic
+
+Phone parsing rules:
+- If a signature has only ONE phone with no label (just digits or a generic "phone:"), put it in phoneCell and leave phoneOffice null.
+- If you see two phones and one is clearly labeled cell/mobile, use that labeling. Uncertain → prefer phoneCell.
+- If a phone is labeled "fax" ignore it entirely (fax is not a useful contact channel).
 
 Hard rules: do not fabricate. If a field isn't clearly in the text, return null for it. Don't combine unrelated text into a field.`;
 
