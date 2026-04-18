@@ -1313,37 +1313,56 @@ async function fetchATS(rawUrl) {
   }
 
   // ── Step 2: Jina ─────────────────────────────────────────────────────────
-  // Renders JS. Needed for SPAs. Merge with any JSON-LD we already harvested
-  // in step 1 so Ashby / Workable / Workday postings that embed JSON-LD in
-  // their shell HTML still get authoritative fields + Jina's rich text for
-  // AI description extraction.
-  try {
-    const r = await fetchTimeout('https://r.jina.ai/' + url, {
-      headers: { 'User-Agent': UA, Accept: 'text/plain,*/*', 'X-Return-Format': 'text' }
-    }, 18000);
-    if (r.ok) {
-      const raw = await r.text();
-      const text = cleanJinaMarkdown(raw);
-      if (text.length > 200) {
-        // Prefer JSON-LD fields (authoritative) but fill in salary from Jina's
-        // text — Jina often renders late-loaded salary blocks that direct
-        // fetch missed.
-        const salary = (direct && direct.ldFields && direct.ldFields.salary)
-          || extractSalaryFromText(text)
-          || null;
-        const fields = direct?.ldFields
-          ? { ...direct.ldFields, salary }
-          : null;
-        return {
-          fields,
-          text,
-          html: '',
-          salary,
-          _via: fields ? 'jina+ld' : 'jina',
-        };
+  // Renders JS. Needed for SPAs. We ask for HTML (not markdown) so the
+  // JSON-LD `<script>` blocks that SPAs inject post-hydration come through
+  // parseable — this is the main v1.15 improvement over v1.14.
+  //
+  // Retry once on failure: the free Jina tier rate-limits bursts and
+  // occasionally returns 5xx. A single 1-second retry rescues most
+  // transient errors without doubling worst-case latency.
+  let jina = null;
+  for (let attempt = 0; attempt < 2 && !jina; attempt++) {
+    try {
+      const r = await fetchTimeout('https://r.jina.ai/' + url, {
+        headers: {
+          'User-Agent': UA,
+          Accept: 'text/html,*/*',
+          'X-Return-Format': 'html',
+        }
+      }, 18000);
+      if (r.ok) {
+        const html = await r.text();
+        // Jina returns the fully-rendered DOM. Parse JSON-LD from it —
+        // SPAs like Ashby, Workable, Workday inject JobPosting JSON-LD
+        // via client-side JS which direct-fetch misses entirely.
+        const ldFields = parseJobPostingLD(html);
+        const text = htmlToText(html);
+        jina = { html, text, ldFields };
       }
+    } catch {}
+    if (!jina && attempt === 0) {
+      // Brief pause before retry
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-  } catch {}
+  }
+
+  if (jina && jina.text.length > 200) {
+    // Prefer Jina's JSON-LD over direct-fetch's — Jina sees the hydrated
+    // DOM, direct-fetch only sees the pre-JS shell. If Jina has no LD,
+    // fall back to anything direct-fetch found.
+    const mergedLd = jina.ldFields || (direct && direct.ldFields) || null;
+    const salary = (mergedLd && mergedLd.salary)
+      || extractSalaryFromText(jina.text)
+      || null;
+    const fields = mergedLd ? { ...mergedLd, salary } : null;
+    return {
+      fields,
+      text: jina.text,
+      html: '',
+      salary,
+      _via: fields ? 'jina+ld' : 'jina',
+    };
+  }
 
   // ── Step 3: use direct-fetch result if we have one ──────────────────────
   // Happens on SSR sites where direct-fetch returned usable text but Jina

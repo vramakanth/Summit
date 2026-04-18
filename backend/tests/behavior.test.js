@@ -3007,6 +3007,53 @@ t('Jina timeout raised to 18s for JS-heavy SPA career portals', () => {
   if (t < 18000) throw new Error(`Jina timeout is ${t}ms — expected ≥18000 for SPA sites`);
 });
 
+t('Jina requests HTML format so JSON-LD injected by SPAs is parseable', () => {
+  // v1.15: audit showed SPAs (Ashby, Workable, Workday) inject JSON-LD
+  // post-hydration via JS. Jina's default 'text' format strips <script>
+  // tags — so we specifically ask for 'html' and parse JSON-LD from the
+  // rendered DOM.
+  const idx = serverSrc.indexOf("fetchTimeout('https://r.jina.ai");
+  if (idx < 0) throw new Error('Jina call site not found');
+  const body = serverSrc.slice(idx, idx + 800);
+  if (!/['"]X-Return-Format['"]\s*:\s*['"]html['"]/.test(body)) {
+    throw new Error("Jina not requesting 'html' return format — JSON-LD in SPAs would be missed");
+  }
+});
+
+t('Jina retries once on failure (free tier rate-limiting)', () => {
+  // v1.15: burst audit load showed ~30% of Jina calls returning non-2xx.
+  // Single retry after 1s is cheap insurance against transient 429s and
+  // 5xxs without doubling latency budget on the common-case success.
+  const idx = serverSrc.indexOf('async function fetchATS');
+  const end = serverSrc.indexOf('return { fields: slugFallback', idx);
+  const body = serverSrc.slice(idx, end);
+  // Must have a retry loop around the Jina call
+  if (!/for\s*\(\s*let\s+attempt\s*=\s*0[^}]{0,500}r\.jina\.ai/.test(body)) {
+    throw new Error('no attempt-based retry loop around Jina call');
+  }
+  // Must pause between attempts so we're not hammering
+  if (!/setTimeout[\s\S]{0,200}1000/.test(body)) {
+    throw new Error('no 1-second pause before Jina retry');
+  }
+});
+
+t('Jina HTML response feeds parseJobPostingLD + htmlToText', () => {
+  // The point of requesting HTML is to parse JSON-LD AND feed cleaned text
+  // to AI. Both must happen.
+  const idx = serverSrc.indexOf('async function fetchATS');
+  const end = serverSrc.indexOf('return { fields: slugFallback', idx);
+  const body = serverSrc.slice(idx, end);
+  // Find the Jina block
+  const jinaIdx = body.indexOf('r.jina.ai');
+  const jinaBlock = body.slice(jinaIdx, jinaIdx + 2000);
+  if (!/parseJobPostingLD\(\s*html\s*\)/.test(jinaBlock)) {
+    throw new Error('Jina HTML not fed to parseJobPostingLD');
+  }
+  if (!/htmlToText\(\s*html\s*\)/.test(jinaBlock)) {
+    throw new Error('Jina HTML not fed to htmlToText');
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
