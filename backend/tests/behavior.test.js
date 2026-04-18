@@ -3038,6 +3038,89 @@ t('Jina uses text format (v1.15.1: HTML format reverted)', () => {
   }
 });
 
+t('SPA_HOSTS list defined + includes known problem sites', () => {
+  // v1.16: Jina can't give us SPA JSON-LD regardless of format, so we run
+  // our own Chromium for these hosts. If an SPA ATS is added without
+  // being on this list, it'll fall through to Jina and keep producing
+  // slug-fallback garbage.
+  if (!/const SPA_HOSTS\s*=/.test(serverSrc)) throw new Error('SPA_HOSTS not defined');
+  const required = [
+    'jobs.ashbyhq.com', 'apply.workable.com', 'myworkdayjobs.com',
+    'bamboohr.com', 'jobs.apple.com'
+  ];
+  for (const host of required) {
+    if (!serverSrc.includes(`'${host}'`)) {
+      throw new Error(`SPA_HOSTS missing ${host}`);
+    }
+  }
+});
+
+t('render branch sits BEFORE Jina in fetchATS (short-circuits for SPAs)', () => {
+  // Ordering matters: direct-fetch → (render for SPAs) → Jina → slug.
+  // If render were after Jina, we'd always pay Jina's 18s latency first
+  // even when we know it can't help.
+  const body = serverSrc.slice(
+    serverSrc.indexOf('async function fetchATS'),
+    serverSrc.indexOf("return { fields: slugFallback", serverSrc.indexOf('async function fetchATS'))
+  );
+  const renderIdx = body.indexOf('renderPage(url)');
+  const jinaIdx   = body.indexOf('r.jina.ai');
+  if (renderIdx < 0) throw new Error('renderPage not called in fetchATS');
+  if (jinaIdx < 0)   throw new Error('Jina not called in fetchATS');
+  if (renderIdx > jinaIdx) {
+    throw new Error('renderPage runs AFTER Jina — should be BEFORE for SPA short-circuit');
+  }
+});
+
+t('render branch is gated on isSpaHost (no Chromium for SSR sites)', () => {
+  // We do NOT want to launch Chromium for Greenhouse/iCIMS/Lever — direct-
+  // fetch handles those fine. The render branch must be inside an
+  // isSpaHost() check.
+  const body = serverSrc.slice(serverSrc.indexOf('async function fetchATS'));
+  const renderIdx = body.indexOf('renderPage(url)');
+  if (renderIdx < 0) throw new Error('renderPage not called');
+  const before = body.slice(Math.max(0, renderIdx - 200), renderIdx);
+  if (!/isSpaHost\(url\)/.test(before)) {
+    throw new Error('renderPage not gated on isSpaHost — would launch Chromium for every parse');
+  }
+});
+
+t('render failure falls through to Jina (graceful degradation)', () => {
+  // If Chromium won't launch or circuit-breaker is open, renderPage returns
+  // null. fetchATS must CONTINUE to the Jina branch rather than returning
+  // an error — otherwise a broken browser kills parse entirely.
+  const body = serverSrc.slice(serverSrc.indexOf('async function fetchATS'));
+  const renderIdx = body.indexOf('renderPage(url)');
+  const block = body.slice(renderIdx, renderIdx + 1500);
+  // The render-success block should be guarded by `if (rendered && ...)`
+  // so a null result falls through rather than short-circuiting.
+  if (!/if\s*\(\s*rendered\s*&&/.test(block)) {
+    throw new Error('render result not null-guarded — would break fetchATS on render failure');
+  }
+});
+
+t('browser shutdown wired to SIGTERM (Render redeploys do not leak Chromium)', () => {
+  if (!/shutdownBrowser/.test(serverSrc)) throw new Error('shutdownBrowser not imported');
+  if (!/SIGTERM[^)]*\)[\s\S]{0,300}shutdownBrowser/.test(serverSrc)) {
+    throw new Error('SIGTERM handler does not call shutdownBrowser');
+  }
+});
+
+t('render.js: puppeteer + chromium required lazily (not at module load)', () => {
+  // Important for the module-load smoke test — we don't want @sparticuz/
+  // chromium to be required at import time, because it would need the
+  // actual binary on disk. Lazy-require inside getBrowser() is correct.
+  const fs = require('fs');
+  const path = require('path');
+  const renderSrc = fs.readFileSync(path.join(__dirname, '../render.js'), 'utf8');
+  const topLevelRequires = renderSrc.match(/^const\s+\w+\s*=\s*require\(/gm) || [];
+  for (const r of topLevelRequires) {
+    if (/puppeteer|chromium/i.test(r)) {
+      throw new Error(`render.js has top-level require for ${r} — must be lazy inside getBrowser()`);
+    }
+  }
+});
+
 t('Jina is single-attempt (no retry — v1.15.1 fix)', () => {
   // v1.15 added a retry loop that pushed worst-case parse-job latency to
   // 47s (direct 10s + Jina 18s + 1s pause + Jina 18s), exceeding the

@@ -1165,6 +1165,31 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
 
 // ── ATS helpers ──────────────────────────────────────────────────────────────
 const { cleanJobUrl, slugFallback, decodeEntities } = require('./ats-helpers');
+const { renderPage, shutdownBrowser } = require('./render');
+
+// Known SPA hosts where direct-fetch returns an empty shell and Jina's
+// script-tag-stripping makes JSON-LD invisible. For these we skip the
+// Jina path entirely and route through our own Chromium renderer, which
+// returns the post-hydration DOM (including JSON-LD script tags).
+//
+// Everything NOT on this list keeps the existing direct-fetch → Jina flow
+// — SSR sites like Greenhouse, iCIMS, Lever-with-content render fine in
+// Jina and don't need the memory overhead of a headless browser.
+const SPA_HOSTS = [
+  'jobs.ashbyhq.com',
+  'apply.workable.com',
+  'myworkdayjobs.com',          // all *.myworkdayjobs.com subdomains
+  'bamboohr.com',               // *.bamboohr.com/jobs
+  'jobs.apple.com',
+  'jobs.bd.com',                // Workday-based BD careers site
+];
+
+function isSpaHost(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return SPA_HOSTS.some(spa => host.includes(spa));
+  } catch { return false; }
+}
 
 /**
  * Parse the first JobPosting JSON-LD block out of a raw HTML string.
@@ -1317,6 +1342,35 @@ async function fetchATS(rawUrl) {
       salary,
       _via: 'fetch-ld',
     };
+  }
+
+  // ── Step 1.5: Chromium render for known SPA hosts ───────────────────────
+  // For Ashby, Workable, Workday, BambooHR, Apple — direct-fetch returns
+  // an empty shell and Jina strips <script> tags. Render the page in our
+  // own Chromium to get the post-hydration DOM with JSON-LD intact.
+  //
+  // Only runs for hosts in SPA_HOSTS to avoid the Chromium memory overhead
+  // on SSR sites that don't need it. Falls through to Jina if rendering
+  // fails (browser not launched, timeout, circuit-breaker open, etc.).
+  if (isSpaHost(url)) {
+    const rendered = await renderPage(url);
+    if (rendered && rendered.text.length > 200) {
+      const ldFields = parseJobPostingLD(rendered.html);
+      const salary = (ldFields && ldFields.salary)
+        || extractSalaryFromText(rendered.text)
+        || extractSalaryFromHtml(rendered.html)
+        || null;
+      const fields = ldFields ? { ...ldFields, salary } : null;
+      return {
+        fields,
+        text: rendered.text,
+        html: rendered.html.slice(0, 200000),
+        salary,
+        _via: fields ? 'render+ld' : 'render',
+      };
+    }
+    // If render failed or returned nothing useful, continue to Jina + slug —
+    // no regression vs pre-v1.16 behavior.
   }
 
   // ── Step 2: Jina ─────────────────────────────────────────────────────────
@@ -2311,6 +2365,16 @@ if (require.main === module) {
     console.log(`Data: ${DATA_DIR}`);
     console.log(`AI: groq=${!!GROQ_API_KEY} openrouter=${!!OPENROUTER_API_KEY} google=${!!GOOGLE_API_KEY}`);
   });
+
+  // Shut down Chromium cleanly on Render's redeploy signal — otherwise the
+  // browser process lingers and eats memory across restarts.
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, async () => {
+      console.log(`[shutdown] ${sig} received, closing browser…`);
+      await shutdownBrowser();
+      process.exit(0);
+    });
+  }
 }
 
 module.exports = app;
