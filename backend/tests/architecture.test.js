@@ -58,7 +58,12 @@ t('career.io title from path', () => {
   const r = slugFallback('https://career.io/job/director-of-engineering-brea-karman-space-defense-497b80a6f57f779eb26cdf078d4b39b5');
   if (!r.title?.includes('Director')) throw new Error('no title: ' + r.title);
 });
-t('null on invalid URL', () => eq(slugFallback('not-a-url'), null));
+t('returns null fields on invalid URL', () => {
+  const r = slugFallback('not-a-url');
+  if (r.title !== null || r.company !== null) {
+    throw new Error('expected {title:null, company:null}, got ' + JSON.stringify(r));
+  }
+});
 
 // ── Server architecture ────────────────────────────────────────────────────────
 console.log('\n── Server architecture');
@@ -68,7 +73,17 @@ t('UA in request headers (x2)',  () => { if ((serverSrc.match(/'User-Agent': UA/
 t('Jina reader as primary path', () => has(serverSrc, 'r.jina.ai/'));
 t('Promise.race hard timeout',   () => has(serverSrc, 'Promise.race([fetchProm'));
 t('fetchTimeout default 20s',    () => has(serverSrc, 'ms = 20000'));
-t('3 via markers present',       () => { has(serverSrc, "_via: 'jina'"); has(serverSrc, "_via: 'fetch'"); has(serverSrc, "_via: 'slug'"); });
+t('all via markers present',    () => {
+  // v1.14 refactor added +ld variants for JSON-LD harvest paths. Some are
+  // inside ternary expressions so we check for the quoted literal anywhere
+  // in the source after an `_via:` occurrence.
+  const markers = ["'fetch-ld'", "'fetch+ld'", "'fetch'", "'jina+ld'", "'jina'", "'slug'"];
+  for (const m of markers) {
+    if (!serverSrc.includes(m)) throw new Error(`marker ${m} not found in server.js`);
+  }
+});
+t('parseJobPostingLD defined',   () => has(serverSrc, 'function parseJobPostingLD'));
+t('cleanJinaMarkdown defined',   () => has(serverSrc, 'function cleanJinaMarkdown'));
 t('htmlToText defined',          () => has(serverSrc, 'function htmlToText'));
 t('extractSalaryFromText',       () => has(serverSrc, 'function extractSalaryFromText'));
 t('extractSalaryFromHtml (bdi)', () => has(serverSrc, 'function extractSalaryFromHtml'));
@@ -239,18 +254,15 @@ t('Mirror finder excludes the original URL\'s host from results', () => {
 
 // ── fetchATS Jina branch: full markdown→plain scrub ─────────────────────────
 console.log('\n── Posting fetch markdown scrub');
-t('fetchATS Jina branch strips markdown bold/italic/headings/blockquotes/bullets', () => {
-  const idx = serverSrc.indexOf('async function fetchATS');
-  const body = serverSrc.slice(idx, idx + 3500);
-  // Heading (##)
+t('cleanJinaMarkdown strips bold/italic/headings/blockquotes/bullets', () => {
+  // v1.14 extracted Jina markdown cleanup from fetchATS into its own helper
+  // so it's reusable and testable. Check the helper body.
+  const idx = serverSrc.indexOf('function cleanJinaMarkdown');
+  const body = serverSrc.slice(idx, idx + 2000);
   if (!/\\s\*#\{1,6\}\\s\+/.test(body)) throw new Error('no heading strip');
-  // Emphasis: **x**, __x__
   if (!/\\\*\\\*\|__/.test(body)) throw new Error('no bold strip');
-  // Blockquote
   if (!/\\s\*>\\s\?/.test(body)) throw new Error('no blockquote strip');
-  // Bullets
   if (!/\[-\*\+\]\\s\+/.test(body)) throw new Error('no bullet normalize');
-  // Code fences
   if (!/```\[\\s\\S\]\*\?```/.test(body)) throw new Error('no code-fence strip');
 });
 

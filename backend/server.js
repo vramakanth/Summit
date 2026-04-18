@@ -1157,61 +1157,126 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
 });
 
 // ── ATS helpers ──────────────────────────────────────────────────────────────
-const { cleanJobUrl, slugFallback } = require('./ats-helpers');
+const { cleanJobUrl, slugFallback, decodeEntities } = require('./ats-helpers');
 
+/**
+ * Parse the first JobPosting JSON-LD block out of a raw HTML string.
+ * Returns a normalized { title, company, location, workType, salary } object
+ * or null if no parseable JobPosting is present. All values are entity-decoded
+ * and have been stripped of common noise patterns (e.g. Workday's internal
+ * numeric company-code prefix).
+ */
+function parseJobPostingLD(html) {
+  if (!html) return null;
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
+  for (const block of blocks) {
+    try {
+      const raw = block.replace(/<script[^>]*>|<\/script>/gi, '').trim();
+      const data = JSON.parse(raw);
+      // Can be: single object, array of objects, or @graph wrapper
+      const items = Array.isArray(data) ? data : (data['@graph'] || [data]);
+      const job = items.find(d => d && d['@type'] === 'JobPosting');
+      if (!job || !job.title) continue;
+
+      // Company: Workday embeds internal prefixes like "001 Manufacturers and
+      // Traders Trust Co" or "005 Robert Half Inc." — strip the leading
+      // digits/space before displaying. Generic cleanup, not workday-specific.
+      const rawCompany = job.hiringOrganization?.name || null;
+      const company = rawCompany
+        ? (decodeEntities(rawCompany).replace(/^\d+\s+/, '').trim() || null)
+        : null;
+
+      // Location: addressLocality + addressRegion is the most reliable.
+      // Some sites omit region but populate only locality.
+      const addr = job.jobLocation?.address || (job.jobLocation?.[0]?.address) || null;
+      const locStr = addr
+        ? [addr.addressLocality, addr.addressRegion].filter(Boolean).join(', ') || null
+        : null;
+
+      // baseSalary.value → formatted $Nk / $Nk-$Nk. Employers emit this as
+      // a MonetaryAmount: { minValue, maxValue, unitText } or { value }.
+      let salary = null;
+      const bs = job.baseSalary?.value;
+      if (bs && typeof bs === 'object') {
+        const min = Number(bs.minValue ?? bs.value);
+        const max = Number(bs.maxValue ?? bs.value);
+        if (!isNaN(min) && !isNaN(max) && min > 0) {
+          const fmt = n => n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
+          salary = min === max ? fmt(min) : fmt(min) + '\u2013' + fmt(max);
+        }
+      }
+
+      // jobLocationType === 'TELECOMMUTE' is the schema.org flag for remote.
+      return {
+        title:    decodeEntities(job.title).trim() || null,
+        company:  company,
+        location: locStr ? decodeEntities(locStr).trim() : null,
+        workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
+        salary:   salary,
+      };
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Strip Jina's markdown output down to clean prose for downstream AI
+ * extraction. Extracted into its own function so the cleanup is reusable
+ * and testable.
+ */
+function cleanJinaMarkdown(raw) {
+  return raw
+    .replace(/^(Title|URL Source|URL|Published Time|Markdown Content|Description):[^\n]*\n/gim, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*\[[^\]]+\]:\s*\S.*$/gm, '')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^(\s*)[-*+]\s+/gm, '$1• ')
+    .replace(/^(\s*)\d+\.\s+/gm, '$1')
+    .replace(/^\s*([-*_])\s*\1\s*\1[-*_\s]*$/gm, '')
+    .replace(/(\*\*\*|___)(.+?)\1/g, '$2')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(?<!\w)[*_]([^*_\n]+?)[*_](?!\w)/g, '$1')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+/**
+ * Fetch a job posting's content from any ATS. Tries three paths, harvesting
+ * whatever each produces and merging:
+ *
+ *   1. Direct fetch (fast, ~2-3s):
+ *      Grabs raw HTML. Harvests JSON-LD (JobPosting structured data) which
+ *      most ATS platforms embed for SEO even on SPA pages. Also gets the
+ *      stripped text — usable for SSR sites, a shell for SPAs.
+ *
+ *   2. Jina reader (slow, ~3-18s):
+ *      Server-side renders the page and returns visible text as markdown.
+ *      Needed for SPAs where direct-fetch text is just a skeleton. Does
+ *      NOT see JSON-LD (markdown format), so we always merge any JSON-LD
+ *      we harvested from step 1.
+ *
+ *   3. Slug fallback:
+ *      Guesses title/company from the URL path when neither fetch produced
+ *      usable content. Deliberately conservative — leaves fields null
+ *      rather than inventing garbage from UUID path segments.
+ *
+ * Fast path: if step 1 returns complete JSON-LD + substantive text, skip
+ * Jina entirely. Saves a Jina call on SSR sites (Greenhouse, iCIMS, etc.).
+ */
 async function fetchATS(rawUrl) {
   const url = cleanJobUrl(rawUrl);
 
-  // 1. Jina.ai reader renders JS and bypasses most bot blocks.
-  // Timeout 18s because many SPA career portals (Workday, iCIMS variants,
-  // bd.com, unicorn-startup-of-the-week.com) need 10+ seconds to hydrate
-  // before salary/description text is in the DOM. 12s was clipping them.
-  try {
-    const r = await fetchTimeout('https://r.jina.ai/' + url, {
-      headers: { 'User-Agent': UA, Accept: 'text/plain,*/*', 'X-Return-Format': 'text' }
-    }, 18000);
-    if (r.ok) {
-      const raw = await r.text();
-      // Jina returns MARKDOWN. Strip all markdown syntax to leave clean prose —
-      // not just links — otherwise **bold**, ##headers, >quotes, - bullets leak
-      // through to the posting tab as literal characters.
-      const text = raw
-        // Frontmatter-style lines Jina prepends
-        .replace(/^(Title|URL Source|URL|Published Time|Markdown Content|Description):[^\n]*\n/gim, '')
-        // Links and images — keep link text, drop URLs
-        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        // Reference-style links
-        .replace(/^\s*\[[^\]]+\]:\s*\S.*$/gm, '')
-        // Headings (# to ######) — keep text, drop hashes
-        .replace(/^\s*#{1,6}\s+/gm, '')
-        // Blockquote markers
-        .replace(/^\s*>\s?/gm, '')
-        // Unordered list markers → bullet, ordered list markers → stripped
-        .replace(/^(\s*)[-*+]\s+/gm, '$1• ')
-        .replace(/^(\s*)\d+\.\s+/gm, '$1')
-        // Horizontal rules
-        .replace(/^\s*([-*_])\s*\1\s*\1[-*_\s]*$/gm, '')
-        // Emphasis: ***x***, **x**, __x__, *x*, _x_ → x
-        .replace(/(\*\*\*|___)(.+?)\1/g, '$2')
-        .replace(/(\*\*|__)(.+?)\1/g, '$2')
-        .replace(/(?<!\w)[*_]([^*_\n]+?)[*_](?!\w)/g, '$1')
-        // Inline code and code fences
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/`([^`]+)`/g, '$1')
-        // Strikethrough ~~x~~
-        .replace(/~~(.+?)~~/g, '$1')
-        // Tidy whitespace
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{4,}/g, '\n\n\n')
-        .trim();
-      if (text.length > 200) {
-        return { text, salary: extractSalaryFromText(text), html: '', _via: 'jina' };
-      }
-    }
-  } catch {}
-
-  // 2. Direct fetch with real browser UA — works for SSR pages
+  // ── Step 1: direct fetch ────────────────────────────────────────────────
+  // Fast (~2-3s typically) and often carries JSON-LD even on SPA sites that
+  // can't be read as plain text. We always do this first so JSON-LD is
+  // available to merge with whatever Jina produces.
+  let direct = null;
   try {
     const r = await fetchTimeout(url, {
       headers: {
@@ -1220,39 +1285,87 @@ async function fetchATS(rawUrl) {
         'Accept-Language': 'en-US,en;q=0.9',
         Referer: 'https://www.google.com/',
       }
-    }, 15000);
+    }, 10000);
     if (r.ok) {
       const html = await r.text();
       const text = htmlToText(html);
-      const salary = extractSalaryFromText(text) || extractSalaryFromHtml(html);
-      let fields = null;
-      const ldBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
-      for (const block of ldBlocks) {
-        try {
-          const data = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi,'').trim());
-          const job = Array.isArray(data)
-            ? data.find(d => d['@type'] === 'JobPosting')
-            : (data['@type'] === 'JobPosting' ? data : null);
-          if (job && job.title) {
-            const loc = job.jobLocation && job.jobLocation.address;
-            fields = {
-              title:    job.title,
-              company:  (job.hiringOrganization && job.hiringOrganization.name) || null,
-              location: loc ? [loc.addressLocality, loc.addressRegion].filter(Boolean).join(', ') || null : null,
-              workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
-              salary,
-            };
-            break;
-          }
-        } catch {}
-      }
+      const ldFields = parseJobPostingLD(html);
+      direct = { html, text, ldFields };
+    }
+  } catch {}
+
+  // ── Early exit: JSON-LD + substantive text means we don't need Jina ────
+  // "Substantive" = >500 chars of text. Avoids early-exiting on SPA shells
+  // that happen to embed JSON-LD but have no body content yet.
+  if (direct && direct.ldFields?.title && direct.ldFields?.company && direct.text.length > 500) {
+    const salary = direct.ldFields.salary
+      || extractSalaryFromText(direct.text)
+      || extractSalaryFromHtml(direct.html)
+      || null;
+    const fields = { ...direct.ldFields, salary };
+    return {
+      fields,
+      text: direct.text,
+      html: direct.html.slice(0, 200000),
+      salary,
+      _via: 'fetch-ld',
+    };
+  }
+
+  // ── Step 2: Jina ─────────────────────────────────────────────────────────
+  // Renders JS. Needed for SPAs. Merge with any JSON-LD we already harvested
+  // in step 1 so Ashby / Workable / Workday postings that embed JSON-LD in
+  // their shell HTML still get authoritative fields + Jina's rich text for
+  // AI description extraction.
+  try {
+    const r = await fetchTimeout('https://r.jina.ai/' + url, {
+      headers: { 'User-Agent': UA, Accept: 'text/plain,*/*', 'X-Return-Format': 'text' }
+    }, 18000);
+    if (r.ok) {
+      const raw = await r.text();
+      const text = cleanJinaMarkdown(raw);
       if (text.length > 200) {
-        return { fields, text, html: html.slice(0, 200000), salary, _via: 'fetch' };
+        // Prefer JSON-LD fields (authoritative) but fill in salary from Jina's
+        // text — Jina often renders late-loaded salary blocks that direct
+        // fetch missed.
+        const salary = (direct && direct.ldFields && direct.ldFields.salary)
+          || extractSalaryFromText(text)
+          || null;
+        const fields = direct?.ldFields
+          ? { ...direct.ldFields, salary }
+          : null;
+        return {
+          fields,
+          text,
+          html: '',
+          salary,
+          _via: fields ? 'jina+ld' : 'jina',
+        };
       }
     }
   } catch {}
 
-  // 3. Slug fallback — title/company from URL path only
+  // ── Step 3: use direct-fetch result if we have one ──────────────────────
+  // Happens on SSR sites where direct-fetch returned usable text but Jina
+  // failed. Still usable.
+  if (direct && direct.text.length > 200) {
+    const salary = (direct.ldFields && direct.ldFields.salary)
+      || extractSalaryFromText(direct.text)
+      || extractSalaryFromHtml(direct.html)
+      || null;
+    const fields = direct.ldFields
+      ? { ...direct.ldFields, salary }
+      : null;
+    return {
+      fields,
+      text: direct.text,
+      html: direct.html.slice(0, 200000),
+      salary,
+      _via: fields ? 'fetch+ld' : 'fetch',
+    };
+  }
+
+  // ── Step 4: slug fallback ────────────────────────────────────────────────
   return { fields: slugFallback(url), text: '', html: '', salary: null, _via: 'slug' };
 }
 

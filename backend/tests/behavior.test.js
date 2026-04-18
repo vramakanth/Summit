@@ -2632,23 +2632,58 @@ t('_formatHumaneTimestamp produces human-readable format', () => {
   }
 });
 
-t('Timestamp is inserted as bold paragraph with trailing empty line for continued typing', () => {
+t('Timestamp is inserted as bold paragraph with trailing empty line + caret relocation', () => {
   if (!/function notesInsertTimestamp/.test(feSrc)) {
     throw new Error('notesInsertTimestamp missing');
   }
   const idx = feSrc.indexOf('function notesInsertTimestamp');
-  const body = feSrc.slice(idx, idx + 1500);
+  const body = feSrc.slice(idx, idx + 2500);
   // Must wrap in <strong> so timestamp stands out as an anchor for the entry
   if (!/<strong>\$\{esc\(stamp\)\}<\/strong>|<strong>\$\{stamp\}<\/strong>/.test(body)) {
     throw new Error('timestamp not wrapped in <strong> — would be indistinguishable from prose');
   }
-  // Must leave an empty paragraph after so caret lands ready for typing
-  if (!/<p><br>/.test(body)) {
+  // Trailing empty paragraph so caret lands ready for typing. May carry an
+  // id marker (v1.13.x) used to locate the paragraph for caret relocation —
+  // regex allows for either shape.
+  if (!/<p[^>]*><br>/.test(body)) {
     throw new Error('no trailing empty paragraph — caret would be stuck at end of bold timestamp');
+  }
+  // v1.13.x: explicitly relocate caret into the trailing paragraph AND clear
+  // any inherited bold state — some mobile browsers leave the caret inside
+  // the <strong>, causing the next keystroke to inherit bold formatting.
+  if (!/setStart\(tail,\s*0\)|setStart\(\s*tail\s*,\s*0\s*\)/.test(body)) {
+    throw new Error('caret not explicitly relocated after insert — mobile Safari leaves it inside <strong>');
+  }
+  if (!/queryCommandState\(['"]bold['"]\)[\s\S]{0,80}execCommand\(['"]bold['"]\)/.test(body)) {
+    throw new Error('lingering bold state not cleared after timestamp insert');
   }
   // Must schedule save + re-render toolbar (active-state update)
   if (!/scheduleNotesSave/.test(body)) {
     throw new Error('timestamp insert does not schedule save');
+  }
+});
+
+t('Toolbar button taps do not steal focus from the editor (mousedown preventDefault)', () => {
+  // Core rich-text-editor invariant: when the user taps Bold/Italic/etc.
+  // on mobile, focus must stay in the editor so execCommand acts on the
+  // correct selection. Otherwise the button shows "active" after pressing
+  // but typing produces the opposite state (the bug reported in v1.13.x).
+  const mountIdx = feSrc.indexOf('function mountNotesEditor');
+  const body = feSrc.slice(mountIdx, mountIdx + 8000);
+  // Listener must be attached to the toolbar container (not individual
+  // buttons which get rebuilt on every renderNotesToolbar() call)
+  if (!/toolbarEl\.addEventListener\(['"]mousedown['"][\s\S]{0,300}preventDefault/.test(body)) {
+    throw new Error('toolbar mousedown guard missing — button taps will still steal focus');
+  }
+  // Must target buttons (not every descendant) — otherwise text selection
+  // inside the toolbar becomes impossible
+  if (!/closest\(['"]button['"]\)/.test(body)) {
+    throw new Error('focus guard does not narrow to button targets');
+  }
+  // Listener attachment must be idempotent — mountNotesEditor can be called
+  // multiple times for the same job; without a guard we'd stack listeners
+  if (!/focusGuardAttached/.test(body)) {
+    throw new Error('focus guard attachment not idempotent — listener accumulates on repeat mounts');
   }
 });
 
