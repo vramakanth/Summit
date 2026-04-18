@@ -2270,5 +2270,144 @@ t('mountNotesEditor handles backend fetch failure without leaving user stuck', (
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// Notes editor: tables, checklists, mentions (v1.7.0)
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── Notes rich features');
+
+t('Toolbar exposes table, checklist, and mention buttons', () => {
+  const toolbarIdx = feSrc.indexOf('function renderNotesToolbar');
+  const body = feSrc.slice(toolbarIdx, toolbarIdx + 4000);
+  if (!/onclick="notesInsertTable\(\)"/.test(body))     throw new Error('table button missing');
+  if (!/onclick="notesInsertChecklist\(\)"/.test(body)) throw new Error('checklist button missing');
+  if (!/onclick="notesInsertAtTrigger\(\)"/.test(body)) throw new Error('mention button missing');
+});
+
+t('Table insertion produces a 3-column table with header row', () => {
+  if (!/function notesInsertTable/.test(feSrc)) throw new Error('notesInsertTable not defined');
+  const idx = feSrc.indexOf('function notesInsertTable');
+  const body = feSrc.slice(idx, idx + 1000);
+  // Must insert an HTML table via execCommand
+  if (!/insertHTML/.test(body))           throw new Error('table insert does not use insertHTML');
+  if (!/<thead>/.test(body))              throw new Error('no header row in inserted table');
+  // 3 columns = 3 <th> and 3 <td>-per-row
+  const thMatches = body.match(/<th>/g);
+  if (!thMatches || thMatches.length < 3) throw new Error('fewer than 3 columns inserted');
+});
+
+t('Tab key inside a table cell navigates to next cell', () => {
+  if (!/function _notesHandleTableTab/.test(feSrc)) throw new Error('table tab handler missing');
+  const idx = feSrc.indexOf('function _notesHandleTableTab');
+  const body = feSrc.slice(idx, idx + 1500);
+  // Must only act when caret is inside a TD or TH
+  if (!/nodeName\s*===\s*['"]TD['"]|nodeName\s*===\s*['"]TH['"]/.test(body)) {
+    throw new Error('tab handler does not check for table-cell context');
+  }
+  // Must support shift+tab for reverse navigation
+  if (!/shiftKey/.test(body)) throw new Error('no shift+tab reverse navigation');
+});
+
+t('Checklist items have data-checked attribute + toggle on checkbox click', () => {
+  if (!/function notesInsertChecklist/.test(feSrc)) throw new Error('checklist insert missing');
+  if (!/function _notesHandleChecklistClick/.test(feSrc)) throw new Error('checklist click handler missing');
+  const insertIdx = feSrc.indexOf('function notesInsertChecklist');
+  const insertBody = feSrc.slice(insertIdx, insertIdx + 1500);
+  if (!/data-checked/.test(insertBody))           throw new Error('checklist item has no data-checked attr');
+  if (!/notes-checklist/.test(insertBody))        throw new Error('no notes-checklist class applied');
+
+  const clickIdx = feSrc.indexOf('function _notesHandleChecklistClick');
+  const clickBody = feSrc.slice(clickIdx, clickIdx + 1500);
+  // Must toggle data-checked between 'true' and 'false'
+  if (!/dataset\.checked\s*=\s*[^;]+true[^;]+false|dataset\.checked\s*=\s*[^;]+false[^;]+true/.test(clickBody)) {
+    throw new Error('click handler does not toggle data-checked');
+  }
+});
+
+t('Checklist CSS renders checkbox via pseudo-element (no real <input>)', () => {
+  // Real <input> elements inside contenteditable are painful — cursor behavior
+  // is weird, they can be selected as text. We use ::before for the box.
+  if (!/notes-checklist\s+li::before/.test(feSrc)) {
+    throw new Error('checklist CSS missing ::before checkbox');
+  }
+  // Checked state must visually distinguish (background + line-through)
+  if (!/notes-checklist\s+li\[data-checked="true"\]/.test(feSrc)) {
+    throw new Error('no checked-state CSS');
+  }
+  if (!/line-through/.test(feSrc)) {
+    throw new Error('checked items do not get strike-through text');
+  }
+});
+
+t('Mention state object exists with all expected fields', () => {
+  if (!/const\s+_mention\s*=\s*\{/.test(feSrc)) throw new Error('_mention state missing');
+  const idx = feSrc.indexOf('const _mention = {');
+  const body = feSrc.slice(idx, idx + 600);
+  const expected = ['active', 'triggerNode', 'triggerOffset', 'query', 'items', 'selectedIndex'];
+  for (const field of expected) {
+    if (!new RegExp(`\\b${field}\\b`).test(body)) {
+      throw new Error(`_mention missing field: ${field}`);
+    }
+  }
+});
+
+t('Mention trigger is detected on @ at word boundary only', () => {
+  if (!/function _notesUpdateMention/.test(feSrc)) throw new Error('_notesUpdateMention missing');
+  const idx = feSrc.indexOf('function _notesUpdateMention');
+  const body = feSrc.slice(idx, idx + 2000);
+  // Regex must anchor @ to start-of-node or after whitespace — not mid-word
+  // like "foo@bar.com" which is an email, not a mention.
+  if (!/\/\(\?:\^\|\[\\s/.test(body) && !/\/\(\?:\^\|\s/.test(body)) {
+    throw new Error('mention regex does not enforce word-boundary on @ trigger');
+  }
+});
+
+t('Mention candidates prioritize current-job contacts, then same-company', () => {
+  if (!/function _gatherMentionCandidates/.test(feSrc)) throw new Error('_gatherMentionCandidates missing');
+  const idx = feSrc.indexOf('function _gatherMentionCandidates');
+  const body = feSrc.slice(idx, idx + 2500);
+  // Must walk jobs[jobId].contacts AND other jobs with matching company
+  if (!/j\.contacts/.test(body))              throw new Error('does not read current-job contacts');
+  if (!/j\.company|other\.company/.test(body)) throw new Error('does not filter by company for cross-job matches');
+  // Must dedupe by name (so same person listed on multiple jobs shows once)
+  if (!/seen\b|Set\(/.test(body))             throw new Error('no deduplication for cross-job contacts');
+});
+
+t('Mention commit replaces @query with a styled span (contact-id tagged)', () => {
+  if (!/function _commitMention/.test(feSrc)) throw new Error('_commitMention missing');
+  const idx = feSrc.indexOf('function _commitMention');
+  const body = feSrc.slice(idx, idx + 2500);
+  // Must produce a span with notes-mention class + data-contact-id
+  if (!/className\s*=\s*['"]notes-mention['"]/.test(body)) throw new Error('no notes-mention class on insert');
+  if (!/data-contact-id/.test(body)) throw new Error('no data-contact-id on inserted mention');
+  // Must be contenteditable=false so caret can't enter and split it
+  if (!/contenteditable['"]?,\s*['"]false/.test(body) && !/contenteditable\s*=\s*['"]false/.test(body) &&
+      !/setAttribute\(\s*['"]contenteditable['"]\s*,\s*['"]false/.test(body)) {
+    throw new Error('mention span not marked contenteditable=false — caret can enter it');
+  }
+});
+
+t('Mention dropdown supports keyboard navigation + escape to dismiss', () => {
+  if (!/function _notesHandleMentionKey/.test(feSrc)) throw new Error('mention key handler missing');
+  const idx = feSrc.indexOf('function _notesHandleMentionKey');
+  const body = feSrc.slice(idx, idx + 2000);
+  if (!/ArrowDown/.test(body))  throw new Error('no ArrowDown handling');
+  if (!/ArrowUp/.test(body))    throw new Error('no ArrowUp handling');
+  if (!/Enter|Tab/.test(body))  throw new Error('no Enter/Tab commit handling');
+  if (!/Escape/.test(body))     throw new Error('no Escape dismiss handling');
+});
+
+t('Mention dropdown dismissed on editor blur + teardown', () => {
+  // Blur handler gives user time to click dropdown items before hiding
+  if (!/blur[\s\S]{0,200}_hideMention/.test(feSrc)) {
+    throw new Error('no blur handler to dismiss mention dropdown');
+  }
+  // Teardown must hide the dropdown — it lives in document.body, outlives the editor
+  const tdIdx = feSrc.indexOf('async function tearDownNotesEditor');
+  const tdBody = feSrc.slice(tdIdx, tdIdx + 800);
+  if (!/_hideMention/.test(tdBody)) {
+    throw new Error('teardown does not hide mention dropdown — leaks UI');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

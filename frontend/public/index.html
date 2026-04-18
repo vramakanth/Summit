@@ -283,6 +283,79 @@ body.in-app { overflow: hidden; height: 100vh; height: 100dvh; }
 @keyframes gap-cursor-blink { to { visibility: hidden; } }
 .notes-editor .ProseMirror-focused .ProseMirror-gapcursor { display: block; }
 
+/* Checklists — rendered via CSS pseudo-element, not a real input (contenteditable
+   makes real checkboxes painful). Click handler in JS toggles data-checked. */
+.notes-editor ul.notes-checklist { list-style: none; padding-left: 0; margin: 8px 0; }
+.notes-editor ul.notes-checklist li { position: relative; padding-left: 26px; margin: 4px 0; min-height: 20px; }
+.notes-editor ul.notes-checklist li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 3px;
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--border2);
+  border-radius: 3px;
+  background: var(--bg2);
+  cursor: pointer;
+  transition: all .15s;
+}
+.notes-editor ul.notes-checklist li:hover::before { border-color: var(--accent-bg); }
+.notes-editor ul.notes-checklist li[data-checked="true"]::before {
+  background: var(--accent-bg); border-color: var(--accent-bg);
+}
+.notes-editor ul.notes-checklist li[data-checked="true"]::after {
+  content: '';
+  position: absolute;
+  left: 4px; top: 6px;
+  width: 8px; height: 4px;
+  border-left: 2px solid #1a1917;
+  border-bottom: 2px solid #1a1917;
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+.notes-editor ul.notes-checklist li[data-checked="true"] { color: var(--text3); text-decoration: line-through; }
+
+/* Mention pills inside the editor */
+.notes-editor .notes-mention {
+  display: inline-block;
+  padding: 1px 7px;
+  margin: 0 1px;
+  background: rgba(232, 168, 56, 0.14);
+  color: var(--accent-bg);
+  border: 0.5px solid rgba(232, 168, 56, 0.35);
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Mention autocomplete dropdown (positioned in document.body at caret) */
+.notes-mention-dropdown {
+  position: absolute;
+  z-index: 800;
+  background: var(--bg2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px;
+  font-family: var(--font);
+}
+.notes-mention-item {
+  padding: 7px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.notes-mention-item:hover, .notes-mention-item.active {
+  background: var(--bg3);
+}
+.notes-mention-item.active { background: rgba(232, 168, 56, 0.14); }
+.notes-mention-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.notes-mention-meta { font-size: 11px; color: var(--text3); margin-top: 1px; font-family: var(--mono); }
+
 /* History sidebar */
 .notes-layout { display: grid; grid-template-columns: 1fr 240px; gap: 12px; height: 100%; }
 .notes-history { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
@@ -845,7 +918,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.6.0 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.7.0 · private beta</div>
   </div>
 </div>
 
@@ -885,7 +958,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.6.0 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.7.0 · private beta</div>
   </div>
 </div>
 
@@ -901,7 +974,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.6.0 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.7.0 · private beta</div>
   </div>
 </div>
 
@@ -978,7 +1051,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.6.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.7.0</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1185,7 +1258,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -3560,6 +3633,9 @@ function _setNotesLoadingMessage(jobId, msg) {
 }
 
 async function tearDownNotesEditor() {
+  // Always dismiss the mention dropdown — it's positioned in document.body
+  // and outlives the editor element.
+  _hideMention();
   if (!_notes.editor) {
     _clearNotesTimers();
     _notes.jobId = null;
@@ -3664,9 +3740,24 @@ function mountNotesEditor(jobId) {
     editor.addEventListener('input', () => {
       scheduleNotesSave();
       renderNotesToolbar(jobId);
+      _notesUpdateMention();
     });
     editor.addEventListener('keyup',   () => renderNotesToolbar(jobId));
     editor.addEventListener('mouseup', () => renderNotesToolbar(jobId));
+    // Keydown: intercept for mention dropdown nav + table cell tabbing.
+    // We check mention keys first (they only fire if the dropdown is open).
+    editor.addEventListener('keydown', (e) => {
+      if (_notesHandleMentionKey(e)) return;
+      if (e.key === 'Tab' && _notesHandleTableTab(e)) return;
+      // If user types characters while the dropdown is open, let the input
+      // event below refresh the query on the next tick.
+    });
+    // Click handler: toggle checklist items (checkbox area), dismiss mention
+    editor.addEventListener('click', (e) => {
+      if (_notesHandleChecklistClick(e)) return;
+      // Clicking elsewhere inside the editor dismisses the mention dropdown
+      if (_mention.active) _hideMention();
+    });
     // Paste as plain text — avoids pulling weird formatting from Gmail/Word
     editor.addEventListener('paste', (e) => {
       e.preventDefault();
@@ -3679,6 +3770,12 @@ function mountNotesEditor(jobId) {
           if (f.type?.startsWith('image/')) { e.preventDefault(); return; }
         }
       }
+    });
+    // Blur dismisses mention dropdown (but not toolbar click — those use
+    // mousedown + preventDefault to keep editor focus alive).
+    editor.addEventListener('blur', () => {
+      // Delay so a click on a dropdown item can fire first
+      setTimeout(() => { if (_mention.active) _hideMention(); }, 150);
     });
 
     _notes.editor = editor;
@@ -3714,12 +3811,16 @@ function renderNotesToolbar(jobId) {
     <div class="sep"></div>
     <button class="${is('insertUnorderedList')}" title="Bullet list" onclick="notesCmd('insertUnorderedList')">•</button>
     <button class="${is('insertOrderedList')}" title="Numbered list" onclick="notesCmd('insertOrderedList')">1.</button>
+    <button title="Checklist" onclick="notesInsertChecklist()">☑</button>
     <div class="sep"></div>
     <button class="${isBlock('blockquote')}" title="Quote" onclick="notesFormatBlock('blockquote')">&rdquo;</button>
     <button title="Horizontal rule" onclick="notesCmd('insertHorizontalRule')">—</button>
+    <button title="Table (3×3)" onclick="notesInsertTable()">⌗</button>
     <div class="sep"></div>
     <button title="Link" onclick="notesLinkPrompt()">🔗</button>
     <button title="Unlink" onclick="notesCmd('unlink')">⌧</button>
+    <div class="sep"></div>
+    <button title="Mention (@)" onclick="notesInsertAtTrigger()">@</button>
     <div class="sep"></div>
     <button title="Undo (Cmd+Z)" onclick="notesCmd('undo')">↶</button>
     <button title="Redo (Cmd+Shift+Z)" onclick="notesCmd('redo')">↷</button>
@@ -3764,6 +3865,316 @@ function notesLinkPrompt() {
     a.target = '_blank';
     a.rel = 'noopener noreferrer nofollow';
   });
+  scheduleNotesSave();
+}
+
+// ── Tables ──
+// Inserts a 3×3 table with a header row at the caret. Tables nest awkwardly
+// inside other blocks (blockquotes, lists), so we always insert at the end of
+// the current paragraph — never try to wrap the selection.
+function notesInsertTable() {
+  if (!_notes.editor) return;
+  _notes.editor.focus();
+  const html = `<table class="notes-table"><thead><tr>` +
+    `<th>&nbsp;</th><th>&nbsp;</th><th>&nbsp;</th></tr></thead>` +
+    `<tbody>` +
+    `<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`.repeat(2) +
+    `</tbody></table><p><br></p>`;
+  try { document.execCommand('insertHTML', false, html); }
+  catch (e) { console.warn('[notes] insert table failed:', e); }
+  scheduleNotesSave();
+  renderNotesToolbar(_notes.jobId);
+}
+
+// Tab / Shift+Tab navigation between table cells. Called from the editor's
+// keydown handler below.
+function _notesHandleTableTab(e) {
+  const sel = document.getSelection();
+  if (!sel || !sel.rangeCount) return false;
+  let node = sel.anchorNode;
+  while (node && node !== _notes.editor) {
+    if (node.nodeName === 'TD' || node.nodeName === 'TH') {
+      e.preventDefault();
+      // Find the next (or previous, on shift+tab) cell in document order.
+      const allCells = Array.from(_notes.editor.querySelectorAll('td, th'));
+      const idx = allCells.indexOf(node);
+      const target = e.shiftKey ? allCells[idx - 1] : allCells[idx + 1];
+      if (target) {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      return true;
+    }
+    node = node.parentNode;
+  }
+  return false;
+}
+
+// ── Checklists ──
+// Inserts a single checklist item at the caret (or wraps the current line).
+// Clicking the checkbox on an <li> toggles its data-checked attribute — handled
+// by the delegated click listener in mountNotesEditor.
+function notesInsertChecklist() {
+  if (!_notes.editor) return;
+  _notes.editor.focus();
+  // If caret is already inside a checklist <ul>, we don't wrap — just insert
+  // a new item.
+  const sel = document.getSelection();
+  if (sel && sel.rangeCount) {
+    let node = sel.anchorNode;
+    while (node && node !== _notes.editor) {
+      if (node.nodeName === 'UL' && node.classList?.contains('notes-checklist')) {
+        // Already in a checklist — let the user press Enter for a new item
+        return;
+      }
+      node = node.parentNode;
+    }
+  }
+  const html = `<ul class="notes-checklist"><li data-checked="false"><span>&nbsp;</span></li></ul>`;
+  try { document.execCommand('insertHTML', false, html); }
+  catch (e) { console.warn('[notes] insert checklist failed:', e); }
+  // Move caret into the just-inserted item
+  const item = _notes.editor.querySelector('ul.notes-checklist li:last-child span');
+  if (item) {
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  scheduleNotesSave();
+  renderNotesToolbar(_notes.jobId);
+}
+
+// Delegated click handler: toggles checkbox state. Called from mountNotesEditor.
+// We detect clicks on the ::before pseudo-element by checking if the click
+// happened on the LEFT edge of an li (where the checkbox visually sits).
+function _notesHandleChecklistClick(e) {
+  let node = e.target;
+  while (node && node !== _notes.editor) {
+    if (node.nodeName === 'LI' && node.parentNode?.classList?.contains('notes-checklist')) {
+      // Check if click was on the checkbox area (roughly the first 20px of the li)
+      const rect = node.getBoundingClientRect();
+      if (e.clientX - rect.left < 24) {
+        node.dataset.checked = node.dataset.checked === 'true' ? 'false' : 'true';
+        e.preventDefault();
+        scheduleNotesSave();
+        return true;
+      }
+    }
+    node = node.parentNode;
+  }
+  return false;
+}
+
+// ── Mentions ──
+//
+// State for the mention dropdown. When the user types @ at a word boundary,
+// we open a floating list of contacts. Arrow keys / Enter / Escape navigate
+// and select.
+const _mention = {
+  active:        false,    // dropdown is visible
+  el:            null,     // dropdown DOM element
+  triggerNode:   null,     // text node containing the '@'
+  triggerOffset: 0,        // index of '@' within that text node
+  query:         '',       // text typed after '@'
+  items:         [],       // filtered contact list
+  selectedIndex: 0,
+};
+
+// Toolbar handler: insert '@' at caret and trigger the dropdown.
+function notesInsertAtTrigger() {
+  if (!_notes.editor) return;
+  _notes.editor.focus();
+  try { document.execCommand('insertText', false, '@'); } catch {}
+  // The input event will fire and _notesUpdateMention picks up on the @
+}
+
+// Called on every editor input. Checks whether the caret is inside an
+// in-progress @mention and shows/updates the dropdown accordingly.
+function _notesUpdateMention() {
+  const sel = document.getSelection();
+  if (!sel || !sel.rangeCount) { _hideMention(); return; }
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed) { _hideMention(); return; }
+
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) { _hideMention(); return; }
+  if (!_notes.editor.contains(node)) { _hideMention(); return; }
+
+  const text = node.textContent.slice(0, range.startOffset);
+  // Match `@[word chars / spaces]` at end of text, anchored after whitespace
+  // or start-of-node. Allow spaces for multi-word names but cap at 30 chars.
+  const match = text.match(/(?:^|[\s\u00a0])@([\w. ]{0,30})$/) || text.match(/^@([\w. ]{0,30})$/);
+  if (!match) { _hideMention(); return; }
+
+  const query = match[1];
+  // triggerOffset points at the '@' itself (one char before the matched query)
+  const triggerOffset = range.startOffset - query.length - 1;
+
+  // Get ranked contact list
+  const items = _gatherMentionCandidates(query);
+  if (items.length === 0) { _hideMention(); return; }
+
+  _mention.active = true;
+  _mention.triggerNode = node;
+  _mention.triggerOffset = triggerOffset;
+  _mention.query = query;
+  _mention.items = items;
+  _mention.selectedIndex = 0;
+  _renderMentionDropdown();
+}
+
+function _hideMention() {
+  if (_mention.el) { try { _mention.el.remove(); } catch {} _mention.el = null; }
+  _mention.active = false;
+  _mention.triggerNode = null;
+  _mention.query = '';
+  _mention.items = [];
+}
+
+// Build the candidate list: contacts from the current job (ranked first),
+// then contacts from other jobs at the same company (deduped by name).
+// Filtered by the query text (case-insensitive substring on name).
+function _gatherMentionCandidates(query) {
+  const jobId = _notes.jobId;
+  const j = jobs[jobId];
+  if (!j) return [];
+  const q = query.trim().toLowerCase();
+  const seen = new Set();
+  const out = [];
+
+  const push = (c, source) => {
+    const key = (c.name || '').toLowerCase().trim();
+    if (!key || seen.has(key)) return;
+    if (q && !key.includes(q)) return;
+    seen.add(key);
+    out.push({ contact: c, source });
+  };
+
+  // Priority 1: contacts on the current job
+  (j.contacts || []).forEach(c => push(c, 'this role'));
+
+  // Priority 2: contacts on other jobs at the same company
+  if (j.company) {
+    const company = j.company.toLowerCase().trim();
+    Object.values(jobs).forEach(other => {
+      if (other.id === jobId) return;
+      if ((other.company || '').toLowerCase().trim() !== company) return;
+      (other.contacts || []).forEach(c => push(c, other.title || 'other role'));
+    });
+  }
+
+  return out.slice(0, 6);
+}
+
+function _renderMentionDropdown() {
+  if (!_mention.el) {
+    _mention.el = document.createElement('div');
+    _mention.el.className = 'notes-mention-dropdown';
+    document.body.appendChild(_mention.el);
+  }
+  const el = _mention.el;
+  el.innerHTML = _mention.items.map((it, i) => {
+    const c = it.contact;
+    const active = i === _mention.selectedIndex ? ' active' : '';
+    return `<div class="notes-mention-item${active}" data-idx="${i}">
+      <div class="notes-mention-name">${esc(c.name || '?')}</div>
+      <div class="notes-mention-meta">${esc(c.role || '')}${c.role && it.source ? ' · ' : ''}${esc(it.source || '')}</div>
+    </div>`;
+  }).join('');
+
+  // Click-to-select
+  el.querySelectorAll('.notes-mention-item').forEach(itemEl => {
+    itemEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();  // don't steal focus from editor
+      const idx = parseInt(itemEl.dataset.idx, 10);
+      _mention.selectedIndex = idx;
+      _commitMention();
+    });
+  });
+
+  // Position below the caret
+  const sel = document.getSelection();
+  if (sel && sel.rangeCount) {
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    // If caret rect is zero-size (start of empty line), fall back to editor rect
+    const anchor = (rect.width === 0 && rect.height === 0)
+      ? _notes.editor.getBoundingClientRect()
+      : rect;
+    el.style.top = (window.scrollY + anchor.bottom + 4) + 'px';
+    el.style.left = (window.scrollX + anchor.left) + 'px';
+  }
+}
+
+// Keyboard handling for mention dropdown (called from editor keydown)
+function _notesHandleMentionKey(e) {
+  if (!_mention.active) return false;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _mention.selectedIndex = (_mention.selectedIndex + 1) % _mention.items.length;
+    _renderMentionDropdown();
+    return true;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _mention.selectedIndex = (_mention.selectedIndex - 1 + _mention.items.length) % _mention.items.length;
+    _renderMentionDropdown();
+    return true;
+  }
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    _commitMention();
+    return true;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    _hideMention();
+    return true;
+  }
+  return false;
+}
+
+// Commit the currently-selected mention: replace the @query text with a
+// styled mention span + trailing space.
+function _commitMention() {
+  if (!_mention.active) return;
+  const { triggerNode, triggerOffset, query, items, selectedIndex } = _mention;
+  const pick = items[selectedIndex];
+  if (!pick) { _hideMention(); return; }
+
+  const c = pick.contact;
+  const label = '@' + (c.name || 'Contact');
+  // Build the mention node
+  const span = document.createElement('span');
+  span.className = 'notes-mention';
+  span.setAttribute('data-contact-id', c.id || '');
+  span.setAttribute('contenteditable', 'false');
+  span.textContent = label;
+
+  try {
+    // Remove the '@query' text range and insert the span + trailing space
+    const range = document.createRange();
+    range.setStart(triggerNode, triggerOffset);
+    range.setEnd(triggerNode, triggerOffset + 1 + query.length);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(' '));
+    range.insertNode(span);
+
+    // Move caret to after the space
+    const sel = document.getSelection();
+    sel.removeAllRanges();
+    const caret = document.createRange();
+    caret.setStartAfter(span.nextSibling); // after the space text node
+    caret.collapse(true);
+    sel.addRange(caret);
+  } catch (e) {
+    console.warn('[notes] commit mention failed:', e);
+  }
+  _hideMention();
   scheduleNotesSave();
 }
 
@@ -7789,7 +8200,7 @@ setInterval(() => {
     </div>
     <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
     <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.6.0 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.7.0 · private beta</div>
   </div>
 </div>
 
