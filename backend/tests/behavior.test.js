@@ -647,17 +647,32 @@ t('All AI endpoints thread req + endpoint label to callAI', () => {
 });
 
 t('All AI routes have tokenCapMiddleware after authMiddleware', () => {
+  // v1.15.2: parse-job removed from this list. fetchATS is pure network I/O
+  // (direct-fetch + Jina + slug fallback) — no AI, no tokens consumed. Gating
+  // it on the cap meant hitting the cap blackholed the entire extraction
+  // pipeline (no structured data, no slug fallback, nothing), hiding deploy
+  // state and making the audit unable to distinguish cap-hit from real
+  // extraction failures.
   const aiRoutes = [
     '/api/extract-fields', '/api/tailor', '/api/tailor-docx', '/api/insights',
     '/api/outreach-targets', '/api/interview-questions', '/api/keyword-gap',
     '/api/email-template', '/api/salary-benchmark', '/api/find-posting-mirror',
-    '/api/parse-job',
   ];
   for (const r of aiRoutes) {
     const pattern = new RegExp(`app\\.post\\('${r.replace(/[\/\-]/g, m => '\\' + m)}',\\s*authMiddleware,\\s*tokenCapMiddleware`);
     if (!pattern.test(serverSrc)) {
       throw new Error(`${r} missing tokenCapMiddleware after authMiddleware`);
     }
+  }
+});
+
+t('parse-job is NOT token-capped (pure network, no AI)', () => {
+  // Sanity check the v1.15.2 change — if parse-job ever starts calling AI
+  // this assertion should flip and we re-add the middleware.
+  const m = serverSrc.match(/app\.post\('\/api\/parse-job',([^,]+),/);
+  if (!m) throw new Error('parse-job route not found');
+  if (/tokenCapMiddleware/.test(m[0])) {
+    throw new Error('parse-job has tokenCapMiddleware — was this intentional? fetchATS should not burn tokens');
   }
 });
 
@@ -1760,6 +1775,11 @@ t('Every AI-consuming route has tokenCapMiddleware (covers the daily cap)', () =
   // List maintained in sync with /api/*-consuming-callAI. If a new AI endpoint
   // is added without the cap middleware, the daily token budget can be blown
   // past by a single runaway request chain. Test enumerates known AI routes.
+  //
+  // /api/parse-job is NOT on this list as of v1.15.2 — fetchATS is pure
+  // network I/O (direct-fetch + Jina + slug fallback), does not invoke AI,
+  // and should not be gated on the cap. See the "parse-job is NOT
+  // token-capped" test above.
   const AI_ROUTES = [
     '/api/extract-fields',
     '/api/tailor',
@@ -1771,7 +1791,6 @@ t('Every AI-consuming route has tokenCapMiddleware (covers the daily cap)', () =
     '/api/email-template',
     '/api/salary-benchmark',
     '/api/find-posting-mirror',
-    '/api/parse-job',
     '/api/parse-contact-signature',
   ];
   const offenders = [];

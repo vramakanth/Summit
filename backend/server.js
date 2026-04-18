@@ -1485,7 +1485,12 @@ function extractSalaryFromHtml(html) {
   return fmt(m[1]) + '\u2013' + fmt(m[2]);
 }
 
-app.post('/api/parse-job', authMiddleware, tokenCapMiddleware, async (req, res) => {
+// parse-job is pure network I/O (direct-fetch + Jina + slug). It never
+// invokes AI, so it should not count against the daily token cap. A cap hit
+// on /api/extract-fields should still 429 that endpoint (the AI one), but
+// parse-job returning slug fallbacks is always preferable to 429-ing the
+// whole extraction pipeline and hiding genuine deployment state.
+app.post('/api/parse-job', authMiddleware, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL required' });
   try {
