@@ -38,13 +38,26 @@ async function getBrowser() {
     const chromium = require('@sparticuz/chromium');
     const puppeteer = require('puppeteer-core');
 
-    // @sparticuz ships a minified Chromium + matching args tuned for low-
-    // memory serverless environments. The extra flags are for Render's
-    // containerized Linux — no sandbox (root-owned container), no GPU, no
-    // dev-shm (small tmpfs), no unnecessary background work.
+    // @sparticuz ships a minified Chromium + predefined args for serverless.
+    // We have to filter out '--single-process' — it collapses all renderer
+    // processes into the browser process, which sounds like a memory win
+    // but is actually the main reason Chromium crashes under puppeteer on
+    // Render Starter. Symptom seen in v1.17.0 logs: "Target closed" errors
+    // immediately after every browser.createBrowserContext() — the single
+    // process dies the moment it tries to spawn a renderer target.
+    //
+    // Chromium upstream says single-process is for Android WebView only
+    // and breaks when Chrome is the content embedder, which is our case.
+    // Removing it lets Chromium fork a renderer process as designed.
+    // Memory peak goes up ~50MB but stays within Render Starter's budget
+    // with aggressive resource blocking + serialized renders.
+    const safeChromiumArgs = chromium.args.filter(
+      a => !/^--single-process\b/.test(a)
+    );
+
     const browser = await puppeteer.launch({
       args: [
-        ...chromium.args,
+        ...safeChromiumArgs,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-gpu',

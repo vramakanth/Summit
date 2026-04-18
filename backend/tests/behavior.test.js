@@ -3118,6 +3118,30 @@ t('render circuit-breaker has time-based cooldown (auto-resets)', () => {
   }
 });
 
+t('render filters --single-process from chromium.args (v1.17.1 OOM fix)', () => {
+  // @sparticuz/chromium's default args include --single-process, which
+  // causes Chromium to crash with "Target closed" the moment puppeteer
+  // tries to create a browser context on Render Starter. Upstream Chromium
+  // devs confirm --single-process is only supported for Android WebView,
+  // not as the content embedder.
+  //
+  // v1.17.0 shipped with --single-process inherited from chromium.args.
+  // Production logs: "[render] failed: Protocol error (Target.createTarget):
+  // Target closed" on every attempt, 0 successful renders across the audit.
+  // v1.17.1 filters it out.
+  const fs = require('fs');
+  const path = require('path');
+  const renderSrc = fs.readFileSync(path.join(__dirname, '../render.js'), 'utf8');
+  if (!/single-process/.test(renderSrc)) {
+    throw new Error('no --single-process filter — chromium.args will include it by default');
+  }
+  // Filter must actually filter, not just mention the flag
+  if (!/filter\s*\(\s*a\s*=>\s*!\/.*single-process.*\/.test\s*\(\s*a\s*\)/.test(renderSrc) &&
+      !/filter\s*\([^)]*single-process[^)]*\)/.test(renderSrc)) {
+    throw new Error('--single-process mentioned but not actually filtered — check regex/logic');
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
