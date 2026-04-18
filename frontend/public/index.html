@@ -935,7 +935,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.17.2 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
   </div>
 </div>
 
@@ -975,7 +975,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.17.2 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
   </div>
 </div>
 
@@ -991,7 +991,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.17.2 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
   </div>
 </div>
 
@@ -1068,7 +1068,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.17.2</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.1</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1111,6 +1111,11 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         </button>
       </div>
       <div id="parse-status" class="parse-status" style="display:none"></div>
+      <div id="upload-row" style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text3);font-family:var(--mono)">
+        <span style="opacity:0.6">or</span>
+        <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved page (HTML or PDF)</label>
+        <input id="upload-input" type="file" accept=".html,.htm,.mhtml,.mht,.pdf" style="display:none" onchange="parseUploadedFile(event)">
+      </div>
     </div>
     <button id="manual-toggle" onclick="toggleManualFields()" style="margin-top:14px;display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;font-family:var(--font);font-size:12px;color:var(--text3);cursor:pointer;width:100%;text-align:left">
       <svg id="manual-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.2s;flex-shrink:0"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -1272,7 +1277,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.17.2';
+const APP_VERSION = '1.18.1';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -2301,41 +2306,49 @@ async function parseJobUrl() {
       cancelCycle();
     }
 
-    // Populate form fields
-    let filled = 0;
-    const fieldMap = {
-      title:    { inputId: 'job-title',    fieldId: 'f-title' },
-      company:  { inputId: 'job-company',  fieldId: 'f-company' },
-      location: { inputId: 'job-location', fieldId: 'f-location' },
-      salary:   { inputId: 'job-salary',   fieldId: 'f-salary' },
-    };
+    // Populate form fields via shared helper
+    let filled = _populateFormFields(finalFields);
 
-    for (const [key, { inputId, fieldId }] of Object.entries(fieldMap)) {
-      const val = finalFields?.[key];
-      if (val && typeof val === 'string' && val.trim()) {
-        const input = document.getElementById(inputId);
-        const field = document.getElementById(fieldId);
-        if (input) { input.value = val.trim(); filled++; }
-        if (field) field.classList.add('filled');
-      }
-    }
+    // ── Extension bridge fallback ─────────────────────────────────────────────
+    // When the server couldn't read the page (bot-gated site) but the user
+    // has the extension installed, the extension can open the URL in a
+    // background tab — running inside the user's own authenticated browser
+    // session — and scrape the real content. We then re-run AI extraction
+    // on that text and merge the results. This makes the extension useful
+    // for the add-job modal, not just the job detail's Fetch-from-URL button.
+    const serverGaveUpOnPage =
+      data._via === 'unextractable' ||
+      data._linkedinBlocked ||
+      (filled === 0 && !text);
 
-    // Handle workType separately from location
-    const wtEl = document.getElementById('job-worktype');
-    if (wtEl) {
-      const locVal = (document.getElementById('job-location')?.value || '').toLowerCase();
-      if (finalFields?.remote === true || /^remote$/i.test(locVal.trim())) {
-        wtEl.value = 'Remote';
-        // Clean "Remote" out of location field if it's just that
-        const locEl = document.getElementById('job-location');
-        if (locEl && /^remote$/i.test(locEl.value.trim())) locEl.value = '';
-      } else if (/hybrid/i.test(locVal)) {
-        wtEl.value = 'Hybrid';
-        const locEl = document.getElementById('job-location');
-        if (locEl) locEl.value = locEl.value.replace(/[,\s]*hybrid[,\s]*/i,'').trim();
-      } else if (/on.?site|in.?person/i.test(locVal)) {
-        wtEl.value = 'On-site';
-      }
+    if (serverGaveUpOnPage && _extensionAvailable) {
+      statusEl.innerHTML = spinner() + ' Fetching via your browser…';
+      try {
+        const captured = await _browserFetchPosting(url);
+        if (captured && captured.length > 200) {
+          pendingText = captured;
+          statusEl.innerHTML = spinner() + ' Extracting fields from captured content…';
+          try {
+            const body = { url, postingText: captured.slice(0, 5000) };
+            if (captured.length > 5000) body.tailText = captured.slice(-2000);
+            const aiRes = await fetch(API + '/api/extract-fields', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify(body),
+            });
+            if (aiRes.ok) {
+              const extracted = await aiRes.json();
+              if (extracted && (extracted.title || extracted.company)) {
+                finalFields = { ...(finalFields || {}), ...extracted };
+                // Mark data source so the "server gave up" branch below
+                // doesn't still fire. Also re-populate from the merged fields.
+                data._via = 'extension-bridge';
+                filled = _populateFormFields(finalFields);
+              }
+            }
+          } catch (e) { /* AI failure → fall through to nudge */ }
+        }
+      } catch (e) { /* bridge failure → fall through to nudge */ }
     }
 
     // Clean tracking params from LinkedIn URLs before storing
@@ -2351,28 +2364,28 @@ async function parseJobUrl() {
     })();
     document.getElementById('job-url').value = cleanUrl;
 
-    if (data._linkedinBlocked) {
-      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> LinkedIn requires login to auto-fill. <strong>Use the Chrome/Safari extension</strong> while on LinkedIn, or fill in manually below.`;
-    } else if (data._via === 'slug' || (filled === 0 && !text)) {
-      // Slug fallback means neither direct-fetch nor Chromium got usable
-      // page content — we only have whatever the URL path hinted at. The
-      // extension runs in the user's own browser (which the site trusts),
-      // so it can read the page even when our server can't.
-      //
-      // Tailor the message based on whether they already have the
-      // extension installed — if they do, just remind them; if not,
-      // offer to download.
+    if (data._via === 'extension-bridge' && filled > 0) {
       const mf = document.getElementById('manual-fields');
       const mc = document.getElementById('manual-chevron');
       if (mf) mf.style.display = 'block';
       if (mc) mc.style.transform = 'rotate(180deg)';
-      const summary = filled > 0
-        ? `Only the company name was recoverable from the URL.`
-        : `This site blocked our server-side parser.`;
+      statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} via your browser extension — review below`;
+    } else if (data._linkedinBlocked) {
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> LinkedIn requires login to auto-fill. Use the Summit extension or <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload the saved page</label>, or fill in manually below.`;
+    } else if (data._via === 'unextractable' || (filled === 0 && !text)) {
+      // Server couldn't read the page at all (direct-fetch empty, render
+      // blocked/failed). The user's own browser CAN read it — either via
+      // the extension (auto-capture) or by saving the page and uploading
+      // it. v1.18 surfaces both options here. Manual entry is always
+      // available as a third fallback.
+      const mf = document.getElementById('manual-fields');
+      const mc = document.getElementById('manual-chevron');
+      if (mf) mf.style.display = 'block';
+      if (mc) mc.style.transform = 'rotate(180deg)';
       const extHint = _extensionAvailable
-        ? `Open the posting in your browser and press the Summit extension button — it'll capture the full page.`
-        : `For full extraction, <a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline">install the Summit extension</a> — it reads pages from your own browser, which sites don't block.`;
-      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> ${summary} ${extHint}`;
+        ? `use the Summit extension`
+        : `<a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline">install the Summit extension</a>`;
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Couldn't read this page server-side. You can ${extHint}, <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved HTML/PDF</label>, or fill in manually below.`;
     } else if (filled > 0) {
       // Auto-expand so user can review filled fields
     const mf = document.getElementById('manual-fields');
@@ -2396,6 +2409,128 @@ async function parseJobUrl() {
 
 function spinner() {
   return `<svg width="12" height="12" viewBox="0 0 12 12" style="animation:spin 0.8s linear infinite;flex-shrink:0" fill="none"><circle cx="6" cy="6" r="4.5" stroke="var(--border2)" stroke-width="1.5"/><path d="M6 1.5A4.5 4.5 0 0110.5 6" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+}
+
+// Populate the add-job form from an extraction result. Used by both the
+// URL parse path and the file upload path — they share the same output
+// shape { fields, text, salary } where fields may be null and the caller
+// has already done any AI enrichment needed.
+// Returns the number of fields filled.
+function _populateFormFields(finalFields) {
+  let filled = 0;
+  const fieldMap = {
+    title:    { inputId: 'job-title',    fieldId: 'f-title' },
+    company:  { inputId: 'job-company',  fieldId: 'f-company' },
+    location: { inputId: 'job-location', fieldId: 'f-location' },
+    salary:   { inputId: 'job-salary',   fieldId: 'f-salary' },
+  };
+  for (const [key, { inputId, fieldId }] of Object.entries(fieldMap)) {
+    const val = finalFields?.[key];
+    if (val && typeof val === 'string' && val.trim()) {
+      const input = document.getElementById(inputId);
+      const field = document.getElementById(fieldId);
+      if (input) { input.value = val.trim(); filled++; }
+      if (field) field.classList.add('filled');
+    }
+  }
+  // workType inference from location string + remote flag
+  const wtEl = document.getElementById('job-worktype');
+  if (wtEl) {
+    const locVal = (document.getElementById('job-location')?.value || '').toLowerCase();
+    if (finalFields?.remote === true || /^remote$/i.test(locVal.trim())) {
+      wtEl.value = 'Remote';
+      const locEl = document.getElementById('job-location');
+      if (locEl && /^remote$/i.test(locEl.value.trim())) locEl.value = '';
+    } else if (/hybrid/i.test(locVal)) {
+      wtEl.value = 'Hybrid';
+      const locEl = document.getElementById('job-location');
+      if (locEl) locEl.value = locEl.value.replace(/[,\s]*hybrid[,\s]*/i,'').trim();
+    } else if (/on.?site|in.?person/i.test(locVal)) {
+      wtEl.value = 'On-site';
+    }
+  }
+  return filled;
+}
+
+// Handle upload of a saved page (HTML/MHTML/PDF) from the add-job modal.
+// Posts to /api/parse-uploaded-page, runs AI extract if needed, populates
+// the same form fields that parseJobUrl() would populate. HTML preserves
+// JSON-LD so we usually get authoritative fields directly; PDF strips
+// <script> tags so those uploads always route through AI.
+async function parseUploadedFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const statusEl = document.getElementById('parse-status');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = spinner() + ' Reading uploaded file…';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(API + '/api/parse-uploaded-page', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> ${err.error || 'Upload failed'}${err.detail ? ' — ' + err.detail : ''}`;
+      event.target.value = '';
+      return;
+    }
+    const data = await res.json();
+    const { fields, text, sourceUrl } = data;
+    pendingHtml = data.html || null;
+    pendingText = text || null;
+
+    let finalFields = fields;
+    const hasFields = fields && Object.values(fields).some(v => v !== null);
+
+    // PDFs never have JSON-LD, so always route through AI. HTML uploads that
+    // had JSON-LD skip the AI step.
+    if (!hasFields && text && text.length > 100) {
+      statusEl.innerHTML = spinner() + ' Extracting fields from uploaded content…';
+      try {
+        const body = { url: sourceUrl || '', postingText: text.slice(0, 5000) };
+        if (data.salary) body.domSalary = data.salary;
+        if (text.length > 5000) body.tailText = text.slice(-2000);
+        const aiRes = await fetch(API + '/api/extract-fields', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify(body),
+        });
+        if (aiRes.ok) {
+          const extracted = await aiRes.json();
+          if (extracted) finalFields = { ...(finalFields || {}), ...extracted };
+        }
+      } catch {}
+    }
+
+    const filled = _populateFormFields(finalFields);
+
+    // Populate URL field if the file disclosed its source
+    const urlEl = document.getElementById('job-url');
+    if (urlEl && !urlEl.value && sourceUrl) urlEl.value = sourceUrl;
+
+    // Auto-expand manual fields for review
+    const mf = document.getElementById('manual-fields');
+    const mc = document.getElementById('manual-chevron');
+    if (mf) mf.style.display = 'block';
+    if (mc) mc.style.transform = 'rotate(180deg)';
+
+    if (filled > 0) {
+      const sourceLabel = data._via === 'upload-pdf' ? 'PDF' : 'HTML';
+      statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} from ${sourceLabel} — review below`;
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Couldn't extract any fields from this file — please fill in manually.`;
+    }
+  } catch (e) {
+    console.error('Upload parse error:', e);
+    statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Upload failed: ${e.message}`;
+  } finally {
+    // Reset the input so the same file can be selected again if needed
+    event.target.value = '';
+  }
 }
 
 // ── MODAL ──
@@ -2938,11 +3073,79 @@ function buildPostingHtml(j) {
 }
 
 function emptyPosting(j) {
+  // When a job has no captured posting content, offer three recovery paths:
+  // (1) re-fetch from source (if we have a URL), (2) upload the saved HTML/PDF
+  // the user can get from their own browser, (3) just inform them we can't
+  // fetch if no URL exists.
+  const jobId = j ? j.id : '';
   return `<div class="posting-empty">
     <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="8" width="36" height="32" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M13 18h22M13 24h22M13 30h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    <p>${j && j.url ? 'No cached posting yet. Click "refresh cache" to fetch and store it.' : 'No URL was saved for this application.'}</p>
-    ${j && j.url ? `<button class="posting-btn primary" style="margin-top:4px" onclick="refetchPosting('${j.id}')">Fetch posting now</button>` : ''}
+    <p>${j && j.url ? 'No posting captured for this job yet.' : 'No URL was saved for this application.'}</p>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px">
+      ${j && j.url ? `<button class="posting-btn primary" onclick="refetchPosting('${jobId}')">Fetch from URL</button>` : ''}
+      ${j ? `<button class="posting-btn" onclick="document.getElementById('posting-upload-${jobId}').click()">Upload saved page</button>` : ''}
+    </div>
+    ${j ? `<input id="posting-upload-${jobId}" type="file" accept=".html,.htm,.mhtml,.mht,.pdf" style="display:none" onchange="uploadPostingForJob('${jobId}', event)">` : ''}
+    <p style="font-size:11px;color:var(--text3);margin-top:10px;font-family:var(--mono)">
+      ${j && j.url ? 'Fetch tries our server first. Upload works when the site blocks server-side parsing.' : 'If you have the posting saved as HTML or PDF, upload it to fill the description.'}
+    </p>
   </div>`;
+}
+
+// Upload a saved HTML/PDF for an existing job — fills the posting content
+// and optionally top-level fields if they're missing. Mirrors parseUploadedFile
+// but scoped to a saved job rather than the add-job modal.
+async function uploadPostingForJob(jobId, event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const j = jobs[jobId];
+  if (!j) return;
+  const area = document.getElementById('posting-content-area');
+  if (area) {
+    area.innerHTML = `<div class="posting-empty"><p>${spinner()} Reading uploaded file…</p></div>`;
+  }
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(API + '/api/parse-uploaded-page', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Upload failed: ' + (err.error || res.status) + (err.detail ? '\n\n' + err.detail : ''));
+      event.target.value = '';
+      if (area) area.innerHTML = emptyPosting(j);
+      return;
+    }
+    const data = await res.json();
+    j.postingHtml = data.html || null;
+    j.postingText = data.text || null;
+    // Backfill top-level fields only when they're missing — don't overwrite
+    // user edits.
+    if (data.fields) {
+      if (!j.title && data.fields.title) j.title = data.fields.title;
+      if (!j.company && data.fields.company) j.company = data.fields.company;
+      if (!j.location && data.fields.location) j.location = data.fields.location;
+      if (!j.salary && data.fields.salary) j.salary = data.fields.salary;
+      if (!j.workType && data.fields.workType) j.workType = data.fields.workType;
+    }
+    if (!j.url && data.sourceUrl) j.url = data.sourceUrl;
+    j.updatedAt = Date.now();
+    scheduleSave();
+    // Re-render the posting tab with the new content
+    if (area) area.innerHTML = buildPostingHtml(j);
+    // Also refresh the job detail header + list in case top-level fields changed
+    if (typeof renderDetail === 'function') renderDetail();
+    if (typeof renderJobList === 'function') renderJobList();
+  } catch (e) {
+    console.error('Posting upload error:', e);
+    alert('Upload failed: ' + e.message);
+    if (area) area.innerHTML = emptyPosting(j);
+  } finally {
+    event.target.value = '';
+  }
 }
 
 async function refetchPosting(jobId) {
@@ -8451,7 +8654,7 @@ setInterval(() => {
     </div>
     <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
     <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.17.2 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
   </div>
 </div>
 

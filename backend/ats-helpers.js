@@ -1,6 +1,19 @@
-// ats-helpers.js — URL cleaning, slug-based fallback extraction, shared utilities.
-// All extractors here are deterministic (no AI, no network) and safe to call
-// from any code path.
+// ats-helpers.js — URL cleaning + extraction utilities used across fetchATS
+// and the uploaded-page endpoint. All helpers are deterministic (no AI,
+// no network) and safe to call from any code path.
+//
+// v1.18 removed slugFallback and its dependencies (GENERIC_PATH_SEGMENTS,
+// cleanToProseCase, looksLikeRealTitle, validateTitle). Slug-from-URL was
+// the final fallback when direct-fetch + Chromium both failed, but its
+// output was often wrong in subtle ways ("Lago 1" vs the real "Lago",
+// "Bystadium" vs "Stadium") and silently polluted job records. It was
+// replaced by an honest "we couldn't parse this page" response which
+// prompts the user to use the browser extension, upload a saved HTML/PDF,
+// or fill in manually — all of which produce strictly better results.
+//
+// looksLikeId + trimIdTokens are kept because parseJobPostingLD in server.js
+// still uses them to sanitize JSON-LD values (e.g. Workday's "001 MTB Inc."
+// company names).
 
 // ────────────────────────────────────────────────────────────────────────────
 // URL cleaning
@@ -33,9 +46,9 @@ function cleanJobUrl(raw) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Decode the most common HTML entities. Used to clean JSON-LD values and
- * other extractor outputs before storing — previously "&amp;" was leaking
- * through to displayed titles (e.g. "Validation &amp; Verification").
+ * Decode the most common HTML entities. Used to clean JSON-LD values before
+ * storing — previously "&amp;" was leaking through to displayed titles
+ * (e.g. "Validation &amp; Verification").
  */
 function decodeEntities(s) {
   if (!s || typeof s !== 'string') return s;
@@ -51,14 +64,12 @@ function decodeEntities(s) {
 }
 
 /**
- * Heuristic: does this URL path segment look like a machine ID rather than
- * a human-readable word? Used to prevent garbage like
- *   "7c185ae4 3fdd 4613 8152 3ede45d2b7c0"
- *   "BFAAE89AEF"
- *   "5313690004"
- * from being promoted to job titles in the slug fallback.
+ * Heuristic: does this token look like a machine ID rather than human-
+ * readable text? Used by parseJobPostingLD to strip internal codes out of
+ * JSON-LD values (e.g. Workday prefixes its company names with "001 ",
+ * "005 ", and title text sometimes has trailing "R83098" kind of codes).
  *
- * Returns true if the segment shouldn't be used as a title/company.
+ * Returns true if the token shouldn't appear in a user-visible title/company.
  */
 function looksLikeId(s) {
   if (!s) return true;
@@ -88,35 +99,10 @@ function looksLikeId(s) {
 }
 
 /**
- * Segments from the URL that are almost never meaningful — don't contribute
- * to title or company extraction.
- */
-const GENERIC_PATH_SEGMENTS = new Set([
-  'jobs', 'job', 'careers', 'career', 'apply', 'application',
-  'position', 'positions', 'opening', 'openings', 'role', 'roles',
-  'opportunity', 'opportunities', 'details', 'view',
-  'en', 'en-us', 'en-gb', 'en-ca', 'ca', 'us', 'uk', 'de', 'fr',
-  'c', 'a', 'j', 'p', // single-letter ATS routing prefixes
-]);
-
-function cleanToProseCase(p) {
-  return p
-    // Percent-decode common artifacts (e.g. "%E2%80%93" en-dash) by dropping
-    // them — they rarely belong in a clean title.
-    .replace(/%[0-9a-f]{2}/gi, ' ')
-    .replace(/[-_+]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim();
-}
-
-/**
- * After a slug has been cleaned to prose case, strip off leading and
- * trailing tokens that look like IDs. Handles cases like
+ * Strip leading and trailing ID-like tokens from a whitespace-separated
+ * string. Preserves ID-like tokens in the middle (rare but possible).
  *   "Senior Software Engineer Java 8 Azure Migration R83098"
  *     → "Senior Software Engineer Java 8 Azure Migration"
- *   "Software Engineer JR 000555"
- *     → "Software Engineer"
  */
 function trimIdTokens(title) {
   if (!title) return title;
@@ -126,111 +112,9 @@ function trimIdTokens(title) {
   return words.join(' ');
 }
 
-/**
- * Heuristic: does this cleaned, prose-cased string look like a real job
- * title rather than a munged URL slug? Requires at least 2 substantial
- * words (4+ chars, non-numeric leading).
- */
-function looksLikeRealTitle(s) {
-  if (!s) return false;
-  const words = s.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return false;
-  const substantial = words.filter(w => w.length >= 4 && !/^\d/.test(w)).length;
-  return substantial >= 2;
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Slug fallback — extract title/company from URL path only
-// ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Last-resort extractor: when both Jina and direct fetch fail to produce
- * usable page contents, we guess title/company from the URL path. Produces
- * something usable for clean slugs like
- *   boards.greenhouse.io/figma/jobs/early-career-software-engineer-2026
- *     → { company: "Figma", title: "Early Career Software Engineer 2026" }
- * and deliberately leaves `title` null for URLs with machine IDs where a
- * good guess isn't available, instead of hallucinating garbage:
- *   jobs.lever.co/voleon/7c185ae4-3fdd-4613-8152-3ede45d2b7c0
- *     → { company: "Voleon", title: null }
- */
-function slugFallback(rawUrl) {
-  try {
-    const u = new URL(rawUrl);
-    const parts = u.pathname.split('/').filter(Boolean);
-    const h = u.hostname.toLowerCase();
-
-    // First pass: drop generic routing segments and machine IDs. Keep the
-    // original path index so hostname-specific rules still work.
-    const indexed = parts
-      .map((p, i) => ({ raw: p, i }))
-      .filter(({ raw }) =>
-        !GENERIC_PATH_SEGMENTS.has(raw.toLowerCase()) && !looksLikeId(raw));
-
-    if (indexed.length === 0) return { title: null, company: null };
-
-    // Per-host structural rules for known URL shapes.
-    if (h.includes('ziprecruiter') && parts[0] === 'c') {
-      const company = indexed.find(x => x.i === 1);
-      const title = indexed.find(x => x.i > 2);
-      return {
-        company: company ? cleanToProseCase(company.raw) : null,
-        title: title ? validateTitle(cleanToProseCase(title.raw)) : null,
-      };
-    }
-
-    if (h.includes('greenhouse') || h.includes('lever') || h.includes('ashby')) {
-      // First meaningful = company, last = title (if distinct + looks real).
-      const company = indexed[0];
-      const titleSeg = indexed.length > 1 ? indexed[indexed.length - 1] : null;
-      return {
-        company: cleanToProseCase(company.raw),
-        title: titleSeg ? validateTitle(cleanToProseCase(titleSeg.raw)) : null,
-      };
-    }
-
-    if (h.includes('linkedin')) {
-      // LinkedIn /jobs/view/<id> pattern. Title/company are rendered by JS
-      // and not in the URL path — no safe fallback.
-      return { title: null, company: null };
-    }
-
-    // Generic fallback.
-    if (indexed.length === 1) {
-      // A single meaningful segment is ambiguous. If it's multi-word and
-      // looks like a title ("technology-services-designer-i-ii"), call it
-      // a title. Otherwise treat it as the company.
-      const cleaned = cleanToProseCase(indexed[0].raw);
-      const asTitle = validateTitle(cleaned);
-      if (asTitle && cleaned.split(/\s+/).length >= 3) {
-        return { title: asTitle, company: null };
-      }
-      return { company: cleaned, title: null };
-    }
-
-    // Multiple meaningful segments: first = company, last = title
-    const companyStr = cleanToProseCase(indexed[0].raw);
-    const titleStr = validateTitle(cleanToProseCase(indexed[indexed.length - 1].raw));
-    return {
-      company: companyStr,
-      title: titleStr && titleStr !== companyStr ? titleStr : null,
-    };
-  } catch {
-    return { title: null, company: null };
-  }
-}
-
-/** Strip leading/trailing ID tokens and reject if what remains isn't a real title. */
-function validateTitle(cleaned) {
-  const trimmed = trimIdTokens(cleaned);
-  return looksLikeRealTitle(trimmed) ? trimmed : null;
-}
-
 module.exports = {
   cleanJobUrl,
-  slugFallback,
   decodeEntities,
-  // Exported for server.js to reuse on JSON-LD values
   looksLikeId,
   trimIdTokens,
 };

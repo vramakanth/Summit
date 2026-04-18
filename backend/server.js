@@ -1163,8 +1163,101 @@ app.post('/api/parse-file', authMiddleware, upload.single('file'), async (req, r
   res.json({ text, html, name: req.file.originalname, size: req.file.size });
 });
 
+// ── Uploaded job posting (HTML/PDF) ──────────────────────────────────────────
+// When direct-fetch + Chromium render both fail (bot-gated sites like Workable,
+// Apple, Indeed, LinkedIn), the user's own browser CAN render the page because
+// it has their session cookies. Two low-friction workflows:
+//
+//   1. Save As → Webpage, HTML Only → upload the .html here
+//   2. Print → Save as PDF → upload the .pdf here
+//
+// HTML is strictly better because it preserves <script type="application/ld+json">
+// blocks, so we get structured fields directly. PDF captures only visible text,
+// which forces the AI-extract path and loses salary/location accuracy — we
+// accept it but warn the user.
+//
+// Returns same shape as /api/parse-job so the client can use the same downstream
+// population logic.
+app.post('/api/parse-uploaded-page', authMiddleware, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const looksLikeHtml =
+    ext === '.html' || ext === '.htm' || ext === '.mhtml' || ext === '.mht' ||
+    req.file.mimetype === 'text/html' ||
+    req.file.mimetype === 'application/xhtml+xml';
+  const looksLikePdf = ext === '.pdf' || req.file.mimetype === 'application/pdf';
+
+  try {
+    if (looksLikeHtml) {
+      let html = req.file.buffer.toString('utf8');
+
+      // MHTML: strip the MIME envelope to the inner text/html part.
+      // Format: headers\n\n--boundary\nContent-Type: text/html...\n\n<html>...
+      if (ext === '.mhtml' || ext === '.mht' || html.startsWith('From: <Saved by')) {
+        const m = html.match(/Content-Type:\s*text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--)/i);
+        if (m) html = m[1];
+      }
+
+      const text = htmlToText(html);
+      const ldFields = parseJobPostingLD(html);
+
+      // Try to recover the original posting URL from <link rel="canonical">
+      // or og:url — useful for re-fetches and the mirror finder later.
+      let sourceUrl = null;
+      const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
+      const ogUrl = html.match(/<meta[^>]+property=["']og:url["'][^>]*content=["']([^"']+)["']/i);
+      sourceUrl = canonical?.[1] || ogUrl?.[1] || null;
+
+      const salary = (ldFields && ldFields.salary)
+        || extractSalaryFromText(text)
+        || extractSalaryFromHtml(html)
+        || null;
+      const fields = ldFields ? { ...ldFields, salary } : null;
+
+      return res.json({
+        fields,
+        text,
+        html: html.slice(0, 200000),
+        salary,
+        sourceUrl,
+        _via: fields ? 'upload-html+ld' : 'upload-html',
+      });
+    }
+
+    if (looksLikePdf) {
+      // PDFs don't retain JSON-LD — the print pipeline strips <script> tags
+      // and all structured data. We get plain visible text only, so the
+      // client will have to route this through the AI extract step.
+      const { text } = await pdfParse(req.file.buffer);
+      const cleanedText = (text || '').replace(/\r/g, '').trim();
+      const salary = extractSalaryFromText(cleanedText) || null;
+
+      // Try to find a URL in the PDF text (usually in the footer).
+      const urlMatch = cleanedText.match(/https?:\/\/[^\s<>"']+/);
+      const sourceUrl = urlMatch?.[0] || null;
+
+      return res.json({
+        fields: null,
+        text: cleanedText,
+        html: '',
+        salary,
+        sourceUrl,
+        _via: 'upload-pdf',
+      });
+    }
+
+    return res.status(400).json({
+      error: 'Unsupported file type',
+      detail: 'Upload a saved web page (.html, .htm, .mhtml) or a PDF of the posting.',
+    });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to parse uploaded file', detail: e.message });
+  }
+});
+
 // ── ATS helpers ──────────────────────────────────────────────────────────────
-const { cleanJobUrl, slugFallback, decodeEntities } = require('./ats-helpers');
+const { cleanJobUrl, decodeEntities } = require('./ats-helpers');
 const { renderPage, shutdownBrowser } = require('./render');
 
 /**
@@ -1354,11 +1447,17 @@ async function fetchATS(rawUrl) {
     };
   }
 
-  // ── Step 4: slug fallback ────────────────────────────────────────────────
-  // Last resort. Returns company/title guessed from URL path only — no
-  // location, salary, description, or workType. The frontend surfaces a
-  // "use the extension for better extraction" nudge when it sees _via='slug'.
-  return { fields: slugFallback(url), text: '', html: '', salary: null, _via: 'slug' };
+  // ── Step 4: unextractable ────────────────────────────────────────────────
+  // Everything failed: direct-fetch returned nothing useful, render failed
+  // (disabled, circuit-broken, bot-blocked, timeout), and there's no
+  // direct-fetch text to fall back on. Return an honest null-fields result
+  // so the frontend can prompt the user for one of the user-driven input
+  // methods: browser extension (auto-capture), uploaded HTML/PDF, or
+  // manual entry. Previously we returned a slug-guessed company name here,
+  // but that produced silent half-wrong results (e.g. "Lago 1" instead of
+  // "Lago") and hid from the user that Summit couldn't actually read the
+  // page. An empty result with a clear prompt is strictly better UX.
+  return { fields: null, text: '', html: '', salary: null, _via: 'unextractable' };
 }
 
 function htmlToText(html) {

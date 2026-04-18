@@ -179,6 +179,19 @@ async function renderPage(url, { timeoutMs = 8000 } = {}) {
       const final_url = page.url();
       const status = response ? response.status() : 0;
 
+      // Bot-block / error-page detection. Sites like Workable and Apple
+      // serve a thin "something went wrong" page to headless browsers while
+      // delivering real content to logged-in users. The page renders OK
+      // (200 status, ~200 chars of text), so our `text.length > 200` gate
+      // would accept it — but there's no real posting content, just the
+      // site's error chrome. Treat these as a render failure so fetchATS
+      // falls through to direct-fetch-reuse or the unextractable state
+      // (which surfaces the extension/upload nudge to the user).
+      if (looksLikeBlockPage(text)) {
+        console.warn(`[render] block/error page detected — treating as failure`);
+        throw new Error('block-page');
+      }
+
       _consecutiveFailures = 0;
       return { html, text, final_url, status };
     } finally {
@@ -201,6 +214,50 @@ async function renderPage(url, { timeoutMs = 8000 } = {}) {
 }
 
 /**
+ * Heuristic: does this text look like a bot-block / server-error page rather
+ * than a real job posting? Triggered by a combination of (a) short total
+ * length (real postings are 1000+ chars of content) and (b) a block-page
+ * phrase. Either alone would be too aggressive — real postings mention
+ * "error" a fair amount, and some legitimate postings on small career sites
+ * come in under 500 chars of body text.
+ *
+ * Workable's bot-block page for example:
+ *   "Sorry, an unknown error occurred. The page you are looking for might
+ *    have been removed, had its name changed or is temporarily unavailable.
+ *    Go to homepage. Accessibility · Cookie settings · Powered by Workable"
+ *
+ * Apple serves a similar thin shell ("We encountered an issue...").
+ * LinkedIn auth-walls redirect to a "Join now to view" page.
+ */
+function looksLikeBlockPage(text) {
+  if (!text) return false;
+  if (text.length > 1500) return false; // real postings are longer
+  const lowered = text.toLowerCase();
+  const blockPhrases = [
+    'unknown error occurred',
+    'page you are looking for',
+    'might have been removed',
+    'temporarily unavailable',
+    'access denied',
+    'page not found',
+    '404 not found',
+    'forbidden',
+    'sign in to view',
+    'join now to view',
+    'you must be signed in',
+    'please enable javascript',
+    'enable javascript to',
+    'this page requires javascript',
+    'are you human',
+    'verify you are a human',
+    'checking your browser',
+    'just a moment',           // Cloudflare challenge
+    'attention required!',     // Cloudflare challenge
+  ];
+  return blockPhrases.some(p => lowered.includes(p));
+}
+
+/**
  * Gracefully shut down the browser. Called by server.js on SIGTERM so
  * Render's restart cycle doesn't leave zombie Chromium processes. Returns
  * a promise that resolves whether or not the browser was running.
@@ -213,4 +270,4 @@ async function shutdownBrowser() {
   }
 }
 
-module.exports = { renderPage, shutdownBrowser };
+module.exports = { renderPage, shutdownBrowser, looksLikeBlockPage };

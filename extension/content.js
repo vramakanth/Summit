@@ -30,27 +30,88 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     .trim()
     .slice(0, 6000);
 
-  // ── 2. Salary — prefer structured sources over body text ──────────────────
-  let salary = null;
+  // ── 2. Structured fields from JSON-LD ────────────────────────────────────
+  // Mirror of server-side parseJobPostingLD, but running inside the page's
+  // own origin where bot-gated sites (Workable, Apple, LinkedIn) serve the
+  // REAL JSON-LD rather than the bot-block shell our server sees.
+  //
+  // Workday occasionally prefixes company names with numeric codes like
+  // "001 Manufacturers and Traders Trust Co" — we strip those. Entity
+  // decoding handles "&amp;" in titles.
+  const decodeEntities = s => {
+    if (!s || typeof s !== 'string') return s;
+    return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"').replace(/&(?:#39|apos);/g, "'").replace(/&nbsp;/g, ' ')
+            .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+            .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
+  };
+  const cleanStr = s => {
+    if (!s || typeof s !== 'string') return null;
+    const t = decodeEntities(s).replace(/^\d+\s+/, '').trim();
+    return t || null;
+  };
+  const fmtSalary = (min, max) => {
+    const fmt = n => n >= 1000 ? '$' + Math.round(n / 1000) + 'k' : '$' + Math.round(n).toLocaleString();
+    if (min && max) return fmt(min) + '–' + fmt(max);
+    if (min) return 'from ' + fmt(min);
+    if (max) return 'up to ' + fmt(max);
+    return null;
+  };
 
-  // a) JSON-LD baseSalary (most precise)
+  let fields = null;
   for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
     try {
       const data = JSON.parse(el.textContent);
-      const jobs = Array.isArray(data) ? data : [data];
-      const job = jobs.find(d => d && d['@type'] === 'JobPosting');
-      if (job && job.baseSalary && job.baseSalary.value) {
-        const v = job.baseSalary.value;
-        if (v.minValue && v.maxValue) {
-          const fmt = n => n >= 1000 ? '$' + Math.round(n / 1000) + 'k' : '$' + Math.round(n).toLocaleString();
-          salary = fmt(v.minValue) + '–' + fmt(v.maxValue);
-          break;
+      const items = Array.isArray(data) ? data : (data['@graph'] || [data]);
+      const job = items.find(d => d && d['@type'] === 'JobPosting');
+      if (!job) continue;
+
+      // Title: strip Workday-style "001 " prefix
+      const title = cleanStr(job.title);
+
+      // Company can be a string or an Organization object
+      let company = null;
+      if (typeof job.hiringOrganization === 'string') company = cleanStr(job.hiringOrganization);
+      else if (job.hiringOrganization?.name)           company = cleanStr(job.hiringOrganization.name);
+
+      // Location: jobLocation can be array, object, or string. Pull city/region.
+      let location = null;
+      const locs = Array.isArray(job.jobLocation) ? job.jobLocation : (job.jobLocation ? [job.jobLocation] : []);
+      for (const loc of locs) {
+        if (typeof loc === 'string') { location = cleanStr(loc); break; }
+        const addr = loc?.address;
+        if (addr) {
+          const parts = [addr.addressLocality, addr.addressRegion].filter(Boolean);
+          if (parts.length) { location = parts.join(', '); break; }
+          if (addr.addressCountry) { location = typeof addr.addressCountry === 'string' ? addr.addressCountry : addr.addressCountry.name; break; }
         }
       }
+
+      const remote = job.jobLocationType === 'TELECOMMUTE' || /remote/i.test(job.applicantLocationRequirements?.name || '');
+
+      // Salary from baseSalary.value (min/max preferred, single value tolerated)
+      let salary = null;
+      if (job.baseSalary?.value) {
+        const v = job.baseSalary.value;
+        salary = fmtSalary(v.minValue, v.maxValue) || (v.value ? fmtSalary(v.value, v.value) : null);
+      }
+
+      // Work type hint — employmentType is usually "FULL_TIME" etc.; use for workType inference
+      const employmentType = typeof job.employmentType === 'string' ? job.employmentType : (Array.isArray(job.employmentType) ? job.employmentType[0] : null);
+      let workType = null;
+      if (remote) workType = 'Remote';
+      else if (employmentType && /part/i.test(employmentType)) workType = null; // employmentType isn't the same as workType; don't force
+
+      fields = { title, company, location, salary, workType, remote };
+      break;
     } catch {}
   }
 
-  // b) <bdi>$220,000</bdi> pattern (Greenhouse)
+  // ── 3. Salary fallback — structured → <bdi> → body regex ─────────────────
+  // Kept even when JSON-LD fields are present: if JSON-LD omitted salary we
+  // still want to pick it up from the DOM.
+  let salary = fields?.salary || null;
+
   if (!salary) {
     const bdis = [...document.querySelectorAll('bdi')]
       .map(b => b.textContent.trim())
@@ -61,7 +122,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
   }
 
-  // c) First dollar range visible in the job section
   if (!salary) {
     const m = bodyText.match(/\$([\d,]+(?:\.\d+)?)\s*[kK]?\s*[-–—to]+\s*\$([\d,]+(?:\.\d+)?)\s*[kK]?/);
     if (m) {
@@ -74,7 +134,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
   }
 
-  sendResponse({ bodyText, salary, url: location.href });
+  // If we got JSON-LD fields but they lacked salary, backfill from DOM salary.
+  if (fields && !fields.salary && salary) fields.salary = salary;
+
+  sendResponse({ fields, bodyText, salary, url: location.href });
   return true;
 });
 

@@ -3182,6 +3182,174 @@ t('render filters --single-process from chromium.args (v1.17.1 OOM fix)', () => 
   }
 });
 
+// ── v1.18: block-page detection, upload endpoint, slug removal ─────────────
+t('render.js exports looksLikeBlockPage helper (v1.18)', () => {
+  const renderMod = require('../render');
+  if (typeof renderMod.looksLikeBlockPage !== 'function') {
+    throw new Error('looksLikeBlockPage not exported');
+  }
+});
+
+t('looksLikeBlockPage detects Workable error page (v1.18)', () => {
+  const { looksLikeBlockPage } = require('../render');
+  const workableErr = 'Sorry, an unknown error occurred. The page you are looking for might have been removed, had its name changed or is temporarily unavailable. Go to homepage. Accessibility Cookie settings Powered by Workable';
+  if (!looksLikeBlockPage(workableErr)) {
+    throw new Error('failed to detect Workable bot-block page');
+  }
+});
+
+t('looksLikeBlockPage detects Cloudflare / JS-required pages (v1.18)', () => {
+  const { looksLikeBlockPage } = require('../render');
+  const cases = [
+    'Just a moment... Checking your browser before accessing the site.',
+    'Please enable JavaScript to continue.',
+    'Access denied. You do not have permission.',
+    'Sign in to view this job.',
+  ];
+  for (const t of cases) {
+    if (!looksLikeBlockPage(t)) throw new Error('missed: ' + t.slice(0, 40));
+  }
+});
+
+t('looksLikeBlockPage does NOT flag real postings (false-positive guard)', () => {
+  const { looksLikeBlockPage } = require('../render');
+  // Long real posting mentioning "error" in normal context
+  const realPosting = 'Senior Software Engineer — Acme Corp. Remote. About the role: You will build robust systems with strong error handling and observability. '.repeat(15);
+  if (looksLikeBlockPage(realPosting)) {
+    throw new Error('false positive: real posting flagged as block page');
+  }
+});
+
+t('renderPage throws on block-page (trips circuit breaker, fetchATS falls through)', () => {
+  // Wired into renderPage so bot-block responses are treated as render
+  // failures. The throw propagates to the catch block, increments
+  // _consecutiveFailures, and returns null to fetchATS — which then falls
+  // through to the direct-fetch reuse step or the unextractable result.
+  const fs = require('fs');
+  const path = require('path');
+  const renderSrc = fs.readFileSync(path.join(__dirname, '../render.js'), 'utf8');
+  if (!/looksLikeBlockPage\s*\(\s*text\s*\)/.test(renderSrc)) {
+    throw new Error('renderPage does not call looksLikeBlockPage');
+  }
+  // The check must precede the final success path. Locate the renderPage
+  // body and verify the block-page check appears before the return of the
+  // successful { html, text, final_url, status } shape.
+  const body = renderSrc.slice(renderSrc.indexOf('async function renderPage'));
+  const checkIdx = body.indexOf('looksLikeBlockPage(text)');
+  const successReturnIdx = body.indexOf('return { html, text, final_url, status }');
+  if (checkIdx < 0 || successReturnIdx < 0) {
+    throw new Error('expected both the block-page check and the success return');
+  }
+  if (checkIdx > successReturnIdx) {
+    throw new Error('block-page check must run BEFORE the success return');
+  }
+});
+
+t('fetchATS returns _via:unextractable (not slug) when all sources fail (v1.18)', () => {
+  const body = serverSrc.slice(
+    serverSrc.indexOf('async function fetchATS'),
+    serverSrc.indexOf('async function fetchATS') + 5000
+  );
+  // Must contain the unextractable marker
+  if (!body.includes("'unextractable'")) {
+    throw new Error('fetchATS final step does not return _via:unextractable');
+  }
+  // Must NOT reference slugFallback anywhere
+  if (/slugFallback\s*\(/.test(body)) {
+    throw new Error('fetchATS still calls slugFallback — should be removed');
+  }
+});
+
+t('POST /api/parse-uploaded-page endpoint registered + auth-gated (v1.18)', () => {
+  const re = /app\.post\(\s*['"]\/api\/parse-uploaded-page['"]\s*,\s*authMiddleware\s*,\s*upload\.single\(/;
+  if (!re.test(serverSrc)) {
+    throw new Error('parse-uploaded-page endpoint not registered or not auth+upload-gated');
+  }
+});
+
+t('parse-uploaded-page handles HTML, MHTML, and PDF (v1.18)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/parse-uploaded-page'");
+  if (idx < 0) throw new Error('endpoint not found');
+  const body = serverSrc.slice(idx, idx + 5000);
+  if (!/looksLikeHtml/.test(body)) throw new Error('no HTML branch');
+  if (!/looksLikePdf/.test(body))  throw new Error('no PDF branch');
+  if (!/mhtml|mht/i.test(body))    throw new Error('no MHTML handling');
+  if (!/parseJobPostingLD/.test(body)) throw new Error('HTML branch does not reuse parseJobPostingLD');
+  if (!/pdfParse/.test(body))      throw new Error('PDF branch does not use pdfParse');
+});
+
+t('parse-uploaded-page recovers source URL from canonical/og:url (v1.18)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/parse-uploaded-page'");
+  const body = serverSrc.slice(idx, idx + 5000);
+  if (!/rel=["']canonical["']/.test(body)) {
+    throw new Error('no canonical URL extraction from uploaded HTML');
+  }
+  if (!/og:url/.test(body)) {
+    throw new Error('no og:url fallback for source URL');
+  }
+});
+
+t('frontend: _populateFormFields helper exists and both parsers use it (v1.18)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  if (!/function\s+_populateFormFields\s*\(/.test(feSrc)) {
+    throw new Error('_populateFormFields helper not defined');
+  }
+  const callCount = (feSrc.match(/_populateFormFields\s*\(/g) || []).length;
+  // Expect calls from parseJobUrl + parseUploadedFile + the function def itself
+  if (callCount < 3) {
+    throw new Error(`_populateFormFields called only ${callCount} time(s), expected 3+`);
+  }
+});
+
+t('frontend: parseUploadedFile function defined (v1.18)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  if (!/async\s+function\s+parseUploadedFile\s*\(/.test(feSrc)) {
+    throw new Error('parseUploadedFile not defined');
+  }
+  // Must POST to the new endpoint
+  if (!/\/api\/parse-uploaded-page/.test(feSrc)) {
+    throw new Error('parseUploadedFile does not POST to /api/parse-uploaded-page');
+  }
+});
+
+t('frontend: uploadPostingForJob function defined for detail-tab recovery (v1.18)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  if (!/async\s+function\s+uploadPostingForJob\s*\(/.test(feSrc)) {
+    throw new Error('uploadPostingForJob not defined');
+  }
+});
+
+t('frontend: emptyPosting shows Upload saved page button (v1.18)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  const fn = feSrc.match(/function emptyPosting[\s\S]*?\n\}/);
+  if (!fn) throw new Error('emptyPosting not found');
+  if (!/Upload saved page/.test(fn[0])) {
+    throw new Error('emptyPosting does not offer upload recovery');
+  }
+});
+
+t('frontend: _via unextractable status message offers upload + extension (v1.18)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  // The parse-job response handler should branch on _via === 'unextractable'
+  if (!/_via\s*===\s*['"]unextractable['"]/.test(feSrc)) {
+    throw new Error('frontend does not handle _via:unextractable branch');
+  }
+  // The slug branch should be gone
+  if (/_via\s*===\s*['"]slug['"]/.test(feSrc)) {
+    throw new Error('frontend still references _via:slug — should be unextractable');
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

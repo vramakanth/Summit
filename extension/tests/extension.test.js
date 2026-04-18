@@ -78,5 +78,100 @@ t('content.js sends bridge responses with nonce (so webapp can match them)', () 
   if (!/nonce/.test(content)) throw new Error('no nonce in bridge responses');
 });
 
+// ── v2.2: content.js returns structured fields from JSON-LD ───────────────
+console.log('\n── extension v2.2 — content.js extracts full fields');
+t('extractJob handler returns fields object (not just bodyText+salary)', () => {
+  // Regression guard for the v2.1 bug: popup checked pageData.title but
+  // content.js only returned {bodyText, salary, url}. Path 1 was silently
+  // broken. v2.2 returns {fields, bodyText, salary, url}.
+  const idx = content.indexOf("msg.action !== 'extractJob'");
+  if (idx < 0) throw new Error('extractJob handler not found');
+  // Find the sendResponse call in this handler
+  const body = content.slice(idx, idx + 8000);
+  const m = body.match(/sendResponse\(\s*\{[^}]*\}\s*\)/);
+  if (!m) throw new Error('sendResponse call not found');
+  if (!/fields/.test(m[0])) {
+    throw new Error('sendResponse does not include fields — Path 1 will silently fail');
+  }
+});
+t('extractJob parses JSON-LD JobPosting blocks', () => {
+  const body = content.slice(content.indexOf("msg.action !== 'extractJob'"));
+  if (!/application\/ld\+json/.test(body)) throw new Error('no ld+json script lookup');
+  if (!/'JobPosting'|"JobPosting"/.test(body)) throw new Error('no JobPosting type check');
+  if (!/hiringOrganization/.test(body)) throw new Error('no hiringOrganization lookup');
+});
+t('extractJob strips Workday-style numeric prefix from company name', () => {
+  // "001 Manufacturers and Traders Trust Co" → "Manufacturers and ..."
+  const body = content.slice(content.indexOf("msg.action !== 'extractJob'"));
+  if (!/\/\^\\d\+\\s\+\//.test(body)) throw new Error('no numeric-prefix strip regex');
+});
+t('extractJob decodes HTML entities in titles', () => {
+  const body = content.slice(content.indexOf("msg.action !== 'extractJob'"));
+  if (!/decodeEntities|&amp;/.test(body)) throw new Error('no entity decoding');
+});
+
+// ── v2.2: popup startParsing flipped to page-first ────────────────────────
+console.log('\n── extension v2.2 — popup priority');
+const popup = fs.readFileSync(path.join(__dirname, '../../extension/popup.js'), 'utf8');
+t('popup tries page content BEFORE server-side parse', () => {
+  const idx = popup.indexOf('async function startParsing');
+  if (idx < 0) throw new Error('startParsing not found');
+  const body = popup.slice(idx, idx + 4000);
+  const sendMsgIdx = body.indexOf("action: 'extractJob'");
+  const parseJobIdx = body.indexOf("/api/parse-job");
+  if (sendMsgIdx < 0) throw new Error('no content script call in startParsing');
+  if (parseJobIdx < 0) throw new Error('no /api/parse-job call in startParsing');
+  if (sendMsgIdx > parseJobIdx) {
+    throw new Error('popup calls /api/parse-job BEFORE content script — should be page-first');
+  }
+});
+t('popup skips /api/parse-job when page gives structured fields (zero round trip)', () => {
+  const idx = popup.indexOf('async function startParsing');
+  const body = popup.slice(idx, idx + 4000);
+  // Find applyFields(pageData.fields,...) and verify there's a return before
+  // any /api/parse-job call. Using a char-distance check is brittle due to
+  // comments; instead locate the two indices directly.
+  const pageApplyIdx = body.indexOf('applyFields(pageData.fields');
+  if (pageApplyIdx < 0) throw new Error('no applyFields(pageData.fields) call');
+  const sliceAfter = body.slice(pageApplyIdx);
+  const returnIdx = sliceAfter.indexOf('return;');
+  const serverIdx = sliceAfter.indexOf('/api/parse-job');
+  if (returnIdx < 0) throw new Error('no return after applying page fields');
+  if (serverIdx >= 0 && returnIdx > serverIdx) {
+    throw new Error('/api/parse-job called BEFORE early return — wasteful round trip');
+  }
+});
+t('popup version comment bumped to v2.2', () => {
+  if (!/popup\.js v2\.2/.test(popup)) throw new Error('popup header not updated');
+});
+t('manifest version bumped to 2.2.0', () => {
+  if (manifest.version !== '2.2.0') throw new Error('manifest still at ' + manifest.version);
+});
+
+// ── v2.2: webapp bridge fallback in parseJobUrl ───────────────────────────
+console.log('\n── extension v2.2 — webapp parseJobUrl bridge fallback');
+const webapp = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+t('parseJobUrl calls _browserFetchPosting when server returns unextractable', () => {
+  // When the server couldn't read the page AND the extension is available,
+  // the add-job modal should hit the bridge as a fallback — same as
+  // refetchPosting does for the job detail tab. v2.2 wires this up.
+  const idx = webapp.indexOf('async function parseJobUrl');
+  if (idx < 0) throw new Error('parseJobUrl not found');
+  const body = webapp.slice(idx, idx + 12000);
+  if (!/_browserFetchPosting/.test(body)) {
+    throw new Error('parseJobUrl does not call _browserFetchPosting — extension bridge unused in add-job');
+  }
+  if (!/_extensionAvailable/.test(body)) {
+    throw new Error('parseJobUrl does not check _extensionAvailable before bridge call');
+  }
+});
+t('parseJobUrl marks extension-bridge source on success', () => {
+  const idx = webapp.indexOf('async function parseJobUrl');
+  const body = webapp.slice(idx, idx + 12000);
+  if (!/extension-bridge/.test(body)) {
+    throw new Error('no extension-bridge source marker — user will see generic success message');
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

@@ -1,4 +1,4 @@
-// Summit Chrome Extension — popup.js v2.0
+// Summit Chrome Extension — popup.js v2.2
 const $ = id => document.getElementById(id);
 const TRACKER_URL = 'https://jobsummit.app';
 
@@ -97,7 +97,24 @@ function showMainView(username) {
   $('header-sub').textContent = username ? `Signed in as ${username}` : 'Job Tracker';
 }
 
-// ── SMART PARSING — 2-path approach ──────────────────────────────────────────
+// ── SMART PARSING — content-script-first, server as fallback ────────────────
+// v2.2: flipped from server-first to page-first. Rationale:
+//
+// On bot-gated sites (Workable, Apple, LinkedIn) the server's /api/parse-job
+// gets a bot-block shell with no useful data. The user's browser — which
+// IS logged in, DID solve the bot challenge, IS seeing the real content —
+// has the real JSON-LD in the page. Asking that first is the right default.
+//
+// Three possible paths:
+//  (A) Page has JSON-LD fields → use them, skip server entirely. Zero
+//      network to our backend, instant fill. Covers ~70% of postings.
+//  (B) Page has text but no structured fields → send text to /api/extract-fields
+//      for AI extraction. Skip /api/parse-job — we already have the rendered
+//      content, no need for server to re-render.
+//  (C) Page gave us essentially nothing (content script blocked, short body)
+//      → fall back to /api/parse-job server-side. This catches the case
+//      where the browser navigated to a redirect / interstitial that the
+//      server can fetch directly.
 async function startParsing() {
   if (!currentTabUrl || currentTabUrl.startsWith('chrome://') || currentTabUrl.startsWith('chrome-extension://')) {
     $('parse-inline').textContent = '⚠ Browser page';
@@ -106,7 +123,7 @@ async function startParsing() {
 
   setProgress(15, 'Reading page...');
 
-  // Path 1: Ask content script for what it can read from the DOM
+  // Ask content script for everything it can see
   let pageData = null;
   try {
     pageData = await new Promise((resolve) => {
@@ -116,46 +133,72 @@ async function startParsing() {
     });
   } catch {}
 
-  const isLinkedIn = /linkedin\.com\/jobs/i.test(currentTabUrl);
-  const isGlassdoor = /glassdoor\.com/i.test(currentTabUrl);
+  const hasPageFields = pageData?.fields && pageData.fields.title && pageData.fields.company;
 
-  // If page content has good fields already (non-LinkedIn), use them right away
-  if (pageData?.title && !isLinkedIn) {
-    applyFields(pageData, 'page');
+  // ── Path A: structured fields from page JSON-LD ────────────────────────────
+  if (hasPageFields) {
+    setProgress(60, 'Found structured data...');
+    applyFields(pageData.fields, 'page');
+    // If the page's JSON-LD was missing salary but content.js recovered one
+    // from DOM regex, apply that too.
+    if (!pageData.fields.salary && pageData.salary) {
+      applyFields({ salary: pageData.salary }, 'page');
+    }
+    setProgress(100, '✓');
+    setTimeout(clearProgress, 1200);
+    return;
   }
 
-  // Path 2: Server-side parse (better for most ATS platforms)
-  setProgress(40, isLinkedIn ? 'Using page content...' : 'Parsing with AI...');
+  // ── Path B: text from page → AI extract ────────────────────────────────────
+  if (pageData?.bodyText && pageData.bodyText.length > 300) {
+    setProgress(50, 'Extracting with AI...');
+    try {
+      const aiRes = await fetch(TRACKER_URL + '/api/extract-fields', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ url: currentTabUrl, text: pageData.bodyText.slice(0, 5000) }),
+      });
+      if (aiRes.ok) {
+        const aiFields = await aiRes.json();
+        if (aiFields && (aiFields.title || aiFields.company)) {
+          applyFields(aiFields, 'ai');
+          // Apply any salary the content script recovered but AI missed
+          if (!aiFields.salary && pageData.salary) applyFields({ salary: pageData.salary }, 'page');
+          setProgress(100, '✓');
+          setTimeout(clearProgress, 1200);
+          return;
+        }
+      }
+    } catch {}
+  }
 
+  // ── Path C: fall back to server-side parse ─────────────────────────────────
+  // Content script came up empty (blocked origin, interstitial, very short
+  // body). Let the server try — sometimes direct-fetch works where the
+  // browser ran into a client-side redirect or auth wall.
+  setProgress(40, 'Parsing server-side...');
   try {
     const parseRes = await fetch(TRACKER_URL + '/api/parse-job', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify({ url: currentTabUrl }),
     });
-
     if (parseRes.ok) {
       const parsed = await parseRes.json();
-      const isBlocked = parsed._linkedinBlocked || parsed._spaShell;
-
-      if (!isBlocked && parsed.fields) {
-        // Server gave us structured fields directly (Greenhouse, Lever, Workday etc.)
-        setProgress(75, 'Extracting details...');
+      if (parsed.fields) {
         applyFields(parsed.fields, parsed._ats || 'api');
         setProgress(100, '✓');
         setTimeout(clearProgress, 1200);
         return;
       }
-
-      // We have text — ask AI to extract fields
-      const textToUse = parsed.text || pageData?.bodyText || '';
-      if (textToUse && textToUse.length > 100) {
-        setProgress(65, 'Extracting with AI...');
+      // Server returned text — last chance via AI
+      if (parsed.text && parsed.text.length > 100) {
+        setProgress(70, 'Extracting with AI...');
         try {
           const aiRes = await fetch(TRACKER_URL + '/api/extract-fields', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-            body: JSON.stringify({ url: currentTabUrl, text: textToUse.slice(0, 5000) }),
+            body: JSON.stringify({ url: currentTabUrl, text: parsed.text.slice(0, 5000) }),
           });
           if (aiRes.ok) {
             const aiFields = await aiRes.json();
@@ -163,20 +206,12 @@ async function startParsing() {
           }
         } catch {}
       }
-
-      // If URL parsing failed but we have page fields from content script, use those
-      if (isBlocked && pageData?.title) {
-        applyFields(pageData, 'page');
-        $('parse-inline').textContent = isLinkedIn ? '⚠ LinkedIn — from page' : '⚠ From page';
-        setTimeout(clearProgress, 2000);
-        return;
-      }
     }
-  } catch(e) {
-    // Network error — fall back to page content only
-    if (pageData?.title) applyFields(pageData, 'page');
-  }
+  } catch {}
 
+  // Whatever we got, show a checkmark — empty fields prompt the user to fill
+  // in manually, no scary error. Add button will refuse if title/company
+  // still blank.
   setProgress(100, '✓');
   setTimeout(clearProgress, 1000);
 }

@@ -2,7 +2,7 @@
  * architecture.test.js — Backend architecture & unit tests
  * Run: node architecture.test.js
  */
-const { cleanJobUrl, slugFallback } = require('../ats-helpers');
+const { cleanJobUrl } = require('../ats-helpers');
 const fs   = require('fs');
 const path = require('path');
 const serverSrc  = fs.readFileSync(path.join(__dirname, '../server.js'),  'utf8');
@@ -43,25 +43,23 @@ t('strips Google shndl/shmd params', () => {
   if (!c.includes('udm=8')) throw new Error('udm stripped');
 });
 
-// ── slugFallback ──────────────────────────────────────────────────────────────
-console.log('\n── slugFallback');
-t('ZipRecruiter company+title', () => {
-  const r = slugFallback('https://www.ziprecruiter.com/c/Saratech/Job/Director-of-Engineering/-in-Mission-Viejo,CA');
-  eq(r.company, 'Saratech');
-  if (!r.title?.includes('Director')) throw new Error('no title: ' + r.title);
+// ── v1.18: slugFallback removed, ats-helpers exports only the surface we need ──
+t('ats-helpers exports cleanJobUrl, decodeEntities, looksLikeId, trimIdTokens', () => {
+  const mod = require('../ats-helpers');
+  if (typeof mod.cleanJobUrl !== 'function') throw new Error('cleanJobUrl missing');
+  if (typeof mod.decodeEntities !== 'function') throw new Error('decodeEntities missing');
+  if (typeof mod.looksLikeId !== 'function') throw new Error('looksLikeId missing');
+  if (typeof mod.trimIdTokens !== 'function') throw new Error('trimIdTokens missing');
 });
-t('Lensa hash filtered from path', () => {
-  const r = slugFallback('https://lensa.com/job-v1/karman-space-and-defense/brea-ca/director-of-engineering/4e259fb258883c881a851cfd8db6a4de');
-  if (!r.title?.includes('Director')) throw new Error('no title: ' + r.title);
+t('ats-helpers no longer exports slugFallback (v1.18 removal)', () => {
+  const mod = require('../ats-helpers');
+  if (typeof mod.slugFallback === 'function') {
+    throw new Error('slugFallback reintroduced — v1.18 replaced it with upload/extension/manual flows');
+  }
 });
-t('career.io title from path', () => {
-  const r = slugFallback('https://career.io/job/director-of-engineering-brea-karman-space-defense-497b80a6f57f779eb26cdf078d4b39b5');
-  if (!r.title?.includes('Director')) throw new Error('no title: ' + r.title);
-});
-t('returns null fields on invalid URL', () => {
-  const r = slugFallback('not-a-url');
-  if (r.title !== null || r.company !== null) {
-    throw new Error('expected {title:null, company:null}, got ' + JSON.stringify(r));
+t('fetchATS no longer calls slugFallback', () => {
+  if (/slugFallback\s*\(/.test(serverSrc)) {
+    throw new Error('fetchATS still calls slugFallback — should return _via:unextractable instead');
   }
 });
 
@@ -93,17 +91,28 @@ t('Jina reader yanked from fetchATS',   () => {
 t('Promise.race hard timeout',   () => has(serverSrc, 'Promise.race([fetchProm'));
 t('fetchTimeout default 20s',    () => has(serverSrc, 'ms = 20000'));
 t('all via markers present',    () => {
-  // v1.17: jina/jina+ld replaced with render/render+ld. fetch-ld (direct +
-  // JSON-LD, SSR happy path) and slug (last resort) are unchanged.
-  const markers = ["'fetch-ld'", "'fetch+ld'", "'fetch'", "'render+ld'", "'render'", "'slug'"];
+  // v1.18: 'slug' replaced with 'unextractable'. Upload markers
+  // ('upload-html+ld', 'upload-html', 'upload-pdf') live in the
+  // /api/parse-uploaded-page endpoint, not fetchATS — so they're not
+  // required here, but we do check them separately below.
+  const markers = ["'fetch-ld'", "'fetch+ld'", "'fetch'", "'render+ld'", "'render'", "'unextractable'"];
   for (const m of markers) {
     if (!serverSrc.includes(m)) throw new Error(`marker ${m} not found in server.js`);
   }
 });
-t('no jina/render-obsolete via markers', () => {
-  // v1.17 regression guard: these markers must not reappear in server.js.
-  for (const m of ["'jina'", "'jina+ld'"]) {
-    if (serverSrc.includes(m)) throw new Error(`stale marker ${m} present — should be render/render+ld`);
+t('no jina/slug stale markers (v1.17/v1.18 regression guard)', () => {
+  // v1.17 regression guard: jina markers must not reappear.
+  // v1.18 regression guard: 'slug' must not reappear — replaced by
+  // 'unextractable' + user-driven upload/extension/manual flows.
+  for (const m of ["'jina'", "'jina+ld'", "'slug'"]) {
+    if (serverSrc.includes(m)) throw new Error(`stale marker ${m} present`);
+  }
+});
+t('upload endpoint via markers present (v1.18)', () => {
+  // Upload endpoint tags results so the frontend can show "Filled N fields
+  // from HTML/PDF" and track extraction source for analytics.
+  for (const m of ["'upload-html+ld'", "'upload-html'", "'upload-pdf'"]) {
+    if (!serverSrc.includes(m)) throw new Error(`upload marker ${m} not found`);
   }
 });
 t('parseJobPostingLD defined',   () => has(serverSrc, 'function parseJobPostingLD'));
@@ -176,7 +185,6 @@ const urls = [
 ];
 urls.forEach(([name, url]) => {
   t('clean: ' + name, () => { const c = cleanJobUrl(url); new URL(c); if (c.includes('utm_campaign')) throw new Error('utm remains'); });
-  t('slug:  ' + name, () => { const c = cleanJobUrl(url); if (c.includes('share.google')) return; const r = slugFallback(c); if (!r || (!r.title && !r.company)) throw new Error('nothing extracted'); });
 });
 
 // ── User settings endpoint (Finnhub key sync) ───────────────────────────────
