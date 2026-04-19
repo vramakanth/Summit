@@ -2,12 +2,18 @@
   "name": "summit-tests",
   "version": "1.0.0",
   "scripts": {
-    "test": "jest --forceExit --detectOpenHandles",
+    "test": "npm run test:node && npm run test:crypto && npm run test:integration",
+    "_comment_test_node": "Zero-dep node tests (source-regex + behavioral). Fast, no npm install needed.",
+    "test:node": "node behavior.test.js && node architecture.test.js && node e2e.test.js",
+    "_comment_test_crypto": "Zero-knowledge crypto primitives — pure-node (webcrypto).",
+    "test:crypto": "node crypto.test.js",
+    "_comment_test_integration": "Full E2E suite. Requires backend/npm install AND tests/npm install. Boots a real server against a tempdir.",
+    "test:integration": "node encryption.test.js && jest --forceExit --detectOpenHandles",
     "test:watch": "jest --watch"
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/*.test.js"],
+    "testMatch": ["**/ats.test.js"],
     "testTimeout": 15000
   },
   "devDependencies": {

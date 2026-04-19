@@ -3598,7 +3598,7 @@ t('Webapp _findDuplicateJob helper exists + priority correct', () => {
 
 t('Webapp _canonicalizeJobUrl strips tracking params + fragment + trailing slash', () => {
   const idx = feSrc.indexOf('function _canonicalizeJobUrl');
-  const body = feSrc.slice(idx, idx + 1500);
+  const body = feSrc.slice(idx, idx + 2000);
   // Must strip common tracking params
   for (const p of ['refid','trk','utm_source','utm_campaign','gh_src']) {
     if (!body.includes(p)) throw new Error(`tracking param "${p}" not stripped`);
@@ -3609,6 +3609,10 @@ t('Webapp _canonicalizeJobUrl strips tracking params + fragment + trailing slash
   if (!/endsWith\(['"]\/['"]\)/.test(body)) throw new Error('does not drop trailing slash');
   // Must drop www.
   if (!/\^www\\\./.test(body)) throw new Error('does not drop www. prefix');
+  // v1.19.3: tracking-param match must be case-insensitive — LinkedIn
+  // emits camelCase `refId`, our drop-list is lowercase. Without
+  // case-folding the match, LinkedIn tracking noise slips through.
+  if (!/toLowerCase\(\)/.test(body)) throw new Error('tracking-param match is not case-insensitive');
 });
 
 t('Webapp addJob runs dedupe check before commit (uses _findDuplicateJob)', () => {
@@ -3689,6 +3693,242 @@ t('_extractReqIdFromUrl covers the top ATS URL patterns', () => {
   // Must cover the big platforms
   for (const host of ['myworkdayjobs', 'greenhouse', 'lever.co', 'linkedin', 'indeed', 'ashby']) {
     if (!body.includes(host)) throw new Error(`${host} pattern missing`);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.19.3 — BEHAVIORAL dedupe tests
+// ────────────────────────────────────────────────────────────────────────────
+// The tests above verify the source *mentions* the right identifiers. These
+// tests extract the helper functions from index.html, eval them in a minimal
+// scope, and call them with real inputs to assert real outputs. Catches logic
+// bugs that source-regex checks cannot — e.g. "empty reqId dedupes against
+// every other empty reqId" or "company comparison isn't case-folded".
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.3 dedupe behavioral');
+
+// Harness: pull named function bodies out of index.html. The functions are
+// top-level declarations inside the page's <script>, so they're extractable
+// by balanced-brace scan. We use this approach instead of a full DOM shim
+// because it isolates what we're testing from everything else in the file.
+function _extractFn(src, fnName) {
+  const re = new RegExp(`function\\s+${fnName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*\\(`);
+  const m = src.match(re);
+  if (!m) throw new Error(`could not find function ${fnName} in source`);
+  const start = m.index;
+  // Scan forward for the opening {
+  let i = start;
+  while (i < src.length && src[i] !== '{') i++;
+  if (i >= src.length) throw new Error(`no { found after ${fnName} signature`);
+  // Balanced-brace scan. Respect strings + regex + template literals +
+  // line/block comments so we don't confuse `}` inside them for the real end.
+  let depth = 1;
+  i++;
+  while (i < src.length && depth > 0) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    // Line comment
+    if (c === '/' && c2 === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    // Block comment
+    if (c === '/' && c2 === '*') { i += 2; while (i < src.length - 1 && !(src[i] === '*' && src[i+1] === '/')) i++; i += 2; continue; }
+    // Strings (incl. template)
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c; i++;
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\') i++;             // escape
+        if (quote === '`' && src[i] === '$' && src[i+1] === '{') {
+          // template interpolation — nested braces
+          i += 2;
+          let tdepth = 1;
+          while (i < src.length && tdepth > 0) {
+            if (src[i] === '{') tdepth++;
+            else if (src[i] === '}') tdepth--;
+            i++;
+          }
+          continue;
+        }
+        i++;
+      }
+      i++; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    i++;
+  }
+  return src.slice(start, i);
+}
+
+// Build a scope that exposes the dedupe helpers by evaluating them with a
+// `jobs` object and a stub for esc(). eval() in module scope is the cleanest
+// way to do this without fragile regex transformations.
+function _buildDedupeScope(jobsFixture) {
+  const fnSources = [
+    _extractFn(feSrc, '_canonicalizeJobUrl'),
+    _extractFn(feSrc, '_extractReqIdFromUrl'),
+    _extractFn(feSrc, '_findDuplicateJob'),
+  ].join('\n\n');
+  // eslint-disable-next-line no-new-func
+  return new Function('jobs', `
+    ${fnSources}
+    return { _canonicalizeJobUrl, _extractReqIdFromUrl, _findDuplicateJob };
+  `)(jobsFixture);
+}
+
+t('BEHAVIOR: _canonicalizeJobUrl strips tracking params + fragment + trailing slash + www', () => {
+  const { _canonicalizeJobUrl } = _buildDedupeScope({});
+  // Tracking params stripped
+  const a = _canonicalizeJobUrl('https://www.linkedin.com/jobs/view/123?refId=xyz&trk=home#section');
+  const b = _canonicalizeJobUrl('https://linkedin.com/jobs/view/123/?trk=something');
+  if (a !== b) throw new Error(`expected equal canonical form, got:\n  a=${a}\n  b=${b}`);
+  if (!a.startsWith('https://linkedin.com/jobs/view/123')) throw new Error('unexpected canonical form: ' + a);
+  if (a.includes('refId') || a.includes('trk')) throw new Error('tracking params not stripped: ' + a);
+  if (a.includes('#section')) throw new Error('fragment not stripped: ' + a);
+  if (a.endsWith('/')) throw new Error('trailing slash not stripped: ' + a);
+  // UTM stripping
+  const utm = _canonicalizeJobUrl('https://boards.greenhouse.io/stripe/jobs/456?utm_source=indeed&utm_campaign=x');
+  if (utm.includes('utm_')) throw new Error('utm_* not stripped: ' + utm);
+  // Preserves meaningful query params (e.g. Indeed jk)
+  const jk = _canonicalizeJobUrl('https://indeed.com/viewjob?jk=abc123&utm_source=x');
+  if (!jk.includes('jk=abc123')) throw new Error('meaningful query params lost: ' + jk);
+  // Empty / junk input doesn't throw
+  if (_canonicalizeJobUrl('') !== '') throw new Error('empty string should canonicalize to empty');
+  if (_canonicalizeJobUrl('not a url') !== 'not a url') throw new Error('unparseable input should lowercase-passthrough');
+});
+
+t('BEHAVIOR: _extractReqIdFromUrl extracts correct IDs from real ATS URL shapes', () => {
+  const { _extractReqIdFromUrl } = _buildDedupeScope({});
+  const cases = [
+    // Workday
+    ['https://acme.wd5.myworkdayjobs.com/en-US/careers/job/San-Francisco/Senior-Engineer_R-12345', 'R-12345'],
+    // Greenhouse
+    ['https://boards.greenhouse.io/stripe/jobs/4521234', '4521234'],
+    ['https://job-boards.greenhouse.io/openai/jobs/6987654', '6987654'],
+    // Lever
+    ['https://jobs.lever.co/nerdwallet/abcd1234-ab12-cd34-ef56-abcd1234abcd', 'abcd1234-ab12-cd34-ef56-abcd1234abcd'],
+    // LinkedIn
+    ['https://www.linkedin.com/jobs/view/3891234567/?trk=home', '3891234567'],
+    // Indeed
+    ['https://www.indeed.com/viewjob?jk=a1b2c3d4e5f6a7b8', 'a1b2c3d4e5f6a7b8'],
+    // Ashby
+    ['https://jobs.ashbyhq.com/anthropic/abcd1234-ef56-7890-ab12-cd34ef567890', 'abcd1234-ef56-7890-ab12-cd34ef567890'],
+  ];
+  for (const [url, expected] of cases) {
+    const got = _extractReqIdFromUrl(url);
+    if (!got || got.reqId !== expected) {
+      throw new Error(`expected reqId=${expected} for ${url}, got ${JSON.stringify(got)}`);
+    }
+  }
+  // Negatives: returns null for unrecognized shapes
+  const negatives = [
+    'https://example.com/about',
+    'https://company-careers.com/open-positions',
+    'not a url',
+    '',
+    null,
+    undefined,
+  ];
+  for (const n of negatives) {
+    const got = _extractReqIdFromUrl(n);
+    if (got !== null) throw new Error(`expected null for ${JSON.stringify(n)}, got ${JSON.stringify(got)}`);
+  }
+});
+
+t('BEHAVIOR: _findDuplicateJob — company-scoped reqId match (priority 1)', () => {
+  const jobs = {
+    j1: { id: 'j1', reqId: 'R-12345', company: 'Stripe', title: 'Senior PM',    url: 'https://example.com/a' },
+    j2: { id: 'j2', reqId: 'R-12345', company: 'Acme',   title: 'Designer',     url: 'https://example.com/b' },
+    j3: { id: 'j3', reqId: '',        company: 'Stripe', title: 'Engineer',     url: 'https://example.com/c' },
+  };
+  const { _findDuplicateJob } = _buildDedupeScope(jobs);
+
+  // Match: same reqId + same company (case-mixed)
+  const hit = _findDuplicateJob({ reqId: 'R-12345', company: 'stripe' });
+  if (!hit || hit.job.id !== 'j1' || hit.reason !== 'reqId') {
+    throw new Error(`case-mixed company match failed: ${JSON.stringify(hit)}`);
+  }
+
+  // No match: same reqId + different company (reqIds reissued per tenant)
+  const miss1 = _findDuplicateJob({ reqId: 'R-12345', company: 'Globex' });
+  if (miss1 !== null) {
+    throw new Error(`cross-company reqId should not match: ${JSON.stringify(miss1)}`);
+  }
+
+  // No match: candidate has different reqId
+  const miss2 = _findDuplicateJob({ reqId: 'R-99999', company: 'Stripe' });
+  if (miss2 !== null) {
+    throw new Error(`different reqId should not match: ${JSON.stringify(miss2)}`);
+  }
+});
+
+t('BEHAVIOR: _findDuplicateJob — URL canonicalization fallback (priority 2)', () => {
+  const jobs = {
+    j1: { id: 'j1', company: 'Stripe', url: 'https://jobs.stripe.com/position/abc?utm_source=linkedin' },
+  };
+  const { _findDuplicateJob } = _buildDedupeScope(jobs);
+
+  // Same posting with different tracking — should match via canonical URL
+  const hit = _findDuplicateJob({
+    company: 'Stripe',
+    url: 'https://www.jobs.stripe.com/position/abc/?refId=xyz#apply',
+  });
+  if (!hit || hit.job.id !== 'j1' || hit.reason !== 'url') {
+    throw new Error(`URL canonical match failed: ${JSON.stringify(hit)}`);
+  }
+
+  // Completely different URL → no match
+  const miss = _findDuplicateJob({ company: 'Stripe', url: 'https://other.com/x' });
+  if (miss !== null) throw new Error(`different URL should not match: ${JSON.stringify(miss)}`);
+});
+
+t('BEHAVIOR: _findDuplicateJob — empty reqId does NOT false-match across jobs', () => {
+  // This is the critical regression guard. Early in implementation it's easy
+  // to write `if (existing.reqId === candidate.reqId)` without first checking
+  // that candidate.reqId is non-empty — which makes every job-without-reqId
+  // dedupe against every other job-without-reqId. Catastrophic.
+  const jobs = {
+    j1: { id: 'j1', reqId: '', company: 'Stripe', title: 'PM', url: 'https://stripe.com/pm' },
+    j2: { id: 'j2', reqId: '', company: 'Stripe', title: 'Engineer', url: 'https://stripe.com/eng' },
+  };
+  const { _findDuplicateJob } = _buildDedupeScope(jobs);
+
+  // Candidate with empty reqId + same company + totally different URL →
+  // must NOT match on reqId. The URL is also different so the whole function
+  // should return null.
+  const result = _findDuplicateJob({
+    reqId:   '',
+    company: 'Stripe',
+    title:   'Designer',
+    url:     'https://stripe.com/design',
+  });
+  if (result !== null) {
+    throw new Error(`empty reqId should not match any existing job. Got: ${JSON.stringify(result)}`);
+  }
+
+  // Also test: both empty reqId AND no URL → safely null
+  const result2 = _findDuplicateJob({ reqId: '', company: 'Stripe' });
+  if (result2 !== null) {
+    throw new Error(`empty reqId + no URL should not match. Got: ${JSON.stringify(result2)}`);
+  }
+});
+
+t('BEHAVIOR: _findDuplicateJob — reqId takes priority over URL (both match)', () => {
+  // A paranoid edge case: candidate's URL matches one existing job but
+  // candidate's reqId matches a DIFFERENT existing job. Priority 1 wins.
+  // This would surface if a user pasted a URL that happens to match an old
+  // entry (say, reposted same URL) but the actual req ID reveals it's a
+  // different posting on a different company's Workday tenant.
+  const jobs = {
+    j1: { id: 'j1', reqId: 'R-12345', company: 'Stripe', url: 'https://urlA' },
+    j2: { id: 'j2', reqId: 'R-99999', company: 'Acme',   url: 'https://urlB' },
+  };
+  const { _findDuplicateJob } = _buildDedupeScope(jobs);
+  const hit = _findDuplicateJob({
+    reqId:   'R-12345',
+    company: 'Stripe',
+    url:     'https://urlB',  // would URL-match j2, but reqId matches j1 first
+  });
+  if (!hit || hit.job.id !== 'j1' || hit.reason !== 'reqId') {
+    throw new Error(`reqId should take priority over URL match: ${JSON.stringify(hit)}`);
   }
 });
 

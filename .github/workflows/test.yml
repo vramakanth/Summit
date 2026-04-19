@@ -7,9 +7,13 @@ on:
     branches: [main]
 
 jobs:
-  # ── Backend: syntax check + unit tests ─────────────────────────────────────
-  backend:
-    name: Backend tests
+  # ──────────────────────────────────────────────────────────────────────────
+  # Tier 1 + 2: zero-dep tests (plain node, no npm install required).
+  # Fast feedback — whole job typically runs in <30s. This tier is the
+  # gatekeeper for basic correctness and runs on every push + PR.
+  # ──────────────────────────────────────────────────────────────────────────
+  node-tests:
+    name: Zero-dep tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,23 +22,54 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install deps
-        working-directory: backend
-        run: npm install
 
       - name: Syntax check
-        working-directory: backend
-        run: node --check server.js && node --check ats-helpers.js
+        run: |
+          node --check backend/server.js
+          node --check backend/ats-helpers.js
 
-      - name: Architecture & unit tests
-        working-directory: backend
-        run: node tests/architecture.test.js
+      - name: Backend — architecture (72 tests)
+        run: node backend/tests/architecture.test.js
 
-  # ── Frontend: smoke tests (zero deps — pure Node) ──────────────────────────
-  frontend:
-    name: Frontend tests
+      - name: Backend — behavior (248 tests, all v1.19.x regression guards)
+        run: node backend/tests/behavior.test.js
+
+      - name: Backend — webcrypto e2e (11 tests)
+        run: node backend/tests/e2e.test.js
+
+      - name: Backend — crypto primitives (9 tests)
+        run: node backend/tests/crypto.test.js
+
+      - name: Frontend — smoke (185 tests)
+        run: node frontend/tests/smoke.test.js
+
+      - name: Frontend — filter + watchlist (43 tests)
+        run: node frontend/tests/filter.test.js
+
+      - name: Frontend — mobile (26 tests)
+        run: node frontend/tests/mobile.test.js
+
+      - name: Frontend — joblist + empty state (18 tests)
+        run: node frontend/tests/joblist.test.js
+
+      - name: Extension — contract + inbox handoff (47 tests)
+        run: node extension/tests/extension.test.js
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Tier 3: full integration. Boots a real Express server against a tempdir
+  # and runs end-to-end flows (registration, login, encrypted jobs round-trip,
+  # recovery codes, inbox POST/GET/DELETE, v1.19 endpoint removals).
+  #
+  # Non-blocking (continue-on-error) for now — the encryption.test.js v1.19
+  # rewrite wasn't executable in the dev environment where it was authored,
+  # so the first CI run after merge is expected to surface any missed
+  # assertion updates. Once green for one cycle, flip continue-on-error to
+  # false to make it blocking.
+  # ──────────────────────────────────────────────────────────────────────────
+  integration:
+    name: Integration tests (non-blocking)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -42,19 +77,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package.json
+            backend/tests/package.json
 
-      - name: Smoke tests
-        working-directory: frontend
-        run: node tests/smoke.test.js
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm install --no-audit --no-fund
 
-      - name: Filter & watchlist unit tests
-        working-directory: frontend
-        run: node tests/filter.test.js
+      - name: Install test dependencies
+        working-directory: backend/tests
+        run: npm install --no-audit --no-fund
 
-      - name: Mobile layout tests
-        working-directory: frontend
-        run: node tests/mobile.test.js
+      - name: Backend — encryption + inbox E2E (27 tests)
+        working-directory: backend/tests
+        run: node encryption.test.js
 
-      - name: Job list & empty state tests
-        working-directory: frontend
-        run: node tests/joblist.test.js
+      - name: Backend — ATS parsing (jest)
+        working-directory: backend/tests
+        run: npx jest --forceExit --detectOpenHandles

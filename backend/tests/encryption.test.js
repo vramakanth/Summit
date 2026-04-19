@@ -325,74 +325,58 @@ async function main() {
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // Scenario 4: Enable-encryption upgrade — register a plaintext account,
-  //             store some jobs, then upgrade to zero-knowledge.
+  // Scenario 4: v1.19 — encryption-always-on. Plaintext registration is
+  //             rejected (400). /api/enable-encryption is 410 Gone. The
+  //             old /api/forgot + /api/reset-password are 410 Gone
+  //             (incompatible with zero-knowledge encryption).
   // ────────────────────────────────────────────────────────────────────────
-  const bobPassword = 'bob is plaintext for now';
-  let bobToken;
 
-  await t('register bob as plaintext (no encryption fields)', async () => {
-    const r = await post('/api/register', { username: 'bob', password: bobPassword });
-    if (r.status !== 200)                     throw new Error(`status ${r.status}`);
-    if (r.body.encryptedDataKey)              throw new Error('plaintext account should not have encryptedDataKey');
-    bobToken = r.body.token;
+  await t('register: rejects body without encryptedDataKey (v1.19)', async () => {
+    const r = await post('/api/register', { username: 'bob', password: 'bobpass123' });
+    if (r.status !== 400) throw new Error(`expected 400, got ${r.status}: ${JSON.stringify(r.body)}`);
+    if (!/encryptedDataKey required/i.test(r.body.error || '')) {
+      throw new Error(`wrong error message: ${r.body.error}`);
+    }
   });
 
-  await t('bob logs in, no encrypted flag in response', async () => {
-    const r = await post('/api/login', { username: 'bob', password: bobPassword });
-    if (r.status !== 200)                     throw new Error(`status ${r.status}`);
-    if (r.body.encrypted === true)            throw new Error('plaintext account reports encrypted:true');
-    bobToken = r.body.token;
+  await t('register: rejects body without recoveryKeySlots (v1.19)', async () => {
+    const r = await post('/api/register', {
+      username: 'bob',
+      password: 'bobpass123',
+      encryptedDataKey: 'somebase64ciphertext',
+      // recoveryKeySlots missing
+    });
+    if (r.status !== 400) throw new Error(`expected 400, got ${r.status}`);
+    if (!/recoveryKeySlots required/i.test(r.body.error || '')) {
+      throw new Error(`wrong error message: ${r.body.error}`);
+    }
   });
 
-  await t('bob recovery-codes returns encrypted:false + count:0', async () => {
-    const r = await get('/api/recovery-codes', bobToken);
-    if (r.body.encrypted !== false)           throw new Error('plaintext account reports encrypted:true');
-    if (r.body.count !== 0)                   throw new Error(`expected 0 codes, got ${r.body.count}`);
+  await t('/api/enable-encryption returns 410 Gone (v1.19 removal)', async () => {
+    // Endpoint removed in v1.19 — all accounts encrypted at registration.
+    // The 410 stub exists so old clients surfacing the call see a clear error.
+    // Re-use alice's token (authed call).
+    const r = await post('/api/enable-encryption', { password: aliceRecoveryPassword }, aliceToken);
+    if (r.status !== 410) throw new Error(`expected 410, got ${r.status}`);
   });
 
-  await t('enable-encryption: flips account + stores client ciphertext jobs', async () => {
-    const bobDataKey = await generateDataKey();
-    const pwKey = await deriveKey(bobPassword, 'bob');
-    const encryptedDataKey = await wrapKey(bobDataKey, pwKey);
-    const rawCodes = generateRecoveryCodes(8);
-    const recoveryKeySlots = await buildRecoveryKeySlots(rawCodes, bobDataKey, 'bob');
-    const encryptedJobs = await encryptWith(bobDataKey, { 'j1': { id: 'j1', title: 'Bob job', company: 'X' } });
-    const r = await post('/api/enable-encryption', {
-      password: bobPassword,
-      encryptedDataKey,
-      recoveryKeySlots,
-      encryptedJobs,
-    }, bobToken);
-    if (r.status !== 200)                     throw new Error(`enable failed: ${r.status}`);
-
-    // Fresh login should now return encrypted:true
-    const login = await post('/api/login', { username: 'bob', password: bobPassword });
-    if (login.body.encrypted !== true)        throw new Error('bob still not encrypted after upgrade');
-
-    // Jobs file should contain the __enc envelope with the exact ciphertext
-    const jobsFile = path.join(TMP, 'jobs', 'bob.json');
-    const raw = fs.readFileSync(jobsFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed.__enc !== true)                throw new Error('jobs file not in __enc envelope');
-    if (parsed.data !== encryptedJobs)        throw new Error('jobs ciphertext not stored verbatim');
+  await t('/api/forgot returns 410 Gone (v1.19 removal)', async () => {
+    // Email-based password reset is fundamentally incompatible with
+    // zero-knowledge encryption (resetting the password hash orphans the
+    // wrapped dataKey). Replaced by recovery-code flow.
+    const r = await post('/api/forgot', { username: 'alice' });
+    if (r.status !== 410) throw new Error(`expected 410, got ${r.status}`);
   });
 
-  await t('enable-encryption: rejects if account already encrypted', async () => {
-    const dummyKey = await generateDataKey();
-    const pwKey = await deriveKey(alicePassword, 'alice');  // doesn't matter
-    const r = await post('/api/enable-encryption', {
-      password: aliceRecoveryPassword,  // alice's current password
-      encryptedDataKey: await wrapKey(dummyKey, pwKey),
-      recoveryKeySlots: await buildRecoveryKeySlots(['DUMMY'], dummyKey, 'alice'),
-    }, aliceToken);
-    if (r.status !== 400)                     throw new Error(`expected 400, got ${r.status}`);
-    if (!/already encrypted/i.test(r.body.error || '')) throw new Error('wrong error');
+  await t('/api/reset-password returns 410 Gone (v1.19 removal)', async () => {
+    const r = await post('/api/reset-password', { token: 'irrelevant', newPassword: 'x' });
+    if (r.status !== 410) throw new Error(`expected 410, got ${r.status}`);
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // Scenario 5: Recovery-codes generate — regenerate all slots
+  // Scenario 5: Recovery-codes regenerate — rotate all slots
   // ────────────────────────────────────────────────────────────────────────
+
   await t('recovery-codes/generate: regenerates all slots, old codes invalidated', async () => {
     // Alice already consumed one code; login fresh
     const login = await post('/api/login', { username: 'alice', password: aliceRecoveryPassword });
@@ -419,6 +403,170 @@ async function main() {
       try { await unwrapKey(s.slot, oldKey); anyWorked = true; break; } catch {}
     }
     if (anyWorked) throw new Error('old recovery code still works after regeneration');
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Scenario 6: Inbox handoff (v1.19.2) — extension POSTs plaintext,
+  //             webapp drains. This is the one plaintext-OK path by design:
+  //             public job URL + title/company scraped from a public page.
+  // ────────────────────────────────────────────────────────────────────────
+
+  await t('inbox POST: requires title + company', async () => {
+    const r1 = await post('/api/jobs/inbox', { company: 'Stripe' }, aliceToken);
+    if (r1.status !== 400) throw new Error(`missing title should 400, got ${r1.status}`);
+    const r2 = await post('/api/jobs/inbox', { title: 'Engineer' }, aliceToken);
+    if (r2.status !== 400) throw new Error(`missing company should 400, got ${r2.status}`);
+  });
+
+  await t('inbox POST: persists entry + returns id', async () => {
+    const r = await post('/api/jobs/inbox', {
+      title: 'Senior Engineer',
+      company: 'Stripe',
+      url: 'https://example.com/job',
+    }, aliceToken);
+    if (r.status !== 200)     throw new Error(`status ${r.status}: ${JSON.stringify(r.body)}`);
+    if (!r.body.id)           throw new Error('no id in response');
+    if (!/^[a-f0-9]+$/.test(r.body.id)) throw new Error(`id not hex: ${r.body.id}`);
+    if (!r.body.receivedAt)   throw new Error('no receivedAt in response');
+  });
+
+  await t('inbox GET: returns FIFO list with the entry we just posted', async () => {
+    const r = await get('/api/jobs/inbox', aliceToken);
+    if (r.status !== 200)          throw new Error(`status ${r.status}`);
+    if (!Array.isArray(r.body.entries)) throw new Error('entries not array');
+    const found = r.body.entries.find(e => e.company === 'Stripe' && e.title === 'Senior Engineer');
+    if (!found)                    throw new Error('just-posted entry not in list');
+    if (found.url !== 'https://example.com/job') throw new Error('url not persisted');
+  });
+
+  await t('inbox DELETE: returns deleted:true on first call, deleted:false on second (race-safe)', async () => {
+    // Post a fresh entry so we control the id
+    const post1 = await post('/api/jobs/inbox', {
+      title: 'Race Test',
+      company: 'Stripe',
+    }, aliceToken);
+    const id = post1.body.id;
+
+    // First DELETE removes the file
+    const del1 = await fetch(base + '/api/jobs/inbox/' + id, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + aliceToken },
+    });
+    const b1 = await del1.json();
+    if (del1.status !== 200)  throw new Error(`first delete status ${del1.status}`);
+    if (b1.deleted !== true)  throw new Error(`first delete should report deleted:true, got ${JSON.stringify(b1)}`);
+
+    // Second DELETE (simulating a racing tab) must NOT error — returns deleted:false
+    const del2 = await fetch(base + '/api/jobs/inbox/' + id, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + aliceToken },
+    });
+    const b2 = await del2.json();
+    if (del2.status !== 200)   throw new Error(`second delete status ${del2.status}`);
+    if (b2.deleted !== false)  throw new Error(`second delete should report deleted:false, got ${JSON.stringify(b2)}`);
+  });
+
+  await t('inbox DELETE: rejects invalid id (path-traversal guard)', async () => {
+    const bad = await fetch(base + '/api/jobs/inbox/..%2F..%2Fusers.json', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + aliceToken },
+    });
+    if (bad.status !== 400) throw new Error(`bad id should 400, got ${bad.status}`);
+  });
+
+  await t('inbox POST: accepts valid reqId + reqIdLabel (v1.19.3)', async () => {
+    const r = await post('/api/jobs/inbox', {
+      title: 'Designer',
+      company: 'Acme',
+      url: 'https://acme.com/d',
+      reqId: 'R-12345',
+      reqIdLabel: 'Job Requisition ID',
+    }, aliceToken);
+    if (r.status !== 200) throw new Error(`status ${r.status}: ${JSON.stringify(r.body)}`);
+    // Verify the stored entry has reqId
+    const list = await get('/api/jobs/inbox', aliceToken);
+    const found = list.body.entries.find(e => e.id === r.body.id);
+    if (!found)                         throw new Error('entry not in list');
+    if (found.reqId !== 'R-12345')      throw new Error(`reqId not persisted: ${found.reqId}`);
+    if (found.reqIdLabel !== 'Job Requisition ID') throw new Error('reqIdLabel not persisted');
+  });
+
+  await t('inbox POST: rejects URL-shaped reqId (silently drops, not 400)', async () => {
+    // Policy: invalid reqId doesn't block the whole POST — we still want
+    // the job added. Just drop the reqId silently.
+    const r = await post('/api/jobs/inbox', {
+      title: 'Analyst',
+      company: 'Beta',
+      reqId: 'https://attacker.example/evil',
+    }, aliceToken);
+    if (r.status !== 200) throw new Error(`status ${r.status}`);
+    const list = await get('/api/jobs/inbox', aliceToken);
+    const found = list.body.entries.find(e => e.id === r.body.id);
+    if (!found)                   throw new Error('entry missing');
+    if (found.reqId)              throw new Error(`URL-shaped reqId should be dropped, got: ${found.reqId}`);
+  });
+
+  await t('inbox POST: rejects too-short and too-long reqId values', async () => {
+    // Shape: /^[A-Za-z0-9][A-Za-z0-9._\-]{2,40}$/  (3–41 chars)
+    for (const bad of ['ab', 'a'.repeat(50), 'has space', '']) {
+      const r = await post('/api/jobs/inbox', {
+        title: 'T', company: 'C', reqId: bad,
+      }, aliceToken);
+      if (r.status !== 200) throw new Error(`unexpected status ${r.status} for reqId="${bad}"`);
+      const list = await get('/api/jobs/inbox', aliceToken);
+      const found = list.body.entries.find(e => e.id === r.body.id);
+      if (found && found.reqId) {
+        throw new Error(`invalid reqId "${bad}" should have been dropped, but was persisted`);
+      }
+    }
+  });
+
+  await t('inbox auth: GET without token is 401', async () => {
+    const r = await fetch(base + '/api/jobs/inbox');
+    if (r.status !== 401) throw new Error(`expected 401, got ${r.status}`);
+  });
+
+  await t('inbox auth: one user cannot read another user\'s inbox', async () => {
+    // Post as alice
+    const posted = await post('/api/jobs/inbox', {
+      title: 'Alice only', company: 'Secret',
+    }, aliceToken);
+
+    // Create a second user
+    const charlieDataKey = await generateDataKey();
+    const charliePwKey = await deriveKey('charlie-password', 'charlie');
+    const charlieEncDK = await wrapKey(charlieDataKey, charliePwKey);
+    const charlieCodes = generateRecoveryCodes(8);
+    const charlieSlots = await buildRecoveryKeySlots(charlieCodes, charlieDataKey, 'charlie');
+    const reg = await post('/api/register', {
+      username: 'charlie',
+      password: 'charlie-password',
+      email: 'c@e.com',
+      encryptedDataKey: charlieEncDK,
+      recoveryKeySlots: charlieSlots,
+    });
+    const charlieToken = reg.body.token;
+
+    // Charlie's inbox should NOT include alice's entry
+    const charlieInbox = await get('/api/jobs/inbox', charlieToken);
+    const leaked = charlieInbox.body.entries.find(e => e.id === posted.body.id);
+    if (leaked) throw new Error('cross-tenant inbox leak — charlie sees alice\'s entries');
+
+    // And charlie cannot DELETE alice's entry (404 since it's not in his dir)
+    const evil = await fetch(base + '/api/jobs/inbox/' + posted.body.id, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + charlieToken },
+    });
+    // Should return 200 with deleted:false (file doesn't exist in charlie's dir)
+    const evilBody = await evil.json();
+    if (evil.status !== 200 || evilBody.deleted !== false) {
+      throw new Error(`expected silent-miss from other user, got ${evil.status}: ${JSON.stringify(evilBody)}`);
+    }
+
+    // Alice's entry should still be in ALICE's inbox (charlie's DELETE didn't touch it)
+    const aliceInbox = await get('/api/jobs/inbox', aliceToken);
+    const stillThere = aliceInbox.body.entries.find(e => e.id === posted.body.id);
+    if (!stillThere) throw new Error('alice\'s entry was deleted by charlie\'s call — path-traversal bug!');
   });
 
   // ────────────────────────────────────────────────────────────────────────

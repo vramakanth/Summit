@@ -2220,10 +2220,17 @@ function _canonicalizeJobUrl(raw) {
     const u = new URL(s);
     // Strip common tracking params. Non-exhaustive but covers the most
     // frequently-added noise on LinkedIn/Indeed/Greenhouse URLs.
-    const drop = ['refid','trk','src','gh_src','utm_source','utm_medium',
+    // Case-insensitive: LinkedIn uses camelCase (refId, trk), Greenhouse
+    // uses lowercase (gh_src) — we need to catch both. URLSearchParams keys
+    // are case-sensitive per spec, so we iterate and match ignore-case.
+    const drop = new Set(['refid','trk','src','gh_src','utm_source','utm_medium',
                   'utm_campaign','utm_content','utm_term','ref','mc_cid',
-                  'mc_eid','_hsenc','_hsmi'];
-    for (const k of drop) u.searchParams.delete(k);
+                  'mc_eid','_hsenc','_hsmi']);
+    const keysToDelete = [];
+    for (const k of u.searchParams.keys()) {
+      if (drop.has(k.toLowerCase())) keysToDelete.push(k);
+    }
+    for (const k of keysToDelete) u.searchParams.delete(k);
     // Drop fragment; it never identifies a distinct posting
     u.hash = '';
     // Remove trailing slash on pathname (unless path IS "/")
