@@ -4351,5 +4351,72 @@ t('Focus + visibilitychange events trigger extension version refresh', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// v1.19.10 — install-nudge re-prompts after uninstall; right-pane welcome
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.10 nudge re-prompts + empty-state modes');
+
+t('summit-ext-ready handler clears install-nudge dismiss flag', () => {
+  // Without this, a user who once dismissed the nudge never sees it again
+  // even after uninstalling. Semantics: "not now" means "not now given
+  // my current state." Getting the extension is a state change; losing
+  // it again should re-prompt.
+  const idx = feSrc.indexOf("msg.type === 'summit-ext-ready'");
+  const body = feSrc.slice(idx, idx + 3000);
+  if (!/_EXT_NUDGE_DISMISS_KEY/.test(body) || !/removeItem/.test(body)) {
+    throw new Error('summit-ext-ready handler does not reset the install-nudge dismiss flag');
+  }
+});
+
+t('Right-pane empty state has two modes (welcome vs select-from-list)', () => {
+  // When jobs.length === 0, the list side already says "No applications
+  // yet; click Add job." The right pane must not repeat the same thing
+  // plus "or select from the list" — there's no list to select from.
+  if (!/function _renderRightPaneEmptyState/.test(feSrc)) {
+    throw new Error('_renderRightPaneEmptyState missing');
+  }
+  const idx = feSrc.indexOf('function _renderRightPaneEmptyState');
+  const body = feSrc.slice(idx, idx + 2000);
+  // Must branch on total count
+  if (!/total\s*===?\s*0/.test(body)) {
+    throw new Error('_renderRightPaneEmptyState does not check for zero-jobs state');
+  }
+  // Isolate just the zero-jobs branch — it runs from `if (total === 0) {`
+  // up to the matching `} else {`. We scan for those anchors explicitly
+  // instead of greedy regex which would eat past the else.
+  const ifStart = body.search(/if\s*\(\s*total\s*===?\s*0\s*\)\s*\{/);
+  const elseStart = body.indexOf('} else {', ifStart);
+  if (ifStart < 0 || elseStart < 0) throw new Error('cannot isolate zero-jobs branch');
+  const zeroBranch = body.slice(ifStart, elseStart);
+  if (/select.*from.*(the )?list|from the list/i.test(zeroBranch)) {
+    throw new Error('zero-jobs empty state still references the list (redundant/nonsensical)');
+  }
+  // Positive — zero-jobs branch should have some welcoming copy rather
+  // than just duplicating the list-side message.
+  if (!/[Ww]elcome|get started|[Tt]rack applications/.test(zeroBranch)) {
+    throw new Error('zero-jobs empty state has no welcoming copy');
+  }
+});
+
+t('renderJobList calls _renderRightPaneEmptyState so copy stays in sync', () => {
+  const idx = feSrc.indexOf('function renderJobList');
+  const body = feSrc.slice(idx, idx + 500);
+  if (!/_renderRightPaneEmptyState\(\)/.test(body)) {
+    throw new Error('renderJobList does not refresh the right-pane empty-state copy');
+  }
+});
+
+t('Right-pane empty-state markup has ID-tagged title + body for dynamic copy', () => {
+  // The function reads #empty-state-title and #empty-state-body. If either
+  // is missing, the copy never updates and the user sees whatever the HTML
+  // default is (which is stale "No application selected" even with 0 jobs).
+  if (!/id="empty-state-title"/.test(feSrc)) {
+    throw new Error('empty-state-title element missing from markup');
+  }
+  if (!/id="empty-state-body"/.test(feSrc)) {
+    throw new Error('empty-state-body element missing from markup');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
