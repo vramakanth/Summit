@@ -4074,7 +4074,7 @@ t('Install nudge: dismissal persists and is respected on re-render', () => {
 t('summit-ext-ready handler removes install nudges (extension belatedly announced)', () => {
   const idx = feSrc.indexOf("msg.type === 'summit-ext-ready'");
   if (idx < 0) throw new Error('summit-ext-ready handler missing');
-  const body = feSrc.slice(idx, idx + 1200);
+  const body = feSrc.slice(idx, idx + 2400);
   if (!/_removeExtInstallNudges\(\)/.test(body)) {
     throw new Error('handler does not clean up install nudges when ext announces');
   }
@@ -4281,6 +4281,72 @@ t('No user-facing copy says "Applied export file" or "Applied Tracker"', () => {
       const snippet = feSrc.slice(Math.max(0, idx - 60), idx + 120);
       throw new Error(`Legacy product-name leak (${re}): …${snippet}…`);
     }
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.19.9 — stale-ext banner reconciles with extension updates
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.9 stale-ext banner reconciliation');
+
+t('summit-ext-ready handler removes banner if announcing ext is up-to-date', () => {
+  // The bug: user installs a new extension while the old stale-ext banner
+  // is showing, the new content.js posts summit-ext-ready with the fresh
+  // version, but the banner stays because the handler only ADDED banners,
+  // never REMOVED them. Fixed in v1.19.9 with a symmetric else-branch.
+  const idx = feSrc.indexOf("msg.type === 'summit-ext-ready'");
+  const body = feSrc.slice(idx, idx + 2400);
+  // Require an else-branch for _extIsStale (asymmetric handler → symmetric handler)
+  if (!/if\s*\(\s*_extIsStale\(\)\s*\)\s*\{[\s\S]{0,120}_renderStaleExtensionBanner[\s\S]{0,120}\}\s*else\s*\{/.test(body)) {
+    throw new Error('summit-ext-ready handler has no else-branch for the up-to-date case');
+  }
+  // The else-branch must remove the banner. Rather than parse the block
+  // (nested braces make regex matching brittle), just assert both
+  // getElementById('stale-ext-banner') AND .remove() appear in the handler.
+  if (!/getElementById\(['"]stale-ext-banner['"]\)/.test(body)) {
+    throw new Error('handler does not look up the stale-ext-banner element');
+  }
+  if (!/\.remove\(\)/.test(body)) {
+    throw new Error('handler does not call .remove() on the banner');
+  }
+});
+
+t('_refreshExtensionVersion pings extension + reconciles banner state', () => {
+  if (!/function _refreshExtensionVersion/.test(feSrc)) {
+    throw new Error('_refreshExtensionVersion missing');
+  }
+  const idx = feSrc.indexOf('function _refreshExtensionVersion');
+  const body = feSrc.slice(idx, idx + 2500);
+  // Must use the bridge ping
+  if (!/_bridgeCall\(['"]ping['"]/.test(body)) {
+    throw new Error('_refreshExtensionVersion does not ping via _bridgeCall');
+  }
+  // Must update _extensionVersion
+  if (!/_extensionVersion\s*=/.test(body)) {
+    throw new Error('_refreshExtensionVersion does not update _extensionVersion');
+  }
+  // Must render OR remove banner based on stale state (symmetric)
+  if (!/_extIsStale\(\)/.test(body)) {
+    throw new Error('_refreshExtensionVersion does not re-check stale state');
+  }
+  if (!/stale-ext-banner/.test(body) || !/\.remove\(\)/.test(body)) {
+    throw new Error('_refreshExtensionVersion does not clean up the banner when ext is no longer stale');
+  }
+});
+
+t('Focus + visibilitychange events trigger extension version refresh', () => {
+  // When the user installs an extension update in chrome://extensions
+  // and switches back to the Summit tab, focus fires. That's the moment
+  // we want to reconcile banner state.
+  if (!/addEventListener\(['"]focus['"],\s*_refreshExtensionVersion\)/.test(feSrc)) {
+    throw new Error('focus event is not wired to _refreshExtensionVersion');
+  }
+  // Multiple visibilitychange handlers exist (inbox polling, notes editor,
+  // etc.); we need at least ONE of them to call _refreshExtensionVersion.
+  // Find all visibilitychange listener blocks and check if any call our helper.
+  const allVcs = feSrc.match(/addEventListener\(['"]visibilitychange['"][\s\S]{0,400}\}/g) || [];
+  if (!allVcs.some(h => /_refreshExtensionVersion/.test(h))) {
+    throw new Error('no visibilitychange listener triggers _refreshExtensionVersion');
   }
 });
 
