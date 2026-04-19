@@ -935,7 +935,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.3 · private beta</div>
   </div>
 </div>
 
@@ -975,7 +975,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.3 · private beta</div>
   </div>
 </div>
 
@@ -991,7 +991,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.3 · private beta</div>
   </div>
 </div>
 
@@ -1068,7 +1068,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.1</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.3</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1277,7 +1277,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.18.1';
+const APP_VERSION = '1.18.3';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -2003,6 +2003,13 @@ async function doLogout() {
   const bg = document.getElementById('mountain-bg'); if(bg) bg.style.display='';
   token=null; currentUser=null; jobs={}; currentJobId=null;
   dataKey=null; isEncrypted=false; // Zero-knowledge: clear key from memory
+  // Clear rendered content — otherwise the previous session's detail/list
+  // HTML stays visible until the next user triggers a re-render. With
+  // zero-knowledge encryption this is technically just rendered plaintext,
+  // but it can bleed into the next login if they don't pick a job.
+  const dv = document.getElementById('detail-view'); if (dv) { dv.innerHTML = ''; dv.style.display = 'none'; }
+  const jl = document.getElementById('job-list');    if (jl) jl.innerHTML = '';
+  const empty = document.getElementById('empty-state'); if (empty) empty.style.display = 'flex';
   localStorage.removeItem('applied_token');
   localStorage.removeItem('applied_user');
   showScreen('login');
@@ -2310,18 +2317,21 @@ async function parseJobUrl() {
     let filled = _populateFormFields(finalFields);
 
     // ── Extension bridge fallback ─────────────────────────────────────────────
-    // When the server couldn't read the page (bot-gated site) but the user
-    // has the extension installed, the extension can open the URL in a
-    // background tab — running inside the user's own authenticated browser
-    // session — and scrape the real content. We then re-run AI extraction
-    // on that text and merge the results. This makes the extension useful
-    // for the add-job modal, not just the job detail's Fetch-from-URL button.
+    // When the server's extraction pipeline produces zero fields — whether
+    // because it hit an unextractable state, was LinkedIn-blocked, or got
+    // text that AI couldn't extract from — the user's own browser (via the
+    // extension) can usually do better. The extension runs inside the site's
+    // authenticated session so it sees content our server can't.
+    //
+    // Trigger on ANY zero-field parse, not just the hard-fail cases. A page
+    // that returned 400 chars of shell text is functionally the same miss
+    // as no text at all, and deserves the same fallback.
     const serverGaveUpOnPage =
       data._via === 'unextractable' ||
       data._linkedinBlocked ||
-      (filled === 0 && !text);
+      filled === 0;
 
-    if (serverGaveUpOnPage && _extensionAvailable) {
+    if (serverGaveUpOnPage && _extensionAvailable && !_extIsStale()) {
       statusEl.innerHTML = spinner() + ' Fetching via your browser…';
       try {
         const captured = await _browserFetchPosting(url);
@@ -2370,31 +2380,49 @@ async function parseJobUrl() {
       if (mf) mf.style.display = 'block';
       if (mc) mc.style.transform = 'rotate(180deg)';
       statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} via your browser extension — review below`;
-    } else if (data._linkedinBlocked) {
-      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> LinkedIn requires login to auto-fill. Use the Summit extension or <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload the saved page</label>, or fill in manually below.`;
-    } else if (data._via === 'unextractable' || (filled === 0 && !text)) {
-      // Server couldn't read the page at all (direct-fetch empty, render
-      // blocked/failed). The user's own browser CAN read it — either via
-      // the extension (auto-capture) or by saving the page and uploading
-      // it. v1.18 surfaces both options here. Manual entry is always
-      // available as a third fallback.
+    } else if (filled > 0) {
       const mf = document.getElementById('manual-fields');
       const mc = document.getElementById('manual-chevron');
       if (mf) mf.style.display = 'block';
       if (mc) mc.style.transform = 'rotate(180deg)';
-      const extHint = _extensionAvailable
-        ? `use the Summit extension`
-        : `<a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline">install the Summit extension</a>`;
-      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Couldn't read this page server-side. You can ${extHint}, <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved HTML/PDF</label>, or fill in manually below.`;
-    } else if (filled > 0) {
-      // Auto-expand so user can review filled fields
-    const mf = document.getElementById('manual-fields');
-    const mc = document.getElementById('manual-chevron');
-    if (mf) mf.style.display = 'block';
-    if (mc) mc.style.transform = 'rotate(180deg)';
-    statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} — review and correct below`;
+      statusEl.innerHTML = `<span style="color:var(--accent);font-weight:600">✓</span> Filled ${filled} field${filled !== 1 ? 's' : ''} — review and correct below`;
     } else {
-      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> Could not auto-fill — please fill in manually.`;
+      // Nothing got filled. This covers three originally-separate cases that
+      // all produce the same user experience and now share one message:
+      //   1. _via: 'unextractable' — server couldn't read the page at all
+      //   2. _linkedinBlocked — LinkedIn-specific auth wall flag
+      //   3. Server returned text but AI extraction produced nothing useful
+      //
+      // The message surfaces all three recovery options (extension / upload /
+      // manual) plus a tailored callout when we can detect the extension is
+      // installed but out of date — which is often the actual reason the
+      // bridge fallback didn't rescue this parse.
+      const mf = document.getElementById('manual-fields');
+      const mc = document.getElementById('manual-chevron');
+      if (mf) mf.style.display = 'block';
+      if (mc) mc.style.transform = 'rotate(180deg)';
+
+      const uploadOpt = `<label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved HTML/PDF</label>`;
+
+      let extLine;
+      if (_extIsStale()) {
+        // Extension installed but outdated — the most likely reason the bridge
+        // fallback didn't rescue this parse. Tell the user explicitly.
+        extLine = `Your Summit extension is v${esc(_extensionVersion)} — <a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline">update to v${MIN_EXTENSION_VERSION}+</a> for reliable parsing on sites like this.`;
+      } else if (_extensionAvailable) {
+        // Up-to-date extension installed, yet bridge still couldn't get it.
+        // Probably a stubborn site (requires login) — point at upload as the
+        // best next step rather than re-blaming the extension.
+        extLine = `Your extension tried but this site wasn't parseable. Try ${uploadOpt} instead, or fill in manually below.`;
+      } else {
+        // No extension. Offer both remaining paths.
+        extLine = `<a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline">install the Summit extension</a> for automatic capture, ${uploadOpt}, or fill in manually below.`;
+      }
+
+      const leadMsg = data._linkedinBlocked
+        ? `LinkedIn requires login to auto-fill.`
+        : `Couldn't read this page.`;
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠</span> ${leadMsg} ${extLine}`;
     }
 
   } catch(e) {
@@ -2697,6 +2725,11 @@ function selectJob(id) {
   sessionTailoredCoverHtml = null;
   renderJobList();
   renderDetail();
+  // Trigger the same tab-entry auto-loads switchTab would: insights research
+  // on first view, interview questions on first view. Without this call,
+  // newly added jobs (which land on the Insights tab by default) showed an
+  // empty panel until the user clicked another tab and came back.
+  _maybeAutoLoadTabContent(activeDetailTab);
   document.getElementById('empty-state').style.display = 'none';
   const dv = document.getElementById('detail-view');
   dv.style.display = 'flex';
@@ -2844,8 +2877,20 @@ function mobileBackToList() {
 
 // ── DETAIL ──
 function renderDetail() {
-  const j = jobs[currentJobId]; if (!j) return;
   const dv = document.getElementById('detail-view');
+  const empty = document.getElementById('empty-state');
+  const j = jobs[currentJobId];
+  if (!j) {
+    // No job selected (fresh login, just logged out, current job was deleted,
+    // or user cleared filters and the selection disappeared). Blank out the
+    // detail pane and show the empty state. Previously we early-returned
+    // here without touching the DOM, which left the previous user's or
+    // previous session's detail HTML visible — a cross-account info leak
+    // under the zero-knowledge model.
+    if (dv) { dv.innerHTML = ''; dv.style.display = 'none'; }
+    if (empty) empty.style.display = 'flex';
+    return;
+  }
   dv.innerHTML = `
     <div class="detail-header">
       <div class="detail-header-info">
@@ -2934,14 +2979,25 @@ function switchTab(t) {
   }
   activeDetailTab = t;
   renderDetail();
+  _maybeAutoLoadTabContent(t);
+}
+
+// Side effects that should fire when a tab becomes active, regardless of
+// whether the user got there via switchTab() or selectJob() auto-selecting
+// the default tab. Previously these lived inline in switchTab, so
+// selectJob (which sets activeDetailTab='insights' directly without going
+// through switchTab) never triggered the auto-load — newly added jobs
+// showed an empty Insights tab until the user clicked away and back.
+function _maybeAutoLoadTabContent(t) {
+  const j = jobs[currentJobId];
+  if (!j) return;
   // Insights tab: first-load runs full research. Subsequent opens trigger a
   // cheap (no-AI) dynamic refresh if the news+stock data is >30 min old —
   // keeps live data fresh without spending tokens.
   if (t === 'insights') {
-    const j = jobs[currentJobId];
-    if (j && !j.insights && !insightsLoading) {
+    if (!j.insights && !insightsLoading) {
       runInsights(currentJobId);
-    } else if (j && j.insights) {
+    } else if (j.insights) {
       const lastDynamic = j.insights.dynamicUpdatedAt || j.insights.generatedAt || 0;
       const thirtyMinMs = 30 * 60 * 1000;
       if (Date.now() - lastDynamic > thirtyMinMs && !j.insights._dynamicRefreshing) {
@@ -2951,8 +3007,7 @@ function switchTab(t) {
   }
   // Auto-generate interview questions on first open if none exist
   if (t === 'interview') {
-    const j = jobs[currentJobId];
-    if (j && (!j.interviews || j.interviews.length === 0)) {
+    if (!j.interviews || j.interviews.length === 0) {
       // Short delay so the tab renders first
       setTimeout(() => generateInterviewQuestions(currentJobId), 300);
     }
@@ -3770,6 +3825,59 @@ function _renderPostingBlockedCard(j, reason) {
 let _extensionAvailable = false;
 let _extensionVersion = null;
 
+// Extension minimum compatible version. If the installed extension is older
+// than this, we tell the user to update — older versions have bugs we've
+// since fixed (content.js returning structured fields is a v2.2.0 capability;
+// pre-2.2 extensions silently lose the Path 1 extraction that lets the
+// add-job modal's bridge fallback produce useful data on bot-gated sites).
+const MIN_EXTENSION_VERSION = '2.2.0';
+
+function _compareSemver(a, b) {
+  // Returns -1 if a<b, 0 if equal, 1 if a>b. Tolerates "2.2", "2.2.0", "2.2.0-beta"
+  // by only comparing the first three numeric segments.
+  const parse = s => String(s || '0').split('.').map(p => parseInt(p, 10) || 0).concat([0,0,0]).slice(0, 3);
+  const [aa, ab, ac] = parse(a);
+  const [ba, bb, bc] = parse(b);
+  if (aa !== ba) return aa < ba ? -1 : 1;
+  if (ab !== bb) return ab < bb ? -1 : 1;
+  if (ac !== bc) return ac < bc ? -1 : 1;
+  return 0;
+}
+
+function _extIsStale() {
+  if (!_extensionAvailable || !_extensionVersion) return false;
+  return _compareSemver(_extensionVersion, MIN_EXTENSION_VERSION) < 0;
+}
+
+// Stale-extension banner: renders once in the app shell, dismissal is
+// remembered per (stale version + min version) pair so the banner re-appears
+// when we bump MIN_EXTENSION_VERSION again in a future release.
+function _renderStaleExtensionBanner() {
+  if (document.getElementById('stale-ext-banner')) return; // already shown
+  const dismissKey = `applied_stale_ext_dismissed_${_extensionVersion}_${MIN_EXTENSION_VERSION}`;
+  if (localStorage.getItem(dismissKey) === '1') return;
+
+  const banner = document.createElement('div');
+  banner.id = 'stale-ext-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9000;background:rgba(232,168,56,0.12);border-bottom:1px solid rgba(232,168,56,0.3);padding:10px 18px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text);font-family:var(--font)';
+  banner.innerHTML = `
+    <span style="color:var(--accent-bg);font-size:14px">↻</span>
+    <span>Your Summit extension (v${esc(_extensionVersion)}) is out of date. Update to v${MIN_EXTENSION_VERSION}+ for reliable parsing on bot-protected sites.</span>
+    <a href="#" onclick="downloadExtension();return false;" style="color:var(--accent-bg);text-decoration:underline;margin-left:auto">Download update</a>
+    <button onclick="_dismissStaleBanner()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 4px;margin-left:4px" title="Dismiss">×</button>`;
+  document.body.appendChild(banner);
+  // Nudge page content down so banner doesn't cover anything critical.
+  document.body.style.paddingTop = '40px';
+}
+
+function _dismissStaleBanner() {
+  const banner = document.getElementById('stale-ext-banner');
+  if (banner) banner.remove();
+  document.body.style.paddingTop = '';
+  const dismissKey = `applied_stale_ext_dismissed_${_extensionVersion}_${MIN_EXTENSION_VERSION}`;
+  try { localStorage.setItem(dismissKey, '1'); } catch {}
+}
+
 window.addEventListener('message', (ev) => {
   if (ev.source !== window) return;
   const msg = ev.data;
@@ -3777,6 +3885,10 @@ window.addEventListener('message', (ev) => {
   if (msg.type === 'summit-ext-ready') {
     _extensionAvailable = true;
     _extensionVersion = msg.version || null;
+    // Announce stale state once we know the version — user might never hit
+    // the add-job nudge but still deserve to know their extension is out
+    // of date. Rendered as a dismissible banner in the app shell.
+    if (_extIsStale()) _renderStaleExtensionBanner();
   }
 });
 
@@ -8654,7 +8766,7 @@ setInterval(() => {
     </div>
     <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
     <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.1 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.3 · private beta</div>
   </div>
 </div>
 

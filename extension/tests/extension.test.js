@@ -173,5 +173,118 @@ t('parseJobUrl marks extension-bridge source on success', () => {
   }
 });
 
+// ── v1.18.2: bridge trigger broadened + stale-extension detection ─────────
+console.log('\n── webapp v1.18.2 — bridge trigger + stale-ext detection');
+t('bridge fires on ANY zero-field parse, not just unextractable (v1.18.2)', () => {
+  // Earlier: bridge only fired when `_via === unextractable || _linkedinBlocked
+  // || (filled === 0 && !text)`. Sites like ZipRecruiter that return short
+  // shell text fell into the gap — filled was 0 but text was non-empty, so
+  // bridge was skipped. v1.18.2 widens the trigger.
+  const idx = webapp.indexOf('async function parseJobUrl');
+  const body = webapp.slice(idx, idx + 12000);
+  // Extract the serverGaveUpOnPage definition and verify it doesn't require
+  // text to be empty.
+  const m = body.match(/const\s+serverGaveUpOnPage\s*=[\s\S]*?;/);
+  if (!m) throw new Error('serverGaveUpOnPage not found');
+  if (/!\s*text/.test(m[0])) {
+    throw new Error('serverGaveUpOnPage still gates on !text — should fire on any zero-field parse');
+  }
+  if (!/filled\s*===\s*0/.test(m[0])) {
+    throw new Error('serverGaveUpOnPage no longer checks filled === 0');
+  }
+});
+
+t('MIN_EXTENSION_VERSION constant defined (v1.18.2)', () => {
+  if (!/const\s+MIN_EXTENSION_VERSION\s*=\s*['"][\d.]+['"]/.test(webapp)) {
+    throw new Error('MIN_EXTENSION_VERSION constant not declared');
+  }
+});
+
+t('semver comparator + _extIsStale helper defined (v1.18.2)', () => {
+  if (!/function\s+_compareSemver\s*\(/.test(webapp)) {
+    throw new Error('_compareSemver helper not defined');
+  }
+  if (!/function\s+_extIsStale\s*\(/.test(webapp)) {
+    throw new Error('_extIsStale helper not defined');
+  }
+});
+
+t('_compareSemver returns correct relative ordering (v1.18.2)', () => {
+  // Extract the function body and eval it in a clean scope to verify the
+  // algorithm. We simulate the function in isolation.
+  const m = webapp.match(/function\s+_compareSemver[\s\S]*?\n\}/);
+  if (!m) throw new Error('_compareSemver not found');
+  const _compareSemver = eval('(' + m[0] + ')');
+  // Equal versions
+  if (_compareSemver('2.2.0', '2.2.0') !== 0) throw new Error('equal should return 0');
+  // Strictly less
+  if (_compareSemver('2.1.0', '2.2.0') !== -1) throw new Error('2.1.0 < 2.2.0 should return -1');
+  if (_compareSemver('2.2.0', '2.2.1') !== -1) throw new Error('patch bump');
+  if (_compareSemver('1.9.9', '2.0.0') !== -1) throw new Error('major bump');
+  // Strictly greater
+  if (_compareSemver('2.3.0', '2.2.0') !== 1) throw new Error('2.3.0 > 2.2.0 should return 1');
+  // Shorthand tolerance
+  if (_compareSemver('2.2', '2.2.0') !== 0) throw new Error('2.2 should equal 2.2.0');
+  // Malformed input tolerance
+  if (_compareSemver(null, '2.2.0') !== -1) throw new Error('null should compare as 0.0.0');
+});
+
+t('stale-extension banner renderer defined and auto-fires on ready event (v1.18.2)', () => {
+  if (!/function\s+_renderStaleExtensionBanner\s*\(/.test(webapp)) {
+    throw new Error('_renderStaleExtensionBanner not defined');
+  }
+  // The banner must be triggered when summit-ext-ready comes in with a stale
+  // version, not just at app-start
+  const readyBlock = webapp.match(/msg\.type\s*===\s*['"]summit-ext-ready['"][\s\S]{0,500}/);
+  if (!readyBlock) throw new Error('summit-ext-ready handler not found');
+  if (!/_extIsStale\s*\(\)/.test(readyBlock[0]) || !/_renderStaleExtensionBanner/.test(readyBlock[0])) {
+    throw new Error('summit-ext-ready handler does not check staleness + render banner');
+  }
+});
+
+t('stale-extension banner is dismissible + per-version remembered (v1.18.2)', () => {
+  const m = webapp.match(/function\s+_renderStaleExtensionBanner[\s\S]*?\n\}/);
+  if (!m) throw new Error('renderer not found');
+  const body = m[0];
+  if (!/localStorage\.getItem/.test(body) || !/applied_stale_ext_dismissed/.test(body)) {
+    throw new Error('dismissal not persisted in localStorage');
+  }
+  // Dismissal key must include both the current extension version and the
+  // min version — otherwise a future MIN_VERSION bump wouldn't re-alert
+  // users who dismissed for an older mismatch.
+  if (!/_extensionVersion\}[^`]*\$\{MIN_EXTENSION_VERSION\}|MIN_EXTENSION_VERSION\}[^`]*\$\{_extensionVersion/.test(body)) {
+    throw new Error('dismissal key does not include both versions — bumps wont re-alert');
+  }
+});
+
+t('stale extension suppresses bridge fallback attempt (v1.18.2)', () => {
+  // Stale extension's bridge response is unreliable (pre-v2.2 content.js
+  // doesn't return structured fields). The add-job modal should skip the
+  // bridge call entirely rather than spending the 25-30s tab-fetch budget
+  // on an extension that probably won't help, and surface the update
+  // prompt immediately.
+  const idx = webapp.indexOf('async function parseJobUrl');
+  const body = webapp.slice(idx, idx + 12000);
+  // Find the bridge-call branch and verify it guards on !_extIsStale()
+  const triggerLine = body.match(/if\s*\(\s*serverGaveUpOnPage\s*&&\s*_extensionAvailable[^)]*\)/);
+  if (!triggerLine) throw new Error('bridge-call gate not found');
+  if (!/!_extIsStale/.test(triggerLine[0])) {
+    throw new Error('bridge fires even on stale extension — wastes time and misleads user');
+  }
+});
+
+t('parse failure message offers stale-update link when extension is stale (v1.18.2)', () => {
+  const idx = webapp.indexOf('async function parseJobUrl');
+  const body = webapp.slice(idx, idx + 14000);
+  // The consolidated zero-filled branch must check _extIsStale and include
+  // both the current version and MIN_EXTENSION_VERSION in the message.
+  if (!/_extIsStale\s*\(\)/.test(body)) {
+    throw new Error('no staleness check in failure branch');
+  }
+  if (!/update to v[\$\{]/.test(body)) {
+    throw new Error('no "update to" copy in failure branch');
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

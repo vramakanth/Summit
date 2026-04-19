@@ -233,8 +233,13 @@ t('Inline star in job list item',      () => {
   if (!rl.includes('toggleWatchlist')) throw new Error('no toggleWatchlist in job list');
 });
 t('Star+trash in aligned column in detail header', () => {
-  // Both buttons in a flex-direction:column wrapper
-  const dh = src.slice(src.indexOf('dv.innerHTML'), src.indexOf('dv.innerHTML') + 5000);
+  // Anchor on the header-template assignment, not the earlier "clear the
+  // pane when no current job" assignment that renderDetail now uses for
+  // the logout/account-switch fix.
+  const anchor = 'dv.innerHTML = `\n    <div class="detail-header">';
+  const idx = src.indexOf(anchor);
+  if (idx < 0) throw new Error('detail header template not found');
+  const dh = src.slice(idx, idx + 5000);
   if (!dh.includes('flex-direction:column')) throw new Error('no column wrapper for buttons');
   if (!dh.includes('toggleWatchlist') || !dh.includes('deleteJob')) throw new Error('missing buttons');
 });
@@ -959,4 +964,60 @@ t('enableEncryption re-encrypts settings after upgrade', () => {
   const idx = src.indexOf('async function enableEncryption');
   const body = src.slice(idx, idx + 3500);
   if (!body.includes('saveUserSettings()')) throw new Error('no saveUserSettings call after upgrade');
+});
+
+// ── v1.18.3: account-switch DOM clearing + insights auto-load on new-job select ──
+console.log('\n── v1.18.3 regression guards');
+t('renderDetail blanks pane when no currentJobId (account-switch leak fix)', () => {
+  const idx = src.indexOf('function renderDetail()');
+  if (idx < 0) throw new Error('renderDetail not found');
+  const body = src.slice(idx, idx + 800);
+  // Must check for missing job AND clear #detail-view, not silently early-return
+  if (!/if\s*\(\s*!j\s*\)\s*\{/.test(body)) {
+    throw new Error('renderDetail does not guard on missing job');
+  }
+  // Inside the !j branch, dv.innerHTML must be cleared (not left stale)
+  const noJobBlock = body.match(/if\s*\(\s*!j\s*\)\s*\{[\s\S]*?\n\s*\}/);
+  if (!noJobBlock) throw new Error('no-job block not parseable');
+  if (!/dv\.innerHTML\s*=\s*['"]/.test(noJobBlock[0])) {
+    throw new Error('renderDetail !j branch does not clear #detail-view — stale cross-account content leaks');
+  }
+});
+t('doLogout clears detail-view DOM (defense in depth)', () => {
+  const idx = src.indexOf('async function doLogout');
+  if (idx < 0) throw new Error('doLogout not found');
+  // Grab the function body up to the next top-level function
+  const body = src.slice(idx, idx + 2000);
+  const hasGetEl = /getElementById\(['"]detail-view['"]\)/.test(body);
+  const hasClear = /\.innerHTML\s*=\s*['"]['"]|dv\.innerHTML\s*=\s*['"]/.test(body);
+  if (!hasGetEl || !hasClear) {
+    throw new Error('doLogout does not clear #detail-view — previous user content visible on next login');
+  }
+});
+t('_maybeAutoLoadTabContent helper extracted and called by both switchTab and selectJob', () => {
+  if (!/function\s+_maybeAutoLoadTabContent\s*\(/.test(src)) {
+    throw new Error('_maybeAutoLoadTabContent helper not defined');
+  }
+  // switchTab must call it
+  const swIdx = src.indexOf('function switchTab');
+  const swBody = src.slice(swIdx, swIdx + 600);
+  if (!/_maybeAutoLoadTabContent\s*\(/.test(swBody)) {
+    throw new Error('switchTab does not call _maybeAutoLoadTabContent');
+  }
+  // selectJob must call it — this is the fix for "new job shows empty insights"
+  const sjIdx = src.indexOf('function selectJob');
+  const sjBody = src.slice(sjIdx, sjIdx + 1500);
+  if (!/_maybeAutoLoadTabContent\s*\(/.test(sjBody)) {
+    throw new Error('selectJob does not call _maybeAutoLoadTabContent — default-tab auto-load never fires on new-job select');
+  }
+});
+t('_maybeAutoLoadTabContent triggers insights research when none exists', () => {
+  const idx = src.indexOf('function _maybeAutoLoadTabContent');
+  const body = src.slice(idx, idx + 1500);
+  if (!/t\s*===\s*['"]insights['"]/.test(body)) {
+    throw new Error('no insights branch in _maybeAutoLoadTabContent');
+  }
+  if (!/runInsights\s*\(/.test(body)) {
+    throw new Error('runInsights not triggered for empty insights');
+  }
 });

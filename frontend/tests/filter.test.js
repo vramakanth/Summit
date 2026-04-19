@@ -410,7 +410,10 @@ t('inline star has min-width for adequate hit target', () => {
 });
 
 t('detail header has both star and trash in column layout', () => {
-  const dh = src.slice(src.indexOf('dv.innerHTML'), src.indexOf('dv.innerHTML') + 5000);
+  const anchor = 'dv.innerHTML = `\n    <div class="detail-header">';
+  const idx = src.indexOf(anchor);
+  if (idx < 0) throw new Error('detail header template not found');
+  const dh = src.slice(idx, idx + 5000);
   if (!dh.includes('flex-direction:column')) throw new Error('no column layout');
   if (!dh.includes('toggleWatchlist'))       throw new Error('no star button');
   if (!dh.includes('deleteJob'))             throw new Error('no trash button');
@@ -497,10 +500,10 @@ function makeFilterDOM(activeFilter) {
 
 // ── Version ──────────────────────────────────────────────────────────────────
 console.log('\n── version');
-t('App version is v1.18.1', () => {
+t('App version is v1.18.3', () => {
   const src2 = require('fs').readFileSync(require('path').join(__dirname,'../public/index.html'),'utf8');
-  if (!src2.includes('v1.18.1')) throw new Error('version not updated to v1.18.1');
-  if (src2.includes('v1.18.0')) throw new Error('old version v1.18.0 still present');
+  if (!src2.includes('v1.18.3')) throw new Error('version not updated to v1.18.3');
+  if (src2.includes('v1.18.2')) throw new Error('old version v1.18.2 still present');
 });
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass}/${pass + fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
