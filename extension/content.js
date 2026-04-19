@@ -144,16 +144,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
   }
 
+  // v1.19.13: use the shared text-extraction helper that mirrors the
+  // server's extractSalaryFromText. The previous ad-hoc regex here
+  // required a $ prefix on BOTH numbers in a range ("$X - $Y"), which
+  // missed the common "$X - Y" form used by many Phenom/PCSX sites
+  // including Dexcom. The helper supports:
+  //   - $/£/€ currency symbols
+  //   - "$X - Y", "$X to $Y", "$Xk – $Yk", etc.
+  //   - single-value "$N per year" / "$N/hour"
+  //   - sanity filters (lo ≥ 15, hi/lo ≤ 5) to reject things like
+  //     "$1M - $10M ARR" or "5–10 years"
   if (!salary) {
-    const m = bodyText.match(/\$([\d,]+(?:\.\d+)?)\s*[kK]?\s*[-–—to]+\s*\$([\d,]+(?:\.\d+)?)\s*[kK]?/);
-    if (m) {
-      const isK = /[kK]/.test(m[0]);
-      const fmt = raw => {
-        const n = parseFloat(raw.replace(/,/g, '')) * (isK && parseFloat(raw.replace(/,/g,'')) < 1000 ? 1000 : 1);
-        return n >= 1000 ? '$' + Math.round(n/1000) + 'k' : '$' + Math.round(n).toLocaleString();
-      };
-      salary = fmt(m[1]) + '–' + fmt(m[2]);
-    }
+    salary = _extractSalaryFromText(bodyText);
   }
 
   // If we got JSON-LD fields but they lacked salary, backfill from DOM salary.
@@ -178,6 +180,62 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   sendResponse({ fields, bodyText, salary, url: location.href });
   return true;
 });
+
+// ── Salary text extractor ────────────────────────────────────────────────────
+// Mirrors server-side extractSalaryFromText (see backend/server.js). Kept in
+// sync by test: both should return the same output for the same input.
+// Shared here via inline duplication rather than a shared module because
+// MV3 content scripts don't easily import from the server bundle.
+//
+// Handles:
+//   - $/£/€ currency symbols (anchored on symbol, not currency code)
+//   - Range: "$X - Y", "$X – $Y", "$Xk to $Yk", "$X to Y"
+//   - Single: "$N per year", "$N/hour", "$Nk annually"
+//   - Sanity filters: lo ≥ 15, hi/lo ≤ 5, hourly range requires hour keyword
+function _extractSalaryFromText(text) {
+  if (!text) return null;
+  const CUR = '[$£€]';
+  const NUM = '\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?';
+  const KSFX = '\\s*[kK]?';
+  const JOIN = '\\s*(?:[-\\u2013\\u2014]|\\bto\\b)\\s*';
+  // Range — single symbol required on first number; optional on second (common:
+  // "$120k - 150k" without $ on second half, or "$180,000 to 250,000").
+  const rangeRe = new RegExp(
+    `(${CUR})\\s*(${NUM})${KSFX}${JOIN}(?:${CUR})?\\s*(${NUM})${KSFX}`,
+    'g'
+  );
+  let m;
+  while ((m = rangeRe.exec(text)) !== null) {
+    const sym = m[1];
+    const raw1 = m[2], raw2 = m[3];
+    const hasK = /k/i.test(m[0]);
+    const n1 = parseFloat(raw1.replace(/,/g, '')) * (hasK && parseFloat(raw1.replace(/,/g, '')) < 1000 ? 1000 : 1);
+    const n2 = parseFloat(raw2.replace(/,/g, '')) * (hasK && parseFloat(raw2.replace(/,/g, '')) < 1000 ? 1000 : 1);
+    const lo = Math.min(n1, n2), hi = Math.max(n1, n2);
+    if (lo < 15) continue;
+    if (hi / lo > 5) continue;
+    if (hi < 25 && lo < 25) {
+      const ctx = text.slice(Math.max(0, m.index - 40), Math.min(text.length, m.index + m[0].length + 40));
+      if (!/hour|hr\b|hourly/i.test(ctx)) continue;
+    }
+    const fmt = (n) => n >= 1000 ? sym + Math.round(n/1000) + 'k' : sym + Math.round(n).toLocaleString();
+    return fmt(Math.min(n1, n2)) + '\u2013' + fmt(Math.max(n1, n2));
+  }
+  // Single salary with explicit period
+  const singleRe = new RegExp(
+    `(${CUR})\\s*(${NUM})${KSFX}\\s*(?:USD|CAD|GBP|EUR)?\\s*(annually|per\\s*year|/\\s*year|/\\s*yr|yearly|annual|hourly|per\\s*hour|/\\s*hour|/\\s*hr)`,
+    'i'
+  );
+  const sm = text.match(singleRe);
+  if (sm) {
+    const sym = sm[1];
+    const hasK = /k/i.test(sm[0]);
+    const n = parseFloat(sm[2].replace(/,/g, '')) * (hasK && parseFloat(sm[2].replace(/,/g, '')) < 1000 ? 1000 : 1);
+    if (n < 15) return null;
+    return n >= 1000 ? sym + Math.round(n/1000) + 'k' : sym + Math.round(n).toLocaleString();
+  }
+  return null;
+}
 
 // ── Label-anchored req ID scraper ─────────────────────────────────────────────
 // Walks the DOM looking for text that matches a known req-ID label pattern,

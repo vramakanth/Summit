@@ -441,8 +441,8 @@ t('doLogin/doLogout/doRegister/doRecover all call _notifyExtensionSessionChanged
   }
 });
 
-t('manifest version bumped to 2.5.0', () => {
-  if (manifest.version !== '2.5.0') throw new Error('manifest still at ' + manifest.version);
+t('manifest version bumped to 2.5.2', () => {
+  if (manifest.version !== '2.5.2') throw new Error('manifest still at ' + manifest.version);
 });
 
 // ── v2.4.0: inbox-based addJob (no more GET-modify-PUT of encrypted blob) ──
@@ -471,6 +471,172 @@ t('addJob does NOT do GET+modify+PUT on /api/jobs (would corrupt encrypted blob)
         throw new Error('addJob still reads /api/jobs directly — should only POST to /inbox');
       }
     }
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.19.13 — salary extraction parity with server
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── extension — salary extraction (v1.19.13)');
+
+// Extract the _extractSalaryFromText function body from content.js and
+// eval it in isolation. The function is pure — no DOM, no globals.
+function _loadSalaryExtractor() {
+  const idx = content.indexOf('function _extractSalaryFromText');
+  if (idx < 0) throw new Error('_extractSalaryFromText not defined in content.js');
+  // Balanced-brace scan for the function body
+  let i = idx;
+  while (i < content.length && content[i] !== '{') i++;
+  let depth = 1; i++;
+  const bodyStart = idx;
+  while (i < content.length && depth > 0) {
+    const c = content[i], c2 = content[i+1];
+    if (c === '/' && c2 === '/') { while (i < content.length && content[i] !== '\n') i++; continue; }
+    if (c === '{') depth++; else if (c === '}') depth--;
+    i++;
+  }
+  const fnSrc = content.slice(bodyStart, i);
+  // eslint-disable-next-line no-new-func
+  return new Function(`${fnSrc}\nreturn _extractSalaryFromText;`)();
+}
+
+t('_extractSalaryFromText function is defined in content.js', () => {
+  _loadSalaryExtractor();  // throws if missing
+});
+
+t('BEHAVIOR: extracts common salary formats from real-world text', () => {
+  const extract = _loadSalaryExtractor();
+  const cases = [
+    // [input, expected, description]
+
+    // Common range formats
+    ['Pay range: $180,000 - 250,000 USD annually', '$180k–$250k', 'Dexcom-style single-$ range'],
+    ['Salary: $180,000 – $250,000', '$180k–$250k', 'full en-dash with both $'],
+    ['$120,000 to $160,000 per year', '$120k–$160k', '"to" separator with both $'],
+    ['Expected range is $150k-$200k', '$150k–$200k', 'k-suffix range'],
+    ['$150k to 200k', '$150k–$200k', '"to" separator single $ with k'],
+    ['Compensation: $95,000 — $125,000', '$95k–$125k', 'em-dash separator'],
+
+    // Single-value
+    ['$150,000 per year', '$150k', 'single per-year'],
+    ['Pay: $180,000 annually', '$180k', 'single annually'],
+    ['$50/hour', '$50', 'hourly'],
+
+    // Non-$ currencies
+    ['Salary range: £60,000 - £80,000', '£60k–£80k', 'GBP range'],
+    ['€90,000 – €120,000', '€90k–€120k', 'EUR range'],
+
+    // Sanity filter rejections
+    ['Experience: 5-10 years', null, '"5-10 years" is not a salary'],
+    ['$1 - $10 gift card', null, 'lo < 15 filter'],
+    ['We have 100+ customers and $1M - $10M ARR', null, 'hi/lo > 5 filter'],
+
+    // Hourly-looking small range without hour keyword → reject
+    ['Team of $5 - $20 contributors', null, 'small range without hour keyword'],
+    // Same but WITH hourly context → accept
+    ['$18 - $22 per hour', '$18–$22', 'small range with hour context'],
+
+    // Noise: must not grab price in job description
+    ['Our product costs $99 per month. Salary: $120,000 - $160,000 annually', '$120k–$160k', 'salary range after price mention'],
+
+    // Empty / junk
+    ['', null, 'empty string'],
+    ['no salary info here', null, 'no currency symbol'],
+  ];
+  const errors = [];
+  for (const [input, expected, desc] of cases) {
+    const got = extract(input);
+    if (got !== expected) {
+      errors.push(`${desc}\n    input:    ${JSON.stringify(input)}\n    expected: ${JSON.stringify(expected)}\n    got:      ${JSON.stringify(got)}`);
+    }
+  }
+  if (errors.length) throw new Error(`${errors.length} case(s) failed:\n  ` + errors.join('\n  '));
+});
+
+t('BUGFIX: Phenom PCSX "Pay range: $X - Y" format is caught (Dexcom bug)', () => {
+  // The specific bug report: Dexcom Phenom PCSX page renders salary as
+  // "Pay range: $180,000 - 250,000" (single $ prefix). The old extension
+  // regex required $ on BOTH numbers and missed this. Regression-guard
+  // the exact pattern so future refactors don't resurrect the bug.
+  const extract = _loadSalaryExtractor();
+  const realistic = 'Job description ... Pay range: $180,000 - 250,000 USD. Dexcom offers comprehensive benefits.';
+  const result = extract(realistic);
+  if (!result) {
+    throw new Error('Dexcom-style "Pay range: $X - Y" not matched');
+  }
+  if (!/\$180/.test(result) || !/\$250/.test(result)) {
+    throw new Error(`Dexcom-style extraction returned unexpected value: ${result}`);
+  }
+});
+
+t('content.js calls _extractSalaryFromText in the fallback chain', () => {
+  // The helper must actually be wired into the extractJob flow — having
+  // it defined doesn't help if the old inline regex is still the one
+  // called. Check the listener body references it.
+  const listenerIdx = content.indexOf('onMessage.addListener');
+  const listenerEnd = content.indexOf('});', listenerIdx);
+  const listenerBody = content.slice(listenerIdx, listenerEnd);
+  if (!/_extractSalaryFromText\(/.test(listenerBody)) {
+    throw new Error('extractJob handler does not call _extractSalaryFromText');
+  }
+  // And the old ad-hoc regex should be gone
+  if (/\\\$\(\[\\d,\]\+.*?\)\\s\*\[kK\]\?\\s\*\[-/.test(content)) {
+    throw new Error('old ad-hoc salary regex is still in content.js');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.19.14 — popup.js: pageData is module-scoped (ReferenceError in addJob)
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── extension — popup.js pageData scoping (v1.19.14)');
+
+t('pageData declared at module scope (not only inside startParsing)', () => {
+  // The bug: pageData was declared as `let` inside startParsing. addJob
+  // referenced it to pass reqId on submit, but that reference lives in a
+  // different scope — ReferenceError at runtime, breaking Add flow on
+  // EVERY site, not just ones with reqId. Must be module-scoped.
+  //
+  // Heuristic: look for a `let pageData` (or `var pageData`) at indent 0.
+  // Indented declarations (inside functions) wouldn't match, which is
+  // exactly what we're guarding against.
+  if (!/^\s*let\s+pageData\s*=/m.test(popup)) {
+    // Maybe it's `var` or on shared line — try broader
+    if (!/^(?:let|var|const)\s+pageData/m.test(popup)) {
+      throw new Error('pageData is not declared at module scope in popup.js');
+    }
+  }
+});
+
+t('No shadowing declaration of pageData inside startParsing', () => {
+  // Even with a module-scoped pageData, `let pageData = null` inside
+  // startParsing would create a local that shadows it — addJob would
+  // still read the module-scoped (stale-null) one. Assert we don't
+  // re-declare inside the function.
+  const idx = popup.indexOf('async function startParsing');
+  if (idx < 0) throw new Error('startParsing function not found');
+  // Find the end of the function by a balanced-brace scan.
+  let i = popup.indexOf('{', idx);
+  let depth = 1; i++;
+  while (i < popup.length && depth > 0) {
+    const c = popup[i], c2 = popup[i+1];
+    if (c === '/' && c2 === '/') { while (i < popup.length && popup[i] !== '\n') i++; continue; }
+    if (c === '{') depth++; else if (c === '}') depth--;
+    i++;
+  }
+  const body = popup.slice(idx, i);
+  if (/(?:^|\s)(?:let|var|const)\s+pageData\b/.test(body)) {
+    throw new Error('startParsing re-declares pageData — would shadow the module-scoped one');
+  }
+});
+
+t('addJob references pageData (reqId passthrough should still work)', () => {
+  // Defensive — if someone deletes the reqId lookup while fixing the
+  // scoping, we want to notice. Guard the positive behavior too.
+  const idx = popup.indexOf('async function addJob');
+  if (idx < 0) throw new Error('addJob function not found');
+  const body = popup.slice(idx, idx + 2000);
+  if (!/pageData\?\.fields\?\.reqId/.test(body)) {
+    throw new Error('addJob no longer passes reqId from pageData — dedupe would regress');
   }
 });
 

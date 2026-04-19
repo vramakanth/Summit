@@ -4,6 +4,14 @@ const TRACKER_URL = 'https://jobsummit.app';
 
 let token = '', currentTabUrl = '', currentTab = null;
 
+// v1.19.14: pageData holds the structured extraction from content.js
+// (fields, bodyText, salary, url). Previously declared as a `let` inside
+// startParsing, which meant addJob's reference to pageData.fields.reqId
+// threw a ReferenceError — breaking the Add button on ALL sites, not
+// just ones where reqId was present. Must stay module-scoped so the
+// submit path can read it.
+let pageData = null;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showStatus(el, type, msg) {
   el.className = 'status show ' + type;
@@ -151,8 +159,9 @@ async function startParsing() {
 
   setProgress(15, 'Reading page...');
 
-  // Ask content script for everything it can see
-  let pageData = null;
+  // Ask content script for everything it can see. Writes to the
+  // module-scoped `pageData` so addJob can read reqId on submit.
+  pageData = null;
   try {
     pageData = await new Promise((resolve) => {
       chrome.tabs.sendMessage(currentTab.id, { action: 'extractJob' }, resp => {

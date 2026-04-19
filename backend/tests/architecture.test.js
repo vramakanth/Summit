@@ -145,9 +145,9 @@ t('no site-specific hostname branches', () => {
 t('reads document.body.innerText', () => has(contentSrc, 'document.body).innerText'));
 t('JSON-LD baseSalary extraction', () => { has(contentSrc, 'baseSalary'); has(contentSrc, 'minValue'); has(contentSrc, 'maxValue'); });
 t('bdi salary extraction',         () => has(contentSrc, "querySelectorAll('bdi')"));
-t('fallback salary from bodyText', () => has(contentSrc, 'bodyText.match('));
+t('fallback salary from bodyText (via shared helper)', () => has(contentSrc, '_extractSalaryFromText('));
 t('sends bodyText + salary + url', () => { has(contentSrc, 'bodyText'); has(contentSrc, 'salary'); has(contentSrc, 'url: location.href'); });
-t('under 340 lines (bumped in v1.19.3 for reqId DOM extraction)', () => lt(contentSrc.split('\n').length, 340));
+t('under 420 lines (bumped in v1.19.13 for shared salary helper)', () => lt(contentSrc.split('\n').length, 420));
 
 // ── extractSalaryFromText ─────────────────────────────────────────────────────
 console.log('\n── extractSalaryFromText');

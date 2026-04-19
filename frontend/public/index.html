@@ -110,7 +110,7 @@ body.in-app { overflow: hidden; height: 100vh; height: 100dvh; }
 .auth-logo-mark { width: 36px; height: 36px; background: var(--accent-bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .auth-logo-mark svg { width: 20px; height: 20px; }
 .auth-logo-text { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; color: #ffffff; font-family: var(--font-display); }
-/* v1.19.12: when the auth-logo is wrapped in an anchor (linking to the
+/* v1.19.14: when the auth-logo is wrapped in an anchor (linking to the
    landing page), the anchor gets these styles so the whole block reads
    as clickable without looking like an underlined link. */
 a.auth-logo { text-decoration: none; cursor: pointer; transition: opacity 0.15s; }
@@ -697,7 +697,7 @@ input[type=\"file\"] { display: none; }
   12%  { background-color: rgba(232,168,56,0.08); }
   100% { background-color: rgba(232,168,56,0.0); }
 }
-/* v1.19.12: highlight new-from-inbox job cards. Tells the user "this just
+/* v1.19.14: highlight new-from-inbox job cards. Tells the user "this just
    arrived from the extension" without a toast or extra chrome. Animation
    self-removes via animationend listener; class is one-shot. */
 .job-item.inbox-just-added { animation: inboxArrive 2s ease-out; }
@@ -706,7 +706,7 @@ input[type=\"file\"] { display: none; }
   70%  { background-color: rgba(232,168,56,0.06); border-color: rgba(232,168,56,0.15); }
   100% { background-color: transparent; border-color: transparent; }
 }
-/* v1.19.12: passive advisory when an extension-add was silently skipped
+/* v1.19.14: passive advisory when an extension-add was silently skipped
    because it matched an existing job. Different tint from inbox-just-added
    so the user can tell at a glance: amber = new arrival, blue = duplicate
    caught. Same one-shot lifecycle. */
@@ -716,7 +716,7 @@ input[type=\"file\"] { display: none; }
   70%  { background-color: rgba(96,165,250,0.05); border-color: rgba(96,165,250,0.12); }
   100% { background-color: transparent; border-color: transparent; }
 }
-/* v1.19.12: extension-install nudge presentations. Primary surface is a
+/* v1.19.14: extension-install nudge presentations. Primary surface is a
    top-row banner (see _renderExtInstallNudgeBanner — styled inline to
    match the stale-ext banner). Secondary surface is an inline hint in
    the add-job modal, styled below. Both respect a shared dismiss flag. */
@@ -980,7 +980,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('recover')" style="font-size:12px;color:var(--text3)">Forgot password? Use a recovery code</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.12 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.14 · private beta</div>
   </div>
 </div>
 
@@ -1020,7 +1020,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <input id="reg-confirm" type="password" placeholder="Confirm password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()">
     </div>
 
-    <!-- v1.19.12: security contract moved inline from post-hoc modal. User
+    <!-- v1.19.14: security contract moved inline from post-hoc modal. User
          sees what they're agreeing to BEFORE the act of creation, and the
          checkboxes gate the Create button rather than appearing after. -->
     <div style="margin-top:24px;padding:18px 20px;background:rgba(232,168,56,0.04);border:1px solid rgba(232,168,56,0.22);border-radius:var(--radius)">
@@ -1050,7 +1050,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
     <button id="register-btn" class="auth-btn" onclick="doRegister()" disabled style="margin-top:20px;opacity:0.4;cursor:not-allowed">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.12 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.14 · private beta</div>
   </div>
 </div>
 
@@ -1066,7 +1066,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.12 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.14 · private beta</div>
   </div>
 </div>
 
@@ -1143,7 +1143,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.19.12</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.19.14</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1194,7 +1194,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved page (HTML or PDF)</label>
         <input id="upload-input" type="file" accept=".html,.htm,.mhtml,.mht,.pdf" style="display:none" onchange="parseUploadedFile(event)">
       </div>
-      <!-- v1.19.12: extension-install inline nudge. Populated + shown by
+      <!-- v1.19.14: extension-install inline nudge. Populated + shown by
            _renderExtInstallNudge() when modal opens if extension is absent.
            Hidden by default — never appears for users who already have it. -->
       <div id="ext-install-nudge-modal-slot"></div>
@@ -1359,7 +1359,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.19.12';
+const APP_VERSION = '1.19.14';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -1368,7 +1368,7 @@ let sessionTailoredResume = null, sessionTailoredCover = null;
 let sessionTailoredResumeHtml = null, sessionTailoredCoverHtml = null;
 let activeTailorDoc = 'resume'; // which doc type is selected in tailoring UI
 let pendingHtml = null, pendingText = null;
-// v1.19.12: carry req ID + label from the URL parse (JSON-LD / HTML scrape /
+// v1.19.14: carry req ID + label from the URL parse (JSON-LD / HTML scrape /
 // AI extract) so addJob can stamp it on the new job record. Kept as module
 // state rather than a form input — it's a silent metadata field, not
 // something the user should have to see or edit.
@@ -1561,7 +1561,7 @@ function showScreen(n, pushHistory=true) {
     }
   }
   if (n === 'recover') setTimeout(()=>document.getElementById('recover-username')?.focus(), 80);
-  // v1.19.12: landing on the register screen — reset security-contract
+  // v1.19.14: landing on the register screen — reset security-contract
   // checkboxes. Otherwise a user who ticked them, navigated away, and came
   // back would return to a pre-confirmed state without reading the notice.
   if (n === 'register') {
@@ -1601,16 +1601,16 @@ function showApp() {
 
   // Notes editor is now inline (no CDN / no module imports) — nothing to prefetch.
 
-  // v1.19.12: start polling inbox for near-instant extension-added job pickup
+  // v1.19.14: start polling inbox for near-instant extension-added job pickup
   _startInboxPolling();
 
-  // v1.19.12: if an extension announced itself while the user was on a
+  // v1.19.14: if an extension announced itself while the user was on a
   // pre-login screen, the banner handler returned early. Re-check here so
   // a stale extension still surfaces a banner — just on the app chrome,
   // not the landing page.
   if (_extIsStale()) _renderStaleExtensionBanner();
 
-  // v1.19.12: render the install-extension banner for users who don't
+  // v1.19.14: render the install-extension banner for users who don't
   // have it installed. Same top-row presentation as the stale-ext banner
   // for visual language consistency. Internally delayed so we don't flash
   // it on users whose extension is just slow to announce.
@@ -1904,7 +1904,7 @@ async function doRegister() {
   const err = document.getElementById('register-error');
   const btn = document.getElementById('register-btn');
   err.classList.remove('show');
-  // v1.19.12: email is truly optional now. Summit is end-to-end encrypted and
+  // v1.19.14: email is truly optional now. Summit is end-to-end encrypted and
   // can't recover accounts via email, so there's no functional requirement
   // for it. Only username + password are required; email is reserved for
   // future notification features.
@@ -1913,7 +1913,7 @@ async function doRegister() {
   if (p.length < 8) { showErr(err,'Password must be at least 8 characters.'); return; }
   if (p!==c) { showErr(err,'Passwords do not match.'); return; }
 
-  // v1.19.12: security contract is now shown inline on the register screen,
+  // v1.19.14: security contract is now shown inline on the register screen,
   // with two checkboxes that gate the Create account button. By the time
   // the user clicks submit, they've already confirmed both. No modal.
   const cb1 = document.getElementById('reg-cb1')?.checked;
@@ -1963,7 +1963,7 @@ async function doRegister() {
 }
 
 // Strong security warning shown before account creation
-// v1.19.12: register button state controller. Enables the Create account
+// v1.19.14: register button state controller. Enables the Create account
 // button only when both security-contract checkboxes are ticked. The
 // security contract lives inline on the register screen now (was a post-hoc
 // modal in earlier versions), so checkbox state is the gating condition
@@ -2062,8 +2062,8 @@ async function doLogout() {
   // is gone, the PUT would 401 and the user's last typing would be lost.
   // We await so state is deterministic before we clear everything.
   try { await tearDownNotesEditor(); } catch {}
-  _stopInboxPolling();  // v1.19.12: halt inbox drain loop
-  // v1.19.12: extension banners are only shown post-login, so remove both
+  _stopInboxPolling();  // v1.19.14: halt inbox drain loop
+  // v1.19.14: extension banners are only shown post-login, so remove both
   // on logout. Don't write dismiss flags — if the user re-logs-in and the
   // state still warrants a banner, we want it back.
   const sb = document.getElementById('stale-ext-banner');
@@ -2159,7 +2159,7 @@ async function loadJobs() {
       });
     });
 
-    // v1.19.12 backfill: jobs added before reqId tracking don't have one.
+    // v1.19.14 backfill: jobs added before reqId tracking don't have one.
     // We can't re-scrape the page, but we can extract from the URL alone
     // for the common ATS patterns (Workday req-codes, LinkedIn/Greenhouse
     // numeric IDs). Best-effort — leaves reqId empty for anything that
@@ -2176,17 +2176,17 @@ async function loadJobs() {
     });
     if (strippedAnyNotes || backfilledAny) scheduleSave();
   } catch(e) { console.error('loadJobs error:', e); jobs={}; }
-  // v1.19.12: drain any pending inbox entries (posted by the extension while
+  // v1.19.14: drain any pending inbox entries (posted by the extension while
   // the user was away). Fold them into jobs BEFORE rendering so new additions
   // appear on the very first paint.
   await _drainInbox();
   renderJobList();
-  _applyInboxHighlights();  // v1.19.12: highlight any entries that arrived while away
-  _applyDupeAdvisory();     // v1.19.12: advisory for silently-skipped duplicates
+  _applyInboxHighlights();  // v1.19.14: highlight any entries that arrived while away
+  _applyDupeAdvisory();     // v1.19.14: advisory for silently-skipped duplicates
   renderStaleNudge();
 }
 
-// ── Job inbox drain (v1.19.12) ───────────────────────────────────────────────
+// ── Job inbox drain (v1.19.14) ───────────────────────────────────────────────
 // The extension can't encrypt (no dataKey), so it POSTs plaintext jobs to
 // /api/jobs/inbox. We poll/drain that inbox here, merge entries into the
 // encrypted `jobs` store, and DELETE each consumed entry atomically.
@@ -2211,7 +2211,7 @@ let _inboxJustAdded = new Set();
 // user knows a duplicate add happened while they were away.
 let _inboxDupeMatched = new Map();  // existingJobId -> { candidate, reason }
 
-// ── Dedupe helpers (v1.19.12) ────────────────────────────────────────────────
+// ── Dedupe helpers (v1.19.14) ────────────────────────────────────────────────
 // Centralized "is this a duplicate?" decision so the paste-URL path and the
 // inbox drain path use identical rules. Returns { job, reason } on hit or
 // null on miss.
@@ -2426,7 +2426,7 @@ async function _drainInbox() {
         if (!deleted) continue;  // racing tab got it first
       } catch { continue; }
 
-      // v1.19.12: dedupe check before merge. The user wasn't present when
+      // v1.19.14: dedupe check before merge. The user wasn't present when
       // the extension posted this, so we can't show a decision modal —
       // policy is: duplicates are silently skipped (not merged) but we
       // track them so the existing card can get a passive advisory flash
@@ -2462,7 +2462,7 @@ async function _drainInbox() {
         resume:   null,
         cover:    null,
         source:   entry.source || 'extension',
-        // v1.19.12: carry requisition ID onto the merged job so future
+        // v1.19.14: carry requisition ID onto the merged job so future
         // dedupe checks against this job work correctly.
         reqId:      entry.reqId      || '',
         reqIdLabel: entry.reqIdLabel || '',
@@ -2506,7 +2506,7 @@ function _applyInboxHighlights() {
   _inboxJustAdded.clear();
 }
 
-// v1.19.12: passive advisory for inbox entries skipped as duplicates.
+// v1.19.14: passive advisory for inbox entries skipped as duplicates.
 // Flashes the existing matched card in blue so the user understands a
 // duplicate add happened while they were away. No modal — they weren't
 // present at the add. One-shot, self-cleaning, same pattern as highlights.
@@ -2767,7 +2767,7 @@ async function parseJobUrl() {
 
     // Populate form fields via shared helper
     let filled = _populateFormFields(finalFields);
-    // v1.19.12: req ID is a silent field — stash for addJob to stamp on the
+    // v1.19.14: req ID is a silent field — stash for addJob to stamp on the
     // new job record rather than rendering a form input. Overwritten below
     // if the extension-bridge path produces a new set of fields.
     pendingReqId      = finalFields?.reqId      || null;
@@ -3052,7 +3052,7 @@ function openAddModal() {
   if (mf) mf.style.display = 'none';
   if (mc) mc.style.transform = '';
   setTimeout(() => document.getElementById('job-url').focus(), 60);
-  // v1.19.12: render install-nudge inline if extension isn't detected.
+  // v1.19.14: render install-nudge inline if extension isn't detected.
   // No-op for users who have it, have dismissed it, or for whom ext
   // announces itself between now and when they click Parse.
   _renderExtInstallNudgeModal();
@@ -3066,7 +3066,7 @@ function addJob() {
   const workType = document.getElementById('job-worktype')?.value || '';
   const url      = document.getElementById('job-url').value.trim();
 
-  // v1.19.12: dedupe candidate — the fields we'll compare against existing
+  // v1.19.14: dedupe candidate — the fields we'll compare against existing
   // jobs. reqId comes from the URL parse pipeline (stashed in pendingReqId)
   // and is the primary match signal when present. URL is the fallback signal.
   const candidate = { title, company, url, reqId: pendingReqId || '' };
@@ -3098,7 +3098,7 @@ function _commitAddJob(title, company, url, workType) {
     tailoredResume: null, tailoredCover: null,
     postingHtml: pendingHtml,
     postingText: pendingText,
-    // v1.19.12: requisition ID — silent metadata, used for dedupe. Empty if
+    // v1.19.14: requisition ID — silent metadata, used for dedupe. Empty if
     // the extraction pipeline didn't find one (small companies, custom pages).
     reqId:      pendingReqId      || '',
     reqIdLabel: pendingReqIdLabel || '',
@@ -3151,7 +3151,7 @@ function getFilteredJobs() {
 let bulkSelected = new Set();
 let bulkMode = false;
 
-// v1.19.12: right-pane empty-state copy depends on whether the user has
+// v1.19.14: right-pane empty-state copy depends on whether the user has
 // any jobs at all. Called from renderJobList (which fires whenever the
 // jobs collection changes). When zero jobs exist, the list-side empty
 // state is already explaining "No applications yet. Click Add job" —
@@ -3175,7 +3175,7 @@ function _renderRightPaneEmptyState() {
 function renderJobList() {
   const list = document.getElementById('job-list');
   const filtered = getFilteredJobs();
-  // v1.19.12: the right-pane empty-state copy depends on whether any jobs
+  // v1.19.14: the right-pane empty-state copy depends on whether any jobs
   // exist. Zero jobs → show a warmer "get started" variant (no mention of
   // "select from the list" which would be nonsensical when the list is
   // also empty). Any jobs → "select one from the list" makes sense.
@@ -4367,7 +4367,7 @@ let _extensionVersion = null;
 // since fixed (content.js returning structured fields is a v2.2.0 capability;
 // pre-2.2 extensions silently lose the Path 1 extraction that lets the
 // add-job modal's bridge fallback produce useful data on bot-gated sites).
-const MIN_EXTENSION_VERSION = '2.5.0';
+const MIN_EXTENSION_VERSION = '2.5.2';
 
 function _compareSemver(a, b) {
   // Returns -1 if a<b, 0 if equal, 1 if a>b. Tolerates "2.2", "2.2.0", "2.2.0-beta"
@@ -4434,7 +4434,7 @@ function _renderStaleExtensionBanner() {
 function _dismissStaleBanner() {
   const banner = document.getElementById('stale-ext-banner');
   if (banner) banner.remove();
-  // v1.19.12: only reset padding if no other top-row banner is holding
+  // v1.19.14: only reset padding if no other top-row banner is holding
   // it. Mutually exclusive in practice (stale requires ext present;
   // install requires ext absent) but defensive programming.
   if (!document.getElementById('ext-install-banner')) {
@@ -4457,7 +4457,7 @@ window.addEventListener('message', (ev) => {
     if (_extIsStale()) {
       _renderStaleExtensionBanner();
     } else {
-      // v1.19.12: symmetric cleanup — if the announcing extension is
+      // v1.19.14: symmetric cleanup — if the announcing extension is
       // up-to-date, any banner left over from a previous stale version
       // (e.g. user just updated the extension without reloading the page,
       // so the new content.js fires summit-ext-ready with the new version
@@ -4470,7 +4470,7 @@ window.addEventListener('message', (ev) => {
     // was present, the extension announced itself — remove the nudge so the
     // user isn't being told to install something they already have.
     _removeExtInstallNudges();
-    // v1.19.12: also clear the install-nudge dismiss flag. The user's
+    // v1.19.14: also clear the install-nudge dismiss flag. The user's
     // "I don't want to install it" intent was relative to "I don't have
     // it." Once they have it, the dismissal is moot; if they later
     // uninstall again, that's a fresh state and they deserve a fresh
@@ -4481,7 +4481,7 @@ window.addEventListener('message', (ev) => {
   }
 });
 
-// ── v1.19.12: extension-install nudges ──────────────────────────────────────
+// ── v1.19.14: extension-install nudges ──────────────────────────────────────
 // Two unobtrusive prompts to install the extension, shown only to users
 // whose extension hasn't announced itself:
 //
@@ -4500,7 +4500,7 @@ window.addEventListener('message', (ev) => {
 
 const _EXT_NUDGE_DISMISS_KEY = 'applied_ext_install_nudge_dismissed';
 
-// v1.19.12: does this browser support our extension at all? We ship a
+// v1.19.14: does this browser support our extension at all? We ship a
 // Chromium build (Chrome, Edge, Brave, Arc, Opera, Vivaldi) and a
 // Safari desktop build (via Xcode). Firefox has a different extension
 // format we don't build for; mobile browsers don't support web
@@ -4530,7 +4530,7 @@ function _browserSupportsExtension() {
   return false;
 }
 
-// v1.19.12: Settings → Browser Extension shows an advisory at the top of
+// v1.19.14: Settings → Browser Extension shows an advisory at the top of
 // the section when the current browser can't install our extension.
 // Honest and informational — we don't pretend we're coming to Firefox
 // when we aren't, and we don't silently hide Settings info.
@@ -4562,7 +4562,7 @@ function _dismissExtInstallNudge() {
 }
 
 function _removeExtInstallNudges() {
-  // v1.19.12: top-row banner (primary) + add-modal inline hint
+  // v1.19.14: top-row banner (primary) + add-modal inline hint
   const banner = document.getElementById('ext-install-banner');
   if (banner) {
     banner.remove();
@@ -4585,13 +4585,13 @@ function _removeExtInstallNudges() {
 // via postMessage before we render the "install it" message — we don't
 // want a flash on users who already have it.
 //
-// v1.19.12: the primary empty-state card moved to a top-row banner,
+// v1.19.14: the primary empty-state card moved to a top-row banner,
 // matching the stale-ext banner's visual language. One genre of signal
 // ("ambient awareness about extension state") deserves one presentation.
 function _renderExtInstallNudgeBanner() {
   if (!token || !currentUser) return;                // signed-in only
   if (_extensionAvailable) return;                   // already installed
-  if (!_browserSupportsExtension()) return;          // v1.19.12: Firefox / mobile — no build for them
+  if (!_browserSupportsExtension()) return;          // v1.19.14: Firefox / mobile — no build for them
   if (_extInstallNudgeDismissed()) return;           // user said no before
   if (document.getElementById('stale-ext-banner')) return;  // stale banner takes precedence
   if (document.getElementById('ext-install-banner')) return; // already rendered
@@ -4630,7 +4630,7 @@ function _renderExtInstallNudgeModal() {
   // the same re-check pattern. If the user dismissed on the empty state,
   // respect that here too.
   if (_extensionAvailable) { slot.innerHTML = ''; return; }
-  if (!_browserSupportsExtension()) { slot.innerHTML = ''; return; }  // v1.19.12: no build for this browser
+  if (!_browserSupportsExtension()) { slot.innerHTML = ''; return; }  // v1.19.14: no build for this browser
   if (_extInstallNudgeDismissed()) { slot.innerHTML = ''; return; }
 
   slot.innerHTML = `
@@ -4672,7 +4672,7 @@ function _bridgeCall(action, payload = {}, timeoutMs = 30_000) {
   });
 }
 
-// v1.19.12: re-ping the extension to refresh our cached version, and
+// v1.19.14: re-ping the extension to refresh our cached version, and
 // reconcile the stale-ext banner state against whatever the extension
 // currently reports. Called on tab focus / visibility change — the
 // natural pattern when a user has just installed an update in another
@@ -8943,7 +8943,7 @@ function openSettings(section) {
   renderEncryptionStatus();
   loadRecoveryStatus();
   loadUsageCard();
-  _renderExtUnsupportedNotice();  // v1.19.12: Firefox / mobile advisory
+  _renderExtUnsupportedNotice();  // v1.19.14: Firefox / mobile advisory
   const s = getTailorSettings();
   const autosaveEl = document.getElementById('st-autosave');
   const cleanupEl  = document.getElementById('st-cleanup');
@@ -9601,7 +9601,7 @@ setInterval(() => {
         <div class="settings-section" id="spane-extension">
           <div class="settings-section-title">Browser extension</div>
           <div class="settings-section-body">
-            <!-- v1.19.12: populated on render with an advisory for Firefox /
+            <!-- v1.19.14: populated on render with an advisory for Firefox /
                  mobile users. Empty on supported browsers. -->
             <div id="ext-unsupported-notice"></div>
             <div style="font-size:13px;color:var(--text2);line-height:1.6">
