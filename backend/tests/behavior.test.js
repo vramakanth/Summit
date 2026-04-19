@@ -4525,5 +4525,103 @@ t('doLogout removes BOTH banners (install + stale)', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// v1.19.12 — suppress install nudge on browsers where extension isn't available
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.12 browser-support gating');
+
+t('_browserSupportsExtension function exists', () => {
+  if (!/function _browserSupportsExtension/.test(feSrc)) {
+    throw new Error('_browserSupportsExtension missing');
+  }
+});
+
+t('BEHAVIOR: _browserSupportsExtension correctly classifies real UA strings', () => {
+  // Pull the function body and eval it in isolation with fake navigator.
+  const idx = feSrc.indexOf('function _browserSupportsExtension');
+  if (idx < 0) throw new Error('helper missing');
+  // Balanced-brace scan (reuse the pattern from earlier behavioral tests)
+  let i = idx;
+  while (i < feSrc.length && feSrc[i] !== '{') i++;
+  let depth = 1; i++;
+  const start = idx;
+  while (i < feSrc.length && depth > 0) {
+    const c = feSrc[i], c2 = feSrc[i+1];
+    if (c === '/' && c2 === '/') { while (i < feSrc.length && feSrc[i] !== '\n') i++; continue; }
+    if (c === '{') depth++; else if (c === '}') depth--;
+    i++;
+  }
+  const fnSrc = feSrc.slice(start, i);
+
+  const check = (ua) => {
+    // eslint-disable-next-line no-new-func
+    return new Function('navigator', `${fnSrc}\nreturn _browserSupportsExtension();`)({ userAgent: ua });
+  };
+
+  const cases = [
+    // [userAgent, expected, description]
+    // Chromium family — all true
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', true, 'Chrome desktop Windows'],
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', true, 'Chrome desktop macOS'],
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0', true, 'Edge desktop'],
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Brave/120', true, 'Brave'],
+    // Safari desktop — true
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15', true, 'Safari desktop macOS'],
+    // Firefox — false (no extension build for them)
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0', false, 'Firefox desktop Windows'],
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0', false, 'Firefox desktop macOS'],
+    // Mobile — false
+    ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', false, 'iPhone Safari'],
+    ['Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36', false, 'Android Chrome'],
+    ['Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', false, 'iPad Mobile Safari'],
+    // iPad in desktop-mode reports as macOS — we let this through (false positive is rare + harmless)
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15', true, 'iPad desktop-mode (looks like macOS Safari — true is acceptable)'],
+    // Empty / junk UA — false
+    ['', false, 'empty UA'],
+    ['unknown browser', false, 'unknown UA'],
+  ];
+
+  for (const [ua, expected, desc] of cases) {
+    const got = check(ua);
+    if (got !== expected) {
+      throw new Error(`${desc}: expected ${expected}, got ${got}\n  UA: ${ua}`);
+    }
+  }
+});
+
+t('Install banner checks _browserSupportsExtension before rendering', () => {
+  const idx = feSrc.indexOf('function _renderExtInstallNudgeBanner');
+  const body = feSrc.slice(idx, idx + 3500);
+  // Must guard against unsupported browsers in BOTH the synchronous
+  // precheck and the post-setTimeout re-check.
+  const calls = body.match(/_browserSupportsExtension\(\)/g) || [];
+  if (calls.length < 2) {
+    throw new Error(`_renderExtInstallNudgeBanner should check _browserSupportsExtension twice (pre + post delay), got ${calls.length}`);
+  }
+});
+
+t('Add-modal inline hint checks _browserSupportsExtension', () => {
+  const idx = feSrc.indexOf('function _renderExtInstallNudgeModal');
+  const body = feSrc.slice(idx, idx + 1500);
+  if (!/_browserSupportsExtension\(\)/.test(body)) {
+    throw new Error('add-modal inline hint does not gate on browser support');
+  }
+});
+
+t('Settings has an unsupported-browser notice slot + renderer', () => {
+  if (!/id="ext-unsupported-notice"/.test(feSrc)) {
+    throw new Error('ext-unsupported-notice slot missing from Settings markup');
+  }
+  if (!/function _renderExtUnsupportedNotice/.test(feSrc)) {
+    throw new Error('_renderExtUnsupportedNotice function missing');
+  }
+  // openSettings must call it
+  const idx = feSrc.indexOf('function openSettings');
+  const body = feSrc.slice(idx, idx + 3000);
+  if (!/_renderExtUnsupportedNotice\(\)/.test(body)) {
+    throw new Error('openSettings does not call _renderExtUnsupportedNotice');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
