@@ -77,36 +77,6 @@ try {
   }
 } catch(e) { console.warn('Migration warning:', e.message); }
 
-// ── Crypto helpers ───────────────────────────────────────────────────────────
-const CIPHER = 'aes-256-gcm';
-
-function encryptData(plaintext, keyHex) {
-  const key = Buffer.from(keyHex, 'hex');
-  const iv  = crypto.randomBytes(12);
-  const c   = crypto.createCipheriv(CIPHER, key, iv);
-  const enc = Buffer.concat([c.update(plaintext, 'utf8'), c.final()]);
-  return iv.toString('hex') + ':' + c.getAuthTag().toString('hex') + ':' + enc.toString('hex');
-}
-
-function decryptData(ciphertext, keyHex) {
-  const parts = ciphertext.split(':');
-  if (parts.length !== 3) throw new Error('Invalid ciphertext');
-  const key = Buffer.from(keyHex, 'hex');
-  const d   = crypto.createDecipheriv(CIPHER, key, Buffer.from(parts[0], 'hex'));
-  d.setAuthTag(Buffer.from(parts[1], 'hex'));
-  return Buffer.concat([d.update(Buffer.from(parts[2], 'hex')), d.final()]).toString('utf8');
-}
-
-function wrapDataKey(keyHex) {
-  const secret = JWT_SECRET.slice(0, 32).padEnd(32, '0');
-  return encryptData(keyHex, Buffer.from(secret).toString('hex'));
-}
-
-function unwrapDataKey(wrapped) {
-  const secret = JWT_SECRET.slice(0, 32).padEnd(32, '0');
-  return decryptData(wrapped, Buffer.from(secret).toString('hex'));
-}
-
 // ── Storage helpers ──────────────────────────────────────────────────────────
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return {};
@@ -114,18 +84,18 @@ function loadUsers() {
 }
 function saveUsers(u) { fs.writeFileSync(USERS_FILE, JSON.stringify(u, null, 2)); }
 
-function loadUserJobs(userId, dataKey) {
+// Zero-knowledge: the server stores whatever the client sends, verbatim.
+// For accounts post-v1.19 that's always {__enc:true, data:"<ciphertext>"}.
+// Server never sees plaintext, never decrypts, never wraps further. Any
+// legacy plaintext files from pre-v1.19 are unreadable and treated as
+// empty (data was declared expendable at the migration point).
+function loadUserJobs(userId) {
   const f = path.join(JOBS_DIR, `${userId}.json`);
   if (!fs.existsSync(f)) return {};
-  const raw = fs.readFileSync(f, 'utf8');
-  if (dataKey && raw.includes(':') && !raw.startsWith('{')) {
-    try { return JSON.parse(decryptData(raw, dataKey)); } catch {}
-  }
-  try { return JSON.parse(raw); } catch { return {}; }
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; }
 }
-function saveUserJobs(userId, data, dataKey) {
-  const json = JSON.stringify(data);
-  fs.writeFileSync(path.join(JOBS_DIR, `${userId}.json`), dataKey ? encryptData(json, dataKey) : json);
+function saveUserJobs(userId, data) {
+  fs.writeFileSync(path.join(JOBS_DIR, `${userId}.json`), JSON.stringify(data));
 }
 
 function loadUserDocs(userId) {
@@ -137,23 +107,14 @@ function saveUserDocs(userId, docs) {
   fs.writeFileSync(path.join(DOCS_DIR, `${userId}.json`), JSON.stringify(docs));
 }
 
-// ── User settings (account-level preferences like Finnhub key) ─────────────
-// Mirrors jobs: body may be a plain object OR { __enc: true, data: ciphertext }
-// for zero-knowledge accounts. Server stores whatever opaquely and never
-// inspects the contents for encrypted accounts. Server-side at-rest encryption
-// is also applied when req.dataKey is available (double-wrap, same as jobs).
-function loadUserSettings(userId, dataKey) {
+// User settings — same opaque-blob treatment as jobs.
+function loadUserSettings(userId) {
   const f = path.join(SETTINGS_DIR, `${userId}.json`);
   if (!fs.existsSync(f)) return {};
-  const raw = fs.readFileSync(f, 'utf8');
-  if (dataKey && raw.includes(':') && !raw.startsWith('{')) {
-    try { return JSON.parse(decryptData(raw, dataKey)); } catch {}
-  }
-  try { return JSON.parse(raw); } catch { return {}; }
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; }
 }
-function saveUserSettings(userId, data, dataKey) {
-  const json = JSON.stringify(data);
-  fs.writeFileSync(path.join(SETTINGS_DIR, `${userId}.json`), dataKey ? encryptData(json, dataKey) : json);
+function saveUserSettings(userId, data) {
+  fs.writeFileSync(path.join(SETTINGS_DIR, `${userId}.json`), JSON.stringify(data));
 }
 
 function loadTokens() {
@@ -195,7 +156,6 @@ function authMiddleware(req, res, next) {
   if (!h || !h.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try {
     req.user = jwt.verify(h.slice(7), JWT_SECRET);
-    if (req.user.wrappedKey) { try { req.dataKey = unwrapDataKey(req.user.wrappedKey); } catch {} }
     next();
   } catch { res.status(401).json({ error: 'Invalid token' }); }
 }
@@ -692,34 +652,34 @@ app.post('/api/register', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   if (username.length < 3)    return res.status(400).json({ error: 'Username must be 3+ chars' });
   if (password.length < 6)    return res.status(400).json({ error: 'Password must be 6+ chars' });
+  // All accounts are zero-knowledge encrypted. The client derives a dataKey
+  // from the password via PBKDF2, wraps it with the password-key, and
+  // also wraps it with a fresh set of recovery codes. Server stores the
+  // opaque wrapped keys — it never sees the dataKey plaintext and cannot
+  // decrypt user data with any material it holds.
+  if (!encryptedDataKey || typeof encryptedDataKey !== 'string') {
+    return res.status(400).json({ error: 'encryptedDataKey required (clients must encrypt)' });
+  }
+  if (!Array.isArray(recoveryKeySlots) || recoveryKeySlots.length < 1) {
+    return res.status(400).json({ error: 'recoveryKeySlots required — generate recovery codes client-side' });
+  }
   const users = loadUsers();
   const uid = username.toLowerCase();
   if (users[uid]) return res.status(409).json({ error: 'Username already taken' });
-  // Build the user record. For zero-knowledge accounts the client ships
-  // encryptedDataKey + recoveryKeySlots; we store them opaquely — the server
-  // never sees the underlying dataKey or the plaintext recovery codes.
   const rec = {
     username,
     passwordHash: await bcrypt.hash(password, 12),
     createdAt: Date.now(),
+    encrypted: true,
+    encryptedDataKey,
+    recoveryKeySlots: recoveryKeySlots.map(s => ({ index: s.index, slot: s.slot, used: false })),
+    recoveryCodesGeneratedAt: Date.now(),
   };
   if (email && typeof email === 'string' && email.includes('@')) rec.email = email.trim();
-  if (encryptedDataKey && typeof encryptedDataKey === 'string') {
-    rec.encrypted        = true;
-    rec.encryptedDataKey = encryptedDataKey;
-    // Slots: [{index, slot}]. We add a `used:false` flag to each so recovery
-    // can consume them one at a time without losing the array shape.
-    rec.recoveryKeySlots = Array.isArray(recoveryKeySlots)
-      ? recoveryKeySlots.map(s => ({ index: s.index, slot: s.slot, used: false }))
-      : [];
-    rec.recoveryCodesGeneratedAt = Date.now();
-  }
   users[uid] = rec;
   saveUsers(users);
   const token = jwt.sign({ id: uid, username }, JWT_SECRET, { expiresIn: '30d' });
-  const response = { token, username };
-  if (rec.encrypted) response.encryptedDataKey = rec.encryptedDataKey;
-  res.json(response);
+  res.json({ token, username, encryptedDataKey });
 });
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, version: '1.5.0', dataDir: DATA_DIR, usersExist: fs.existsSync(USERS_FILE) }));
@@ -749,37 +709,37 @@ app.post('/api/login', _loginLimiter, async (req, res) => {
   if (user.password && !user.passwordHash) {
     user.passwordHash = user.password;
   }
-  const payload = { id: username.toLowerCase(), username: user.username };
-  const response = { token: jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' }), username: user.username };
-  // Zero-knowledge accounts: return the wrapped dataKey. The client derives
-  // its password key locally and unwraps. Server never sees the plain dataKey.
-  if (user.encrypted && user.encryptedDataKey) {
-    response.encrypted        = true;
-    response.encryptedDataKey = user.encryptedDataKey;
+  // Post-v1.19: every account is zero-knowledge encrypted. If somehow we
+  // have a user record from a pre-v1.19 server without encryptedDataKey,
+  // their data is unrecoverable (they have no dataKey); block login so the
+  // client doesn't crash trying to decrypt nothing. This case should be
+  // impossible under normal migration.
+  if (!user.encrypted || !user.encryptedDataKey) {
+    return res.status(409).json({ error: 'Account predates encryption migration — contact support' });
   }
-  res.json(response);
+  const payload = { id: username.toLowerCase(), username: user.username };
+  res.json({
+    token: jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' }),
+    username: user.username,
+    encrypted: true,
+    encryptedDataKey: user.encryptedDataKey,
+  });
 });
 
 app.post('/api/change-password', authMiddleware, async (req, res) => {
   const { currentPassword, newPassword, newEncryptedDataKey } = req.body;
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
   if (newPassword.length < 6) return res.status(400).json({ error: 'New password too short' });
+  if (!newEncryptedDataKey || typeof newEncryptedDataKey !== 'string') {
+    return res.status(400).json({ error: 'newEncryptedDataKey required (client must re-wrap with new password)' });
+  }
   const users = loadUsers();
   const user  = users[req.user.id];
   if (!user) return res.status(404).json({ error: 'User not found' });
   const existingHash = user.passwordHash || user.password;
   if (!(await bcrypt.compare(currentPassword, existingHash)))
     return res.status(401).json({ error: 'Current password incorrect' });
-  // Zero-knowledge: if the account is encrypted, the client MUST supply the
-  // re-wrapped data key (wrapped with the new password-derived key).
-  // Without it, login after password change would fail because the old wrapped
-  // key can no longer be unwrapped by the new password.
-  if (user.encrypted && user.encryptedDataKey) {
-    if (!newEncryptedDataKey || typeof newEncryptedDataKey !== 'string') {
-      return res.status(400).json({ error: 'Encrypted account requires newEncryptedDataKey (client must re-wrap)' });
-    }
-    user.encryptedDataKey = newEncryptedDataKey;
-  }
+  user.encryptedDataKey = newEncryptedDataKey;
   user.passwordHash = await bcrypt.hash(newPassword, 12);
   delete user.password; // normalise field name
   saveUsers(users);
@@ -796,10 +756,6 @@ app.get('/api/recovery-codes', authMiddleware, (req, res) => {
   const users = loadUsers();
   const user  = users[req.user.id];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!user.encrypted) {
-    // Account isn't encrypted yet — no recovery codes exist.
-    return res.json({ count: 0, createdAt: null, encrypted: false });
-  }
   // Count unused slots
   const slots = user.recoveryKeySlots || [];
   const count = slots.filter(s => !s.used).length;
@@ -819,7 +775,6 @@ app.post('/api/recovery-codes/generate', authMiddleware, async (req, res) => {
   const hash = user.passwordHash || user.password;
   if (!(await bcrypt.compare(password, hash)))
     return res.status(401).json({ error: 'Password incorrect' });
-  if (!user.encrypted) return res.status(400).json({ error: 'Account is not encrypted' });
   if (!Array.isArray(recoveryKeySlots) || recoveryKeySlots.length < 1) {
     return res.status(400).json({ error: 'recoveryKeySlots required' });
   }
@@ -834,33 +789,11 @@ app.post('/api/recovery-codes/generate', authMiddleware, async (req, res) => {
   res.json({ ok: true, count: user.recoveryKeySlots.length, createdAt: user.recoveryCodesGeneratedAt });
 });
 
-app.post('/api/enable-encryption', authMiddleware, async (req, res) => {
-  const { password, encryptedDataKey, recoveryKeySlots, encryptedJobs } = req.body;
-  if (!password) return res.status(400).json({ error: 'Password required' });
-  if (!encryptedDataKey) return res.status(400).json({ error: 'encryptedDataKey required' });
-  if (!Array.isArray(recoveryKeySlots) || recoveryKeySlots.length < 1) {
-    return res.status(400).json({ error: 'recoveryKeySlots required' });
-  }
-  const users = loadUsers();
-  const user  = users[req.user.id];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  const hash = user.passwordHash || user.password;
-  if (!(await bcrypt.compare(password, hash)))
-    return res.status(401).json({ error: 'Password incorrect' });
-  if (user.encrypted) return res.status(400).json({ error: 'Account already encrypted' });
-  // Flip the account to encrypted. If client shipped pre-encrypted jobs blob,
-  // atomically overwrite the jobs file with the ciphertext envelope.
-  user.encrypted            = true;
-  user.encryptedDataKey     = encryptedDataKey;
-  user.recoveryKeySlots     = recoveryKeySlots.map(s => ({ index: s.index, slot: s.slot, used: false }));
-  user.recoveryCodesGeneratedAt = Date.now();
-  saveUsers(users);
-  if (encryptedJobs && typeof encryptedJobs === 'string') {
-    // Store in the client's expected envelope shape: {__enc:true, data:ciphertext}
-    const file = path.join(JOBS_DIR, `${req.user.id}.json`);
-    fs.writeFileSync(file, JSON.stringify({ __enc: true, data: encryptedJobs }));
-  }
-  res.json({ ok: true });
+// /api/enable-encryption removed in v1.19 — all accounts are encrypted at
+// registration. Leave a 410 handler so old clients surfacing this call
+// see a clear error instead of a silent 404.
+app.post('/api/enable-encryption', authMiddleware, (req, res) => {
+  res.status(410).json({ error: 'Endpoint removed in v1.19 — all accounts are encrypted by default.' });
 });
 
 app.post('/api/recover', _recoverLimiter, async (req, res) => {
@@ -874,8 +807,6 @@ app.post('/api/recover', _recoverLimiter, async (req, res) => {
   const users = loadUsers();
   const user  = users[uid] || Object.values(users).find(u => (u.username||'').toLowerCase() === uid);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  // Non-encrypted accounts — this route only exists for zero-knowledge ones.
-  if (!user.encrypted) return res.status(400).json({ error: 'Account is not encrypted; use /api/forgot instead' });
 
   // Zero-knowledge recovery: the server CANNOT verify a recovery code — it
   // has never seen the plaintext code, only wrapped data keys. Protocol is:
@@ -941,39 +872,18 @@ app.delete('/api/delete-account', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/forgot', async (req, res) => {
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ error: 'username required' });
-  const users = loadUsers();
-  const user  = users[username.toLowerCase()];
-  if (!user) return res.json({ ok: true }); // don't reveal existence
-  const token = crypto.randomBytes(32).toString('hex');
-  const tokens = loadTokens();
-  tokens[token] = { username: username.toLowerCase(), expiresAt: Date.now() + 3600000 };
-  saveTokens(tokens);
-  const resetUrl = `${APP_URL}/reset-password?token=${token}`;
-  // Do not log the reset URL — Render captures server logs and anyone with
-  // log access could use the URL to reset any account. The URL is returned
-  // in the response (for the admin flow) and also emailed via /api/admin/send-reset-link.
-  res.json({ ok: true, resetUrl });
+// /api/forgot and /api/reset-password removed in v1.19.
+// Zero-knowledge accounts can't be password-reset server-side — resetting
+// the password hash alone doesn't give the user access to their
+// encryptedDataKey (still wrapped with the old password). Recovery is now
+// exclusively via recovery codes (generated at register time, can be
+// regenerated from Settings). Leave 410 handlers so any old client
+// attempting these endpoints sees a clear error.
+app.post('/api/forgot', (req, res) => {
+  res.status(410).json({ error: 'Password reset by email is no longer supported. Use a recovery code — see /recover' });
 });
-
-app.post('/api/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body;
-  if (!token || !newPassword) return res.status(400).json({ error: 'token and newPassword required' });
-  const tokens = loadTokens();
-  const entry  = tokens[token];
-  if (!entry || Date.now() > entry.expiresAt) {
-    delete tokens[token]; saveTokens(tokens);
-    return res.status(400).json({ error: 'Reset link invalid or expired' });
-  }
-  const users = loadUsers();
-  const user  = users[entry.username];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.passwordHash = await bcrypt.hash(newPassword, 12);
-  saveUsers(users);
-  delete tokens[token]; saveTokens(tokens);
-  res.json({ ok: true, username: user.username });
+app.post('/api/reset-password', (req, res) => {
+  res.status(410).json({ error: 'Password reset by email is no longer supported. Use a recovery code — see /recover' });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1119,12 +1029,12 @@ app.post('/api/notes/:jobId/restore', authMiddleware, (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/jobs', authMiddleware, (req, res) => {
-  res.json(loadUserJobs(req.user.id, req.dataKey));
+  res.json(loadUserJobs(req.user.id));
 });
 
 app.put('/api/jobs', authMiddleware, (req, res) => {
   if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Invalid data' });
-  saveUserJobs(req.user.id, req.body, req.dataKey);
+  saveUserJobs(req.user.id, req.body);
   res.json({ ok: true });
 });
 
@@ -1132,12 +1042,12 @@ app.put('/api/jobs', authMiddleware, (req, res) => {
 app.get('/api/user-settings', authMiddleware, (req, res) => {
   const f = path.join(SETTINGS_DIR, `${req.user.id}.json`);
   if (!fs.existsSync(f)) return res.status(404).json({ error: 'No settings saved' });
-  res.json(loadUserSettings(req.user.id, req.dataKey));
+  res.json(loadUserSettings(req.user.id));
 });
 
 app.put('/api/user-settings', authMiddleware, (req, res) => {
   if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'Invalid data' });
-  saveUserSettings(req.user.id, req.body, req.dataKey);
+  saveUserSettings(req.user.id, req.body);
   res.json({ ok: true });
 });
 
@@ -2202,7 +2112,7 @@ app.get('/api/extension', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/export-data', authMiddleware, async (req, res) => {
-  const jobs = loadUserJobs(req.user.id, req.dataKey);
+  const jobs = loadUserJobs(req.user.id);
   const arc  = archiver('zip', { zlib: { level: 9 } });
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="applied-export-${Date.now()}.zip"`);
@@ -2215,7 +2125,7 @@ app.get('/api/export-data', authMiddleware, async (req, res) => {
 app.post('/api/import-data', authMiddleware, express.json({ limit: '10mb' }), async (req, res) => {
   const { jobs } = req.body;
   if (!jobs || typeof jobs !== 'object') return res.status(400).json({ error: 'Invalid data' });
-  saveUserJobs(req.user.id, jobs, req.dataKey);
+  saveUserJobs(req.user.id, jobs);
   res.json({ ok: true, count: Object.keys(jobs).length });
 });
 

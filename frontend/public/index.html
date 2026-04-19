@@ -466,10 +466,10 @@ input[type=\"file\"] { display: none; }
 .settings-overlay { position: fixed; top:0;right:0;bottom:0;left:0; background: rgba(0,0,0,0.4); z-index: 600; display: flex; align-items: flex-start; justify-content: flex-end; }
 @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .settings-header { display: flex; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.settings-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); }
-.settings-section-title { font-size: 11px; font-family: var(--mono); color: var(--text2); font-weight: 600; letter-spacing: 0.5px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); background: var(--bg2); border-radius: var(--radius) var(--radius) 0 0; }
-.settings-section-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.settings-field label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 6px; }
+.settings-section { background: transparent; border: none; border-radius: 0; }
+.settings-section-title { font-family: var(--font-display); font-size: 16px; font-weight: 500; color: var(--text); letter-spacing: -0.01em; padding: 0 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 16px; background: transparent; }
+.settings-section-body { padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.settings-field label { display: block; font-size: 10px; font-family: var(--mono); color: var(--text3); letter-spacing: 0.14em; margin-bottom: 6px; text-transform: uppercase; }
 .settings-field input { width: 100%; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; color: var(--text); outline: none; }
 .settings-btn { padding: 8px 16px; border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; }
 .settings-btn.primary { background: var(--accent-bg); color: #1a1917; border-color: transparent; font-weight: 600; }
@@ -684,15 +684,16 @@ input[type=\"file\"] { display: none; }
 
 /* ── SIDEBAR NAV ── */
 /* Settings — flat card layout (no pane wrappers; cards sit directly under group labels) */
-.settings-section { margin-bottom: 20px; scroll-margin-top: 88px; }
+.settings-section { margin-bottom: 36px; scroll-margin-top: 88px; }
 .settings-section.is-hidden { display: none; }
 .settings-section.is-flash { animation: settingsFlash 1.6s ease-out; }
 @keyframes settingsFlash {
-  0%   { box-shadow: 0 0 0 0 rgba(232,168,56,0.0); }
-  12%  { box-shadow: 0 0 0 4px rgba(232,168,56,0.35); }
-  100% { box-shadow: 0 0 0 0 rgba(232,168,56,0.0); }
+  0%   { background-color: rgba(232,168,56,0.0); }
+  12%  { background-color: rgba(232,168,56,0.08); }
+  100% { background-color: rgba(232,168,56,0.0); }
 }
-.settings-group-label { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: 0.22em; text-transform: uppercase; padding: 10px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+.settings-group-label { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.22em; text-transform: uppercase; padding: 0 0 6px; margin: 32px 0 20px; border-bottom: 1px solid var(--border); }
+.settings-group-label:first-child { margin-top: 0; }
 .settings-group-label--danger { color: var(--red); border-bottom-color: rgba(192,57,43,0.25); }
 .settings-group-label.is-hidden { display: none; }
 .settings-header { position: sticky; top: 0; z-index: 5; background: var(--bg2); padding: 20px 28px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
@@ -933,9 +934,9 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <button id="login-btn" class="auth-btn" onclick="doLogin()">Sign in</button>
     <div class="auth-switch">
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
-      <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
+      <br><a onclick="showScreen('recover')" style="font-size:12px;color:var(--text3)">Forgot password? Use a recovery code</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.0 · private beta</div>
   </div>
 </div>
 
@@ -975,7 +976,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.0 · private beta</div>
   </div>
 </div>
 
@@ -991,7 +992,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.0 · private beta</div>
   </div>
 </div>
 
@@ -1068,7 +1069,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.5</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.19.0</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1277,7 +1278,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.18.5';
+const APP_VERSION = '1.19.0';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -1366,9 +1367,10 @@ const CryptoEngine = {
 };
 
 // Active data key — lives in memory only, cleared on logout/reload
-// Never written to localStorage, sessionStorage, or sent to server
+// Never written to localStorage, sessionStorage, or sent to server.
+// All accounts are zero-knowledge encrypted (v1.19+), so dataKey is
+// always populated once the user is signed in.
 let dataKey = null;
-let isEncrypted = false; // true for zero-knowledge accounts
 
 const STATUSES = ['to apply','applied','interview','offer','rejected'];
 // Legacy statuses → current. Applied on load so existing accounts migrate transparently.
@@ -1440,7 +1442,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (token && currentUser) { showApp(); loadJobs(); loadUserSettings(); }
   else {
     const hash = location.hash.replace('#','');
-    const valid = ['login','register','forgot','recover'];
+    const valid = ['login','register','recover'];
     showScreen(valid.includes(hash) ? hash : 'landing', false);
   }
 });
@@ -1453,10 +1455,10 @@ window.addEventListener('popstate', e => {
 });
 
 function showScreen(n, pushHistory=true) {
-  ['login','register','app','recover','forgot','landing'].forEach(s => {
+  ['login','register','app','recover','landing'].forEach(s => {
     const el = document.getElementById('screen-'+s);
     if (!el) return;
-    const displayMap = {app:'flex',landing:'block',login:'flex',register:'flex',recover:'flex',forgot:'flex'};
+    const displayMap = {app:'flex',landing:'block',login:'flex',register:'flex',recover:'flex'};
     el.style.display = s === n ? displayMap[s] : 'none';
   });
   // Show/hide mountain background — visible on public screens, hidden in app
@@ -1466,7 +1468,7 @@ function showScreen(n, pushHistory=true) {
   document.body.classList.toggle('in-app', n === 'app');
 
   // Browser history for back-button support on public screens
-  if (pushHistory && ['landing','login','register','forgot','recover'].includes(n)) {
+  if (pushHistory && ['landing','login','register','recover'].includes(n)) {
     const hash = n === 'landing' ? '' : '#' + n;
     if (location.hash !== hash && !(n === 'landing' && location.hash === '')) {
       history.pushState({screen: n}, '', hash || '/');
@@ -1522,21 +1524,25 @@ async function doLogin() {
     localStorage.setItem('applied_user',currentUser);
     _notifyExtensionSessionChanged();  // push new session to extension
 
-    // Zero-knowledge: derive dataKey from password in browser — never sent to server
-    if (d.encrypted && d.encryptedDataKey) {
-      btn.textContent = 'Decrypting...';
-      try {
-        const pwKey = await CryptoEngine.deriveKey(p, u);
-        dataKey = await CryptoEngine.unwrapKey(d.encryptedDataKey, pwKey);
-        isEncrypted = true;
-      } catch(cryptoErr) {
-        showErr(err, 'Could not decrypt your data. Check your password and try again.');
-        token=null; currentUser=null;
-        localStorage.removeItem('applied_token'); localStorage.removeItem('applied_user');
-        return;
-      }
-    } else {
-      dataKey = null; isEncrypted = false;
+    // All accounts are zero-knowledge encrypted — derive dataKey from password
+    // in the browser. Server only ever sees the wrapped key. If the server
+    // didn't return one, the account record is malformed (pre-v1.19 plaintext
+    // account that somehow survived migration). Bail out — user can't sign in.
+    if (!d.encryptedDataKey) {
+      showErr(err, 'Account is missing encryption keys. Contact support.');
+      token=null; currentUser=null;
+      localStorage.removeItem('applied_token'); localStorage.removeItem('applied_user');
+      return;
+    }
+    btn.textContent = 'Decrypting...';
+    try {
+      const pwKey = await CryptoEngine.deriveKey(p, u);
+      dataKey = await CryptoEngine.unwrapKey(d.encryptedDataKey, pwKey);
+    } catch(cryptoErr) {
+      showErr(err, 'Could not decrypt your data. Check your password and try again.');
+      token=null; currentUser=null;
+      localStorage.removeItem('applied_token'); localStorage.removeItem('applied_user');
+      return;
     }
 
     showApp(); loadJobs(); loadUserSettings();
@@ -1545,27 +1551,11 @@ async function doLogin() {
 }
 
 async function doForgot() {
-  const email = document.getElementById('forgot-email').value.trim();
-  const err   = document.getElementById('forgot-error');
-  const succ  = document.getElementById('forgot-success');
-  const btn   = document.getElementById('forgot-btn');
-  err.classList.remove('show'); succ.style.display = 'none';
-  if (!email || !email.includes('@')) { showErr(err, 'Please enter a valid email address.'); return; }
-  btn.disabled = true; btn.textContent = 'Sending...';
-  try {
-    const res = await fetch(API + '/api/forgot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    if (!res.ok) { showErr(err, data.error || 'Something went wrong.'); return; }
-    // Always show success regardless of whether email found (security)
-    succ.style.display = 'block';
-    succ.textContent = data.message || "If an account exists with that email, we've sent recovery instructions.";
-    document.getElementById('forgot-email').value = '';
-  } catch(e) { showErr(err, 'Could not connect. Please try again.'); }
-  finally { btn.disabled = false; btn.textContent = 'Send recovery email'; }
+  // v1.19+: email-based password reset is incompatible with zero-knowledge
+  // encryption. All password recovery uses recovery codes generated at
+  // registration. This function is kept only to avoid reference errors
+  // from any stale UI handlers; it redirects to the recovery screen.
+  showScreen('recover');
 }
 
 // ── RECOVERY CODE FUNCTIONS ──
@@ -1638,7 +1628,6 @@ async function doRecover() {
 
       token = d2.token; currentUser = d2.username;
       dataKey = recoveredDataKey;
-      isEncrypted = true;
       localStorage.setItem('applied_token', token);
       localStorage.setItem('applied_user', currentUser);
       _notifyExtensionSessionChanged();  // push new session to extension
@@ -1649,18 +1638,9 @@ async function doRecover() {
       const remaining = d2.codesRemaining || 0;
       alert('Recovery successful! You have ' + remaining + ' code' + (remaining===1?'':'s') + ' remaining. Visit Settings > Recovery Codes to generate a fresh set.');
       showApp(); loadJobs(); loadUserSettings();
-    } else if (d1.token) {
-      // Non-encrypted account recovery
-      token = d1.token; currentUser = d1.username;
-      dataKey = null; isEncrypted = false;
-      localStorage.setItem('applied_token', token);
-      localStorage.setItem('applied_user', currentUser);
-      _notifyExtensionSessionChanged();  // push new session to extension
-      ['recover-username','recover-code','recover-newpw','recover-confirmpw'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-      });
-      showApp(); loadJobs(); loadUserSettings();
     }
+    // Non-encrypted account branch removed in v1.19 — server never returns
+    // d1.token now; all accounts are zero-knowledge.
   } catch(e) { showErr(err, 'Recovery failed: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = 'Reset password'; }
 }
@@ -1842,7 +1822,6 @@ async function doRegister() {
 
     token=d.token; currentUser=d.username;
     dataKey = genDataKey;
-    isEncrypted = true;
     localStorage.setItem('applied_token',token);
     localStorage.setItem('applied_user',currentUser);
     _notifyExtensionSessionChanged();  // push new session to extension
@@ -2006,7 +1985,7 @@ async function doLogout() {
   try { await tearDownNotesEditor(); } catch {}
   const bg = document.getElementById('mountain-bg'); if(bg) bg.style.display='';
   token=null; currentUser=null; jobs={}; currentJobId=null;
-  dataKey=null; isEncrypted=false; // Zero-knowledge: clear key from memory
+  dataKey=null; // Zero-knowledge: clear key from memory
   // Clear rendered content — otherwise the previous session's detail/list
   // HTML stays visible until the next user triggers a re-render. With
   // zero-knowledge encryption this is technically just rendered plaintext,
@@ -2040,18 +2019,18 @@ async function loadJobs() {
     if (res.status===401) { doLogout(); return; }
     const blob = await res.json();
 
-    // Zero-knowledge: decrypt if this is an encrypted account
-    if (blob.__enc === true && dataKey) {
+    // All accounts are zero-knowledge: the server ships {__enc:true,data:ciphertext}.
+    // Empty-data case (new account) returns {} — treat as no jobs.
+    if (blob && blob.__enc === true && blob.data && dataKey) {
       try {
         jobs = await CryptoEngine.decrypt(dataKey, blob.data);
       } catch(e) {
         console.error('Decryption failed:', e);
         jobs = {};
       }
-    } else if (blob.__enc === false && blob.data) {
-      jobs = blob.data; // Legacy plaintext
     } else {
-      jobs = blob; // Very old format fallback
+      // Fresh account (empty object) or unexpected shape — start empty.
+      jobs = {};
     }
     if (!jobs || typeof jobs !== 'object') jobs = {};
 
@@ -2150,17 +2129,13 @@ async function saveUserSettings() {
     if (v) settings[k] = v;
   }
   try {
-    let payload;
-    if (isEncrypted && dataKey) {
-      const ciphertext = await CryptoEngine.encrypt(dataKey, settings);
-      payload = { __enc: true, data: ciphertext };
-    } else {
-      payload = { __enc: false, data: settings };
-    }
+    // All accounts are zero-knowledge encrypted — settings always wrapped
+    if (!dataKey) { console.warn('saveUserSettings: no dataKey — skipped'); return; }
+    const ciphertext = await CryptoEngine.encrypt(dataKey, settings);
     await fetch(API+'/api/user-settings', {
       method: 'PUT',
       headers: {'Content-Type':'application/json', Authorization: 'Bearer '+token},
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ __enc: true, data: ciphertext })
     });
   } catch(e) { console.error('saveUserSettings error:', e); }
 }
@@ -2213,18 +2188,14 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
-      let payload;
-      if (isEncrypted && dataKey) {
-        // Zero-knowledge: encrypt entire jobs object before sending — server sees only ciphertext
-        const ciphertext = await CryptoEngine.encrypt(dataKey, jobs);
-        payload = { __enc: true, data: ciphertext };
-      } else {
-        payload = { __enc: false, data: jobs };
-      }
+      // All accounts are zero-knowledge: encrypt the entire jobs object
+      // before sending. Server sees only ciphertext.
+      if (!dataKey) { console.warn('scheduleSave: no dataKey — save skipped'); return; }
+      const ciphertext = await CryptoEngine.encrypt(dataKey, jobs);
       await fetch(API+'/api/jobs', {
         method:'PUT',
         headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ __enc: true, data: ciphertext })
       });
     } catch(e){ console.error('Save error:', e); }
   }, 800);
@@ -4765,16 +4736,18 @@ async function flushNotesSave(final) {
   }
 }
 
-// ── Encryption envelope (same shape as jobs blob for ZK accounts) ──
+// ── Encryption envelope (same shape as jobs blob) ──
+// v1.19+: all accounts are zero-knowledge encrypted. Always wrap.
 async function encodeNoteBlob(docJson) {
-  if (isEncrypted && dataKey) {
-    const ct = await CryptoEngine.encrypt(dataKey, docJson);
-    return { __enc: true, data: ct };
-  }
-  return { __enc: false, data: docJson };
+  if (!dataKey) throw new Error('encodeNoteBlob: no dataKey');
+  const ct = await CryptoEngine.encrypt(dataKey, docJson);
+  return { __enc: true, data: ct };
 }
 async function decodeNoteBlob(blob) {
   if (!blob) return null;
+  // Always expect __enc:true envelope. Legacy plaintext fallback retained
+  // for notes created before v1.19 — server data wipe eliminates these but
+  // the two-line fallback keeps us robust if any slip through.
   if (blob.__enc === true && dataKey) {
     try {
       const pt = await CryptoEngine.decrypt(dataKey, blob.data);
@@ -8293,98 +8266,20 @@ function filterSettings() {
 }
 
 function renderEncryptionStatus() {
-  const icon  = document.getElementById('enc-icon');
-  const label = document.getElementById('enc-status-label');
-  const sub   = document.getElementById('enc-status-sub');
-  const area  = document.getElementById('enc-upgrade-area');
-  if (!label) return;
-
-  if (isEncrypted) {
-    if (icon)  icon.textContent  = '🔒';
-    if (label) label.textContent = 'End-to-end encrypted';
-    if (label) label.style.color = 'var(--green)';
-    if (sub)   sub.textContent   = 'Your data is encrypted with a key derived from your password. The server only stores ciphertext.';
-    if (area)  area.innerHTML    = '';
-  } else {
-    if (icon)  icon.textContent  = '🔓';
-    if (label) label.textContent = 'Not encrypted';
-    if (label) label.style.color = 'var(--amber)';
-    if (sub)   sub.textContent   = 'Your data is stored in plaintext on the server. Enable encryption to protect it.';
-    if (area)  area.innerHTML    = `
-      <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">
-        Enabling encryption generates a new data key, encrypts all your existing jobs, and re-registers your credentials.
-        You will need to <strong>save your recovery codes</strong> — losing them means permanent data loss.
-      </div>
-      <div class="settings-field" style="margin-bottom:8px">
-        <label>CONFIRM YOUR PASSWORD</label>
-        <input type="password" id="enc-upgrade-pw" placeholder="Enter current password to enable encryption" style="width:100%;box-sizing:border-box">
-      </div>
-      <div class="auth-error" id="enc-upgrade-err"></div>
-      <button onclick="enableEncryption()" id="enc-upgrade-btn" style="padding:9px 18px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">
-        🔒 Enable end-to-end encryption
-      </button>`;
-  }
+  // v1.19+: dedicated "Data Encryption" panel was removed in the Settings
+  // editorial redesign — all accounts are encrypted from registration,
+  // which is a permanent property rather than a setting the user can
+  // change. Function retained as a no-op because it's still called from
+  // openSettings(); deleting every call site would be noisier than keeping
+  // this stub.
 }
 
-async function enableEncryption() {
-  const pw  = document.getElementById('enc-upgrade-pw')?.value;
-  const btn = document.getElementById('enc-upgrade-btn');
-  const err = document.getElementById('enc-upgrade-err');
-  if (err) err.classList.remove('show');
-  if (!pw) { if (err) { err.textContent='Enter your password.'; err.classList.add('show'); } return; }
-
-  // Verify password by logging in fresh (can't trust the in-memory state)
-  if (btn) { btn.disabled=true; btn.textContent='Generating keys...'; }
-  try {
-    // Generate new data key in browser
-    const genDataKey = await CryptoEngine.generateDataKey();
-    const pwKey      = await CryptoEngine.deriveKey(pw, currentUser);
-    const encryptedDataKey = await CryptoEngine.wrapKey(genDataKey, pwKey);
-
-    // Generate 8 recovery key slots
-    const rawCodes = Array.from({length:8}, () => {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      return Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-    });
-    const formattedCodes = rawCodes.map(c => c.match(/.{1,4}/g).join('-'));
-    const recoveryKeySlots = await Promise.all(rawCodes.map(async (code,i) => {
-      const codeKey = await CryptoEngine.deriveKey(code, currentUser);
-      return { index:i, slot: await CryptoEngine.wrapKey(genDataKey, codeKey) };
-    }));
-
-    if (btn) btn.textContent='Encrypting your data...';
-
-    // Encrypt all current jobs with the new key
-    const ciphertext = await CryptoEngine.encrypt(genDataKey, jobs);
-
-    // Send to server: enable encryption + new key material + encrypted jobs
-    const res = await fetch(API+'/api/enable-encryption', {
-      method:'POST',
-      headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
-      body: JSON.stringify({ password:pw, encryptedDataKey, recoveryKeySlots, encryptedJobs: ciphertext }),
-    });
-    const d = await res.json();
-    if (!res.ok) { if (err) { err.textContent=d.error||'Failed'; err.classList.add('show'); } return; }
-
-    // Update in-memory state
-    dataKey     = genDataKey;
-    isEncrypted = true;
-
-    // Re-encrypt existing settings on server using the new data key
-    // (they were stored plaintext before upgrade; now they get zero-knowledge treatment)
-    saveUserSettings();
-
-    // Show recovery codes
-    showRecoveryCodesModal(formattedCodes, () => {
-      renderEncryptionStatus();
-      setSettingsStatus('account-status','success','Encryption enabled. Your data is now protected.');
-    }, true);
-
-  } catch(e) {
-    if (err) { err.textContent='Error: '+e.message; err.classList.add('show'); }
-  } finally {
-    if (btn) { btn.disabled=false; btn.textContent='🔒 Enable end-to-end encryption'; }
-  }
+// enableEncryption() removed in v1.19 — all accounts are encrypted at
+// registration, there's nothing to enable. Any UI reference that still
+// calls this is a bug; we throw to surface it rather than silently no-op.
+function enableEncryption() {
+  console.error('enableEncryption() called — function removed in v1.19');
+  alert('Encryption is now enabled by default for all accounts. This action is no longer needed.');
 }
 
 async function loadUsageCard() {
@@ -8533,18 +8428,20 @@ async function generateNewRecoveryCodes() {
   }
   if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
   try {
-    // Zero-knowledge: generate new recovery key slots in browser
-    let recoveryKeySlots = [];
-    if (isEncrypted && dataKey) {
-      const rawCodes = Array.from({length: 8}, () => {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        return Array.from({length: 4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-      });
-      recoveryKeySlots = await Promise.all(rawCodes.map(async (code, i) => {
-        const codeKey = await CryptoEngine.deriveKey(code, currentUser);
-        return { index: i, slot: await CryptoEngine.wrapKey(dataKey, codeKey) };
-      }));
+    // v1.19+: all accounts are encrypted. Generate new recovery key slots,
+    // each wrapping the live dataKey with a code-derived key.
+    if (!dataKey) {
+      if (err) { err.textContent = 'Session issue — please sign out and back in.'; err.classList.add('show'); }
+      return;
     }
+    const rawCodes = Array.from({length: 8}, () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      return Array.from({length: 4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+    });
+    const recoveryKeySlots = await Promise.all(rawCodes.map(async (code, i) => {
+      const codeKey = await CryptoEngine.deriveKey(code, currentUser);
+      return { index: i, slot: await CryptoEngine.wrapKey(dataKey, codeKey) };
+    }));
     const res = await fetch(API + '/api/recovery-codes/regenerate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -8586,11 +8483,12 @@ async function changePassword() {
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(await (async () => {
         const body = { currentPassword: current, newPassword: newPw };
-        // Zero-knowledge: re-wrap dataKey with new password — server never sees the key
-        if (isEncrypted && dataKey) {
-          const newPwKey = await CryptoEngine.deriveKey(newPw, currentUser);
-          body.newEncryptedDataKey = await CryptoEngine.wrapKey(dataKey, newPwKey);
-        }
+        // v1.19+: all accounts are zero-knowledge. Re-wrap dataKey with new
+        // password — server never sees the key. dataKey should always be
+        // populated when the user is signed in; guard just in case.
+        if (!dataKey) throw new Error('Session issue — please sign out and back in.');
+        const newPwKey = await CryptoEngine.deriveKey(newPw, currentUser);
+        body.newEncryptedDataKey = await CryptoEngine.wrapKey(dataKey, newPwKey);
         return body;
       })())
     });
@@ -8810,24 +8708,8 @@ setInterval(() => {
   </button>
 </div>
 
-<!-- FORGOT USERNAME / PASSWORD -->
-<div id="screen-forgot" class="auth-wrap" style="display:none">
-  <div class="auth-card">
-    <div class="auth-logo">
-      <div class="auth-logo-mark"><svg viewBox="0 0 20 20" fill="none" width="20" height="20"><polygon points="2,17 6,8 10,12 13,5 18,17" fill="#1a0d00"/><polygon points="13,5 11.5,9 14.5,9" fill="white" opacity="0.85"/></svg></div>
-      <div><div class="auth-title">Account Recovery</div><div class="auth-sub">Enter your email to recover access</div></div>
-    </div>
-    <div class="auth-error" id="forgot-error"></div>
-    <div class="auth-success" id="forgot-success" style="display:none;padding:10px 14px;background:rgba(52,211,153,0.1);color:var(--green);border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;line-height:1.5"></div>
-    <div class="auth-field">
-      <label>EMAIL ADDRESS</label>
-      <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')doForgot()">
-    </div>
-    <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
-    <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
-  </div>
-</div>
+<!-- #screen-forgot removed in v1.19 — email-based password reset is incompatible
+     with zero-knowledge encryption. Recovery uses recovery codes (#screen-recover). -->
 
 
 <!-- SETTINGS PANEL — full overlay with sidebar nav -->
@@ -8846,76 +8728,60 @@ setInterval(() => {
       <button onclick="closeSettings()" style="width:32px;height:32px;flex-shrink:0;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text2)'">×</button>
     </div>
 
-    <!-- Scrolling content — all panes visible, group labels inline -->
-    <div style="flex:1;overflow-y:auto;padding:24px 28px 40px" id="settings-content">
-      <div class="settings-group-label">SECURITY</div>
+    <!-- Scrolling content — editorial flat layout (v1.19+) -->
+    <div style="flex:1;overflow-y:auto;padding:28px 32px 40px" id="settings-content">
+
+      <div class="settings-group-label">Security</div>
         <div class="settings-section" id="spane-account">
-          <div class="settings-section-title">CHANGE PASSWORD</div>
+          <div class="settings-section-title">Change password</div>
           <div class="settings-section-body">
             <div class="settings-status" id="pw-status"></div>
-            <div class="settings-field"><label>CURRENT PASSWORD</label><input type="password" id="s-pw-current" placeholder="Enter current password" autocomplete="current-password"></div>
-            <div class="settings-field"><label>NEW PASSWORD</label><input type="password" id="s-pw-new" placeholder="At least 6 characters" autocomplete="new-password"></div>
-            <div class="settings-field"><label>CONFIRM NEW PASSWORD</label><input type="password" id="s-pw-confirm" placeholder="Repeat new password" autocomplete="new-password"></div>
-            <button class="settings-btn primary" onclick="changePassword()">Update password</button>
+            <div class="settings-field"><label>Current password</label><input type="password" id="s-pw-current" placeholder="Enter current password" autocomplete="current-password"></div>
+            <div class="settings-field"><label>New password</label><input type="password" id="s-pw-new" placeholder="At least 6 characters" autocomplete="new-password"></div>
+            <div class="settings-field"><label>Confirm new password</label><input type="password" id="s-pw-confirm" placeholder="Repeat new password" autocomplete="new-password"></div>
+            <div><button class="settings-btn primary" onclick="changePassword()" style="width:auto">Update password</button></div>
           </div>
         </div>
-        <div class="settings-section" id="encryption-status-section">
-          <div class="settings-section-title">DATA ENCRYPTION</div>
-          <div class="settings-section-body">
-            <div id="encryption-status-box" style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--radius-sm);margin-bottom:12px;background:var(--bg3);border:1px solid var(--border)">
-              <div id="enc-icon" style="font-size:20px">🔐</div>
-              <div>
-                <div id="enc-status-label" style="font-size:13px;font-weight:600;color:var(--text)">Loading...</div>
-                <div id="enc-status-sub" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
-              </div>
-            </div>
-            <!-- E2E encryption is always enabled for new accounts -->
-          </div>
-        </div>
-        <div class="settings-section" id="spane-recovery">
-          <div class="settings-section-title">RECOVERY CODES</div>
-          <div class="settings-section-body">
-            <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px">
-              Recovery codes let you reset your password if you ever lose access to your email.
-              Each code works <strong>once only</strong>. You start with 8 — keep them in a password manager or printed somewhere safe.
-            </div>
-            <div id="recovery-status-box" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:13px;color:var(--text2)">
-              Loading...
-            </div>
 
-          
-          <div style="height:14px;border-top:1px solid var(--border);margin:14px 0 0"></div>
-          
-            <div style="font-size:13px;color:var(--text3);margin-bottom:14px">
-              Generating new codes immediately invalidates all previous codes. You'll need to enter your current password to confirm.
+        <div class="settings-section" id="spane-recovery">
+          <div class="settings-section-title">Recovery codes</div>
+          <div class="settings-section-body">
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Recovery codes let you regain access if you forget your password. Each code works once. You start with 8 — keep them in a password manager or printed somewhere safe.
+              <span style="display:block;margin-top:6px;font-size:12px;color:var(--text3)">Summit is end-to-end encrypted — if you lose your password <em>and</em> all recovery codes, your data is not recoverable.</span>
+            </div>
+            <div id="recovery-status-box" style="font-size:13px;color:var(--text2);padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+              Loading…
+            </div>
+            <div style="font-size:12px;color:var(--text3);line-height:1.6">
+              Generating new codes invalidates all previous codes. Enter your current password to confirm.
             </div>
             <div class="settings-field">
-              <label>CURRENT PASSWORD</label>
-              <input type="password" id="regen-password" placeholder="Enter your password to confirm" style="width:100%;box-sizing:border-box">
+              <label>Current password</label>
+              <input type="password" id="regen-password" placeholder="Enter your password to confirm">
             </div>
             <div class="auth-error" id="regen-error"></div>
-            <button onclick="generateNewRecoveryCodes()" id="regen-btn" style="padding:9px 18px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">
-              🔑 Generate 8 new recovery codes
-            </button>
+            <div><button onclick="generateNewRecoveryCodes()" id="regen-btn" class="settings-btn primary" style="width:auto">Generate 8 new codes</button></div>
           </div>
         </div>
 
-      <div class="settings-group-label">AUTOMATION</div>
+      <div class="settings-group-label">Automation</div>
         <div class="settings-section" id="spane-usage">
-          <div class="settings-section-title">AI USAGE</div>
+          <div class="settings-section-title">AI usage</div>
           <div class="settings-section-body">
             <div id="usage-card-body" style="font-size:13px;color:var(--text2)">
               <div style="color:var(--text3);font-size:12px">Loading usage…</div>
             </div>
           </div>
         </div>
+
         <div class="settings-section">
-          <div class="settings-section-title">JOB POSTING AUTO-CHECK</div>
+          <div class="settings-section-title">Job posting auto-check</div>
           <div class="settings-section-body">
-            <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:12px">
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
               Automatically check all active job postings every 24 hours. Jobs that are no longer available are tagged as <strong>stale</strong>.
             </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0">
               <div>
                 <div style="font-size:13px;font-weight:500;color:var(--text)">Auto-check postings</div>
                 <div style="font-size:11px;color:var(--text3);margin-top:2px" id="auto-check-last-run"></div>
@@ -8929,116 +8795,112 @@ setInterval(() => {
             </div>
           </div>
         </div>
+
         <div class="settings-section" id="spane-tailoring">
-          <div class="settings-section-title">TAILORING</div>
+          <div class="settings-section-title">Tailoring</div>
           <div class="settings-section-body">
-            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-bottom:14px">
+            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer">
               <input type="checkbox" id="st-autosave" style="margin-top:2px;flex-shrink:0;accent-color:var(--accent-bg)" onchange="setTailorSetting('tailor_autosave',this.checked)">
               <div>
-                <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-save every tailored version to vault</div>
-                <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">Each time you tailor a document it is automatically saved to your Library with a version number and timestamp. Default: on.</div>
+                <div style="font-size:13px;font-weight:500;color:var(--text)">Auto-save every tailored version to Library</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">Each tailored document is saved to your Library with a version and timestamp. Default: on.</div>
               </div>
             </label>
-          
-          <div style="height:14px;border-top:1px solid var(--border);margin:14px 0 0"></div>
-          
-            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-bottom:14px">
+            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer">
               <input type="checkbox" id="st-cleanup" style="margin-top:2px;flex-shrink:0;accent-color:var(--accent-bg)" onchange="setTailorSetting('tailor_cleanup_exit',this.checked)">
               <div>
-                <div style="font-size:13px;font-weight:600;color:var(--text)">Clean up intermediate versions on exit</div>
-                <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">When you close the tailoring panel, all versions except the final one are removed from your Library. Keeps the vault tidy. Default: on.</div>
+                <div style="font-size:13px;font-weight:500;color:var(--text)">Clean up intermediate versions on exit</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.5">When you close the tailoring panel, only the final version is kept. Default: on.</div>
               </div>
             </label>
           </div>
         </div>
 
-      <div class="settings-group-label">INTEGRATIONS</div>
+      <div class="settings-group-label">Integrations</div>
         <div class="settings-section" id="spane-extension">
-          <div class="settings-section-title">BROWSER EXTENSION</div>
+          <div class="settings-section-title">Browser extension</div>
           <div class="settings-section-body">
-            <div style="font-size:13px;color:var(--text3);margin-bottom:20px">Add jobs to Summit in one click from any job site &mdash; LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.</div>
-        <div style="margin-bottom:20px">
-          <button onclick="downloadExtension()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--accent-bg);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;color:#1a1917;cursor:pointer;border:none" id="ext-download-btn">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Download Extension (.zip)
-          </button>
-          <div style="margin-top:6px;font-size:11px;color:var(--text3)">Works on Chrome, Brave, Edge, Arc, and any Chromium browser. Auto-detects job info from LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
-            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Chrome</div>
-            <ol style="font-size:12px;color:var(--text3);line-height:1.9;padding-left:16px;margin:0">
-              <li>Download and unzip</li>
-              <li>Go to <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">chrome://extensions</code></li>
-              <li>Enable <strong style="color:var(--text2)">Developer Mode</strong></li>
-              <li>Click <strong style="color:var(--text2)">Load unpacked</strong></li>
-              <li>Select the <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">summit-extension</code> folder</li>
-              <li>Sign in with your Summit credentials</li>
-            </ol>
-          </div>
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-              <div style="font-size:14px;font-weight:600;color:var(--text)">Safari</div>
-              <span style="font-size:10px;padding:1px 6px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:100px;color:var(--blue);font-family:var(--mono)">Requires Xcode</span>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Add jobs to Summit in one click from any job site — LinkedIn, Indeed, Greenhouse, Lever, Workday, and more.
             </div>
-            <ol style="font-size:12px;color:var(--text3);line-height:1.9;padding-left:16px;margin:0">
-              <li>Install <a href="https://apps.apple.com/app/xcode/id497799835" target="_blank" style="color:var(--blue)">Xcode</a> (free)</li>
-              <li>Download and unzip</li>
-              <li>Double-click <code style="background:var(--bg4);padding:1px 4px;border-radius:3px;font-size:11px">Install Summit Extension.app</code></li>
-              <li>Click <strong style="color:var(--text2)">Install</strong> &mdash; fully automated</li>
-              <li>Enable <strong style="color:var(--text2)">Summit</strong> in Safari &rarr; Extensions</li>
-            </ol>
-            <div style="margin-top:10px;font-size:11px;color:var(--text3)">Keep the companion app in your Dock while using the extension.</div>
-          </div>
-        </div>
-          </div>
-        </div>
-        <div class="settings-section" id="spane-financial">
-          <div class="settings-section-title">FINNHUB API KEY</div>
-          <div class="settings-section-body">
-            <div class="settings-status" id="finnhub-status"></div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Enables live stock price, market cap, P/E ratio and analyst targets in the Insights tab.</div>
-            <div class="settings-field"><label>API KEY</label><input type="password" id="s-finnhub-key" placeholder="Paste your Finnhub API key"></div>
-            <a href="https://finnhub.io/register" target="_blank" style="display:inline-block;font-size:12px;color:var(--blue);margin-bottom:12px">Get a free key at finnhub.io &nearr;</a>
-            <div style="display:flex;gap:8px">
-              <button class="settings-btn primary" onclick="saveFinnhubKeySetting()">Save key</button>
-              <button class="settings-btn" onclick="clearFinnhubKey()">Clear key</button>
+            <div>
+              <button onclick="downloadExtension()" class="settings-btn primary" id="ext-download-btn" style="width:auto">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Download extension (.zip)
+              </button>
+              <div style="margin-top:8px;font-size:11px;color:var(--text3)">Chrome, Brave, Edge, Arc, and any Chromium browser.</div>
+            </div>
+            <div style="font-size:12px;color:var(--text2);line-height:1.8">
+              <div style="font-weight:600;color:var(--text);margin-bottom:4px">Install on Chrome</div>
+              <ol style="padding-left:18px;margin:0">
+                <li>Unzip the download</li>
+                <li>Go to <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">chrome://extensions</code></li>
+                <li>Enable <strong>Developer Mode</strong></li>
+                <li>Click <strong>Load unpacked</strong> and select the <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">summit-extension</code> folder</li>
+                <li>Sign in with your Summit credentials</li>
+              </ol>
+            </div>
+            <div style="font-size:12px;color:var(--text2);line-height:1.8">
+              <div style="font-weight:600;color:var(--text);margin-bottom:4px">Install on Safari</div>
+              <ol style="padding-left:18px;margin:0">
+                <li>Install <a href="https://apps.apple.com/app/xcode/id497799835" target="_blank" style="color:var(--blue)">Xcode</a> (free)</li>
+                <li>Unzip the download, double-click <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">Install Summit Extension.app</code></li>
+                <li>Click <strong>Install</strong></li>
+                <li>Enable <strong>Summit</strong> in Safari → Extensions</li>
+              </ol>
             </div>
           </div>
         </div>
 
-      <div class="settings-group-label">DATA</div>
-        <div class="settings-section" id="spane-data">
-          <div class="settings-section-title">EXPORT ALL DATA</div>
+        <div class="settings-section" id="spane-financial">
+          <div class="settings-section-title">Finnhub API key</div>
           <div class="settings-section-body">
-            <div class="settings-status" id="export-status"></div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Download all your job applications as a zip. Each job gets its own folder with metadata, notes, resume, cover letter, and tailored documents.</div>
-            <button class="settings-btn primary" id="export-btn" onclick="exportAllData()">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Download all data as zip
-            </button>
-            <button onclick="exportData('json')" style="padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:8px;margin-top:8px">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Download as JSON (for reimport)
-            </button>
+            <div class="settings-status" id="finnhub-status"></div>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Enables live stock price, market cap, P/E ratio, and analyst targets in the Insights tab.
+              <a href="https://finnhub.io/register" target="_blank" style="color:var(--blue);margin-left:4px">Get a free key →</a>
+            </div>
+            <div class="settings-field"><label>API key</label><input type="password" id="s-finnhub-key" placeholder="Paste your Finnhub API key"></div>
+            <div style="display:flex;gap:8px">
+              <button class="settings-btn primary" onclick="saveFinnhubKeySetting()" style="width:auto">Save key</button>
+              <button class="settings-btn" onclick="clearFinnhubKey()" style="width:auto">Clear</button>
+            </div>
           </div>
         </div>
-        <div class="settings-section">
-          <div class="settings-section-title">IMPORT DATA</div>
+
+      <div class="settings-group-label">Data</div>
+        <div class="settings-section" id="spane-data">
+          <div class="settings-section-title">Export</div>
           <div class="settings-section-body">
-            <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">
-              Restore from a previous export. Only <strong>Applied JSON exports</strong> are accepted (.json files from this app).
-              Imported jobs are added alongside your existing data.
+            <div class="settings-status" id="export-status"></div>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Download all your job applications as a zip. Each job gets its own folder with metadata, notes, resume, cover letter, and tailored documents.
             </div>
-            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;font-size:12px;color:var(--amber);line-height:1.6">
-              ⚠ Review imported data after upload — all HTML tags are stripped and only safe fields are accepted. Verify job count matches your export.
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="settings-btn primary" id="export-btn" onclick="exportAllData()" style="width:auto">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Download as zip
+              </button>
+              <button class="settings-btn" onclick="exportData('json')" style="width:auto">
+                Download as JSON
+              </button>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-              <select id="import-mode" style="padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:12px;color:var(--text);outline:none">
-                <option value="append">Append — add alongside existing jobs</option>
-                <option value="replace">Replace — overwrite all existing jobs</option>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">Import</div>
+          <div class="settings-section-body">
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Restore from a previous export. Only <strong>Summit JSON exports</strong> are accepted (.json files from this app). Imported jobs are added alongside your existing data.
+              <span style="display:block;margin-top:6px;font-size:12px;color:var(--amber)">⚠ Review imported data after upload — all HTML tags are stripped and only safe fields are accepted.</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="import-mode" style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;color:var(--text);outline:none">
+                <option value="append">Append — add alongside existing</option>
+                <option value="replace">Replace — overwrite everything</option>
               </select>
-              <label style="padding:8px 14px;background:var(--accent-bg);color:#1a1917;border:none;border-radius:var(--radius-sm);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
+              <label class="settings-btn primary" style="width:auto;cursor:pointer">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 10V2M4 5l3-3 3 3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Select JSON file
                 <input type="file" accept=".json" style="display:none" onchange="doImportData(event)">
@@ -9048,61 +8910,39 @@ setInterval(() => {
           </div>
         </div>
 
-      <div class="settings-group-label">SUPPORT</div>
+      <div class="settings-group-label">Support</div>
         <div class="settings-section" id="spane-feedback">
-          <div class="settings-section-title">SUPPORT &amp; FEEDBACK</div>
+          <div class="settings-section-title">Feedback</div>
           <div class="settings-section-body">
-            <div style="font-size:13px;color:var(--text3);margin-bottom:24px">Help make Summit better — report bugs or suggest new features directly on GitHub.</div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">
-          <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=bug" target="_blank" style="display:flex;flex-direction:column;gap:12px;padding:20px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);text-decoration:none;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="color:var(--text3)"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-            <div>
-              <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Report a bug</div>
-              <div style="font-size:12px;color:var(--text3);line-height:1.5">Something not working as expected? Let us know and we'll fix it.</div>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Help make Summit better — report bugs or suggest features on GitHub.
             </div>
-            <div style="font-size:12px;color:var(--text2);font-weight:500">Open on GitHub &rarr;</div>
-          </a>
-          <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=enhancement" target="_blank" style="display:flex;flex-direction:column;gap:12px;padding:20px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);text-decoration:none;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="color:var(--text3)"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
-            <div>
-              <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Request a feature</div>
-              <div style="font-size:12px;color:var(--text3);line-height:1.5">Have an idea that would improve your workflow? We'd love to hear it.</div>
-            </div>
-            <div style="font-size:12px;color:var(--text2);font-weight:500">Open on GitHub &rarr;</div>
-          </a>
-        </div>
-
-        <div style="padding:16px 18px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:space-between;gap:16px">
-          <div style="display:flex;align-items:center;gap:12px">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="color:var(--text3);flex-shrink:0"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
-            <div>
-              <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:2px">View on GitHub</div>
-              <div style="font-size:12px;color:var(--text3)">Browse issues, see what's being worked on, or star the repo.</div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+              <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=bug" target="_blank" style="color:var(--text);text-decoration:none;padding:4px 0;border-bottom:1px dotted var(--border);display:inline-block">Report a bug →</a>
+              <a href="https://github.com/vramakanth/Job-Application-Tracker/issues/new?labels=enhancement" target="_blank" style="color:var(--text);text-decoration:none;padding:4px 0;border-bottom:1px dotted var(--border);display:inline-block">Request a feature →</a>
+              <a href="https://github.com/vramakanth/Job-Application-Tracker" target="_blank" style="color:var(--text);text-decoration:none;padding:4px 0;display:inline-block">Browse issues on GitHub →</a>
             </div>
           </div>
-          <a href="https://github.com/vramakanth/Job-Application-Tracker" target="_blank" style="flex-shrink:0;padding:7px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--text2);text-decoration:none;font-family:var(--mono);white-space:nowrap" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg2)'">GitHub &nearr;</a>
-        </div>
-          </div>
         </div>
 
-      <div class="settings-group-label settings-group-label--danger">DANGER ZONE</div>
-        <div class="settings-section" id="spane-danger" style="border-color:rgba(192,57,43,0.25)">
-          <div class="settings-section-title" style="color:var(--red)">DELETE ACCOUNT</div>
+      <div class="settings-group-label settings-group-label--danger">Danger zone</div>
+        <div class="settings-section" id="spane-danger">
+          <div class="settings-section-title" style="color:var(--red);border-bottom-color:rgba(192,57,43,0.25)">Delete account</div>
           <div class="settings-section-body">
             <div class="settings-status" id="delete-status"></div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Permanently delete your account and all job data. This cannot be undone.</div>
-            <div class="settings-field"><label>TYPE YOUR USERNAME TO CONFIRM</label><input type="text" id="s-delete-confirm" placeholder="Type username to confirm"></div>
-            <button class="settings-btn danger" onclick="deleteAccount()">Delete account &amp; all data</button>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6">
+              Permanently delete your account and all job data. This cannot be undone.
+            </div>
+            <div class="settings-field"><label>Type your username to confirm</label><input type="text" id="s-delete-confirm" placeholder="Type username to confirm"></div>
+            <div><button class="settings-btn danger" onclick="deleteAccount()" style="width:auto">Delete account and all data</button></div>
           </div>
         </div>
 
-      <!-- No-matches state (shown when search filters everything out) -->
+      <!-- No-matches state -->
       <div id="settings-no-matches" class="settings-no-matches" style="display:none">No settings match your search.</div>
 
-      <!-- Colophon: small mono footer so the version stays visible on mobile
-           (where the sidebar user-bar that used to show it is hidden). -->
-      <div id="settings-colophon" style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:0.08em">
+      <!-- Colophon -->
+      <div id="settings-colophon" style="margin-top:48px;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:0.12em">
         <span>JOBSUMMIT.APP</span>
         <span id="settings-version-label"></span>
       </div>

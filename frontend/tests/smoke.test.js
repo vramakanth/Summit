@@ -523,14 +523,13 @@ t('Sidebar nav removed — no .snav-btn buttons anywhere', () => {
 });
 t('.settings-group-label CSS class defined', () => has('.settings-group-label'));
 t('Settings panel has 6 inline group labels in logical order', () => {
-  // ACCOUNT group was dropped — its one card (CHANGE PASSWORD) moved into SECURITY.
-  // Sign out is now accessed exclusively from the top-right cluster (mobile) or
-  // the bottom user-bar (desktop), so the redundant SIGN OUT card was removed.
-  const expected = ['SECURITY','AUTOMATION','INTEGRATIONS','DATA','SUPPORT','DANGER ZONE'];
+  // v1.19 editorial redesign: labels are now title-case ("Security") rather
+  // than ALL CAPS ("SECURITY"). Order and membership unchanged.
+  const expected = ['Security','Automation','Integrations','Data','Support','Danger zone'];
   for (const label of expected) {
     if (!src.includes(`>${label}<`)) throw new Error(`missing group label: ${label}`);
   }
-  let lastIdx = src.indexOf('>SECURITY<');
+  let lastIdx = src.indexOf('>Security<');
   for (const label of expected.slice(1)) {
     const idx = src.indexOf(`>${label}<`, lastIdx);
     if (idx < 0 || idx <= lastIdx) throw new Error(`${label} out of order relative to the previous group`);
@@ -665,7 +664,7 @@ t('Pane titles (Account/Recovery codes/Tailoring/...) removed — group labels +
   }
 });
 t('Danger zone is its own group with red styling (replaces stripped red pane title)', () => {
-  if (!src.includes('>DANGER ZONE<')) throw new Error('DANGER ZONE group label missing');
+  if (!src.includes('>Danger zone<')) throw new Error('Danger zone group label missing');
   if (!/\.settings-group-label--danger\s*\{[^}]*color:\s*var\(--red\)/.test(src)) {
     throw new Error('danger group label lacks red styling');
   }
@@ -927,10 +926,11 @@ t('loadUserSettings removes cleared keys from localStorage (clear propagation)',
   const body = src.slice(idx, idx + 2000);
   if (!body.includes('localStorage.removeItem(k)')) throw new Error('missing clear-propagation');
 });
-t('saveUserSettings encrypts for zero-knowledge accounts', () => {
+t('saveUserSettings encrypts (v1.19: always, no conditional)', () => {
   const idx = src.indexOf('async function saveUserSettings');
   const body = src.slice(idx, idx + 1200);
-  if (!body.includes('isEncrypted && dataKey')) throw new Error('no encrypted branch');
+  // v1.19: no more isEncrypted conditional — every account is encrypted
+  if (/isEncrypted\s*&&\s*dataKey/.test(body)) throw new Error('still has isEncrypted branch — should always encrypt in v1.19');
   if (!body.includes('CryptoEngine.encrypt(dataKey')) throw new Error('no client-side encrypt');
   if (!body.includes('__enc: true')) throw new Error('no __enc wrapper');
 });
@@ -960,10 +960,15 @@ t('loadUserSettings wired into login success', () => {
   const body = src.slice(idx, idx + 3000);
   if (!body.includes('loadUserSettings()')) throw new Error('loadUserSettings not called after login');
 });
-t('enableEncryption re-encrypts settings after upgrade', () => {
-  const idx = src.indexOf('async function enableEncryption');
-  const body = src.slice(idx, idx + 3500);
-  if (!body.includes('saveUserSettings()')) throw new Error('no saveUserSettings call after upgrade');
+// enableEncryption removed in v1.19 — all accounts encrypted from registration.
+// The function remains as an alert stub so any stale UI binding surfaces cleanly.
+t('enableEncryption is stubbed (removed in v1.19)', () => {
+  const idx = src.indexOf('function enableEncryption');
+  if (idx < 0) throw new Error('enableEncryption symbol removed entirely — UI bindings may break silently');
+  const body = src.slice(idx, idx + 400);
+  if (/CryptoEngine\.generateDataKey/.test(body)) {
+    throw new Error('enableEncryption still performs real crypto — should be a stub in v1.19');
+  }
 });
 
 // ── v1.18.3: account-switch DOM clearing + insights auto-load on new-job select ──

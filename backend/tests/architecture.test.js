@@ -194,17 +194,23 @@ t('SETTINGS_DIR in mkdir bootstrap',        () => {
   const m = serverSrc.match(/for\s*\(const d of \[([^\]]+)\]\)/);
   if (!m || !m[1].includes('SETTINGS_DIR')) throw new Error('SETTINGS_DIR not in bootstrap list');
 });
-t('loadUserSettings helper defined',        () => has(serverSrc, 'function loadUserSettings(userId, dataKey)'));
-t('saveUserSettings helper defined',        () => has(serverSrc, 'function saveUserSettings(userId, data, dataKey)'));
-t('loadUserSettings decrypts at rest',      () => {
+t('loadUserSettings helper defined',        () => has(serverSrc, 'function loadUserSettings(userId)'));
+t('saveUserSettings helper defined',        () => has(serverSrc, 'function saveUserSettings(userId, data)'));
+t('loadUserSettings is opaque pass-through (no at-rest crypto)', () => {
+  // v1.19+: client ciphertext is sole encryption layer. Server must NOT
+  // call any decryptData/unwrap — storage helpers pass through JSON.
   const idx = serverSrc.indexOf('function loadUserSettings');
   const body = serverSrc.slice(idx, idx + 500);
-  if (!body.includes('decryptData')) throw new Error('not decrypting at rest');
+  if (body.includes('decryptData') || body.includes('unwrapDataKey')) {
+    throw new Error('server is decrypting at rest — should be opaque pass-through in v1.19+');
+  }
 });
-t('saveUserSettings encrypts at rest',      () => {
+t('saveUserSettings is opaque pass-through (no at-rest crypto)', () => {
   const idx = serverSrc.indexOf('function saveUserSettings');
   const body = serverSrc.slice(idx, idx + 300);
-  if (!body.includes('encryptData')) throw new Error('not encrypting at rest');
+  if (body.includes('encryptData') || body.includes('wrapDataKey')) {
+    throw new Error('server is encrypting at rest — should be opaque pass-through in v1.19+');
+  }
 });
 t('GET /api/user-settings is authMiddleware-protected', () => {
   has(serverSrc, "app.get('/api/user-settings', authMiddleware");

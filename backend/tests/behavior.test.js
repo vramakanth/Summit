@@ -781,39 +781,50 @@ t('admin.html has Users and AI Tokens tabs with tab switcher', () => {
 // ════════════════════════════════════════════════════════════════════════════
 console.log('\n── Zero-knowledge encryption endpoints');
 
-t('/api/register persists encryptedDataKey + recoveryKeySlots for zero-knowledge signups', () => {
+t('/api/register requires encryptedDataKey + recoveryKeySlots (v1.19: encryption always on)', () => {
   const idx = serverSrc.indexOf("app.post('/api/register'");
   const body = serverSrc.slice(idx, idx + 2500);
-  // Must destructure the encryption fields the client sends
+  // v1.19+: all accounts are zero-knowledge. Missing encryption material
+  // is a 400, not a silent opt-out.
   if (!/encryptedDataKey/.test(body))          throw new Error('register does not accept encryptedDataKey');
   if (!/recoveryKeySlots/.test(body))          throw new Error('register does not accept recoveryKeySlots');
-  // Must persist them on the user record
-  if (!/rec\.encryptedDataKey\s*=/.test(body)) throw new Error('register does not persist encryptedDataKey');
-  if (!/rec\.recoveryKeySlots\s*=/.test(body)) throw new Error('register does not persist recoveryKeySlots');
-  if (!/rec\.encrypted\s*=\s*true/.test(body)) throw new Error('register does not set encrypted=true flag');
-  // Each slot stored with used:false so recovery can consume exactly one at a time
+  if (!/encryptedDataKey required/.test(body)) throw new Error('register does not reject missing encryptedDataKey with 400');
+  if (!/recoveryKeySlots required/.test(body)) throw new Error('register does not reject missing recoveryKeySlots with 400');
+  // Must persist on user record (shorthand or explicit) — unconditionally,
+  // since they're required.
+  if (!/encryptedDataKey\s*[:,}]/.test(body))   throw new Error('register does not persist encryptedDataKey on record');
+  if (!/recoveryKeySlots:\s*recoveryKeySlots/.test(body)) throw new Error('register does not persist recoveryKeySlots on record');
+  if (!/encrypted:\s*true/.test(body))         throw new Error('register does not set encrypted=true');
   if (!/used:\s*false/.test(body))             throw new Error('register does not set used:false per slot');
-  // Must return encryptedDataKey in response so client can confirm
-  if (!/response\.encryptedDataKey/.test(body)) throw new Error('register does not return encryptedDataKey');
+  // Must return encryptedDataKey so client can confirm handshake
+  if (!/encryptedDataKey/.test(body.split('res.json')[1] || '')) {
+    throw new Error('register does not return encryptedDataKey in response');
+  }
 });
 
-t('/api/login returns encryptedDataKey in response body for zero-knowledge accounts', () => {
+t('/api/login returns encryptedDataKey in response body (v1.19: always encrypted)', () => {
   const idx = serverSrc.indexOf("app.post('/api/login'");
-  const body = serverSrc.slice(idx, idx + 2000);
-  // Must check user.encrypted and return the wrapped key in the response body
-  // (not just inside the JWT payload — client reads the body)
-  if (!/user\.encrypted/.test(body))                  throw new Error('login does not check encrypted flag');
-  if (!/response\.encryptedDataKey\s*=/.test(body))   throw new Error('login does not return encryptedDataKey in body');
-  if (!/response\.encrypted\s*=\s*true/.test(body))   throw new Error('login does not signal encrypted:true');
+  const body = serverSrc.slice(idx, idx + 2500);
+  // v1.19+: every successful login returns the wrapped dataKey. No conditional
+  // branch — if a record lacks one, we 409 rather than returning without it.
+  if (!/encryptedDataKey:\s*user\.encryptedDataKey/.test(body)) {
+    throw new Error('login does not return encryptedDataKey in body');
+  }
+  if (!/encrypted:\s*true/.test(body)) throw new Error('login does not signal encrypted:true');
+  // Defensive 409 for legacy pre-v1.19 records
+  if (!/predates encryption migration/.test(body) && !/409/.test(body)) {
+    throw new Error('login does not defensively handle pre-v1.19 records');
+  }
 });
 
-t('/api/change-password requires newEncryptedDataKey for encrypted accounts (data-loss prevention)', () => {
+t('/api/change-password requires newEncryptedDataKey (data-loss prevention)', () => {
   const idx = serverSrc.indexOf("app.post('/api/change-password'");
   const body = serverSrc.slice(idx, idx + 2000);
-  // For encrypted accounts, a missing newEncryptedDataKey MUST reject the request —
-  // otherwise the old wrapped key becomes orphaned and the user can never log in again.
-  if (!/user\.encrypted[\s\S]{0,300}newEncryptedDataKey/.test(body)) {
-    throw new Error('change-password does not guard encrypted accounts against missing newEncryptedDataKey');
+  // v1.19+: ALL accounts are encrypted so newEncryptedDataKey is always
+  // required. Missing it is a 400 — otherwise the old wrapped key becomes
+  // orphaned and the user can never log in again.
+  if (!/newEncryptedDataKey required/.test(body)) {
+    throw new Error('change-password does not reject missing newEncryptedDataKey');
   }
   if (!/user\.encryptedDataKey\s*=\s*newEncryptedDataKey/.test(body)) {
     throw new Error('change-password does not swap in new wrapped key');
@@ -824,15 +835,18 @@ t('/api/recovery-codes exists and returns count+createdAt (never the codes thems
   const idx = serverSrc.indexOf("app.get('/api/recovery-codes'");
   if (idx < 0) throw new Error('/api/recovery-codes endpoint missing');
   const body = serverSrc.slice(idx, idx + 1500);
-  if (!/count:/.test(body))       throw new Error('endpoint does not return count');
-  if (!/createdAt:/.test(body))   throw new Error('endpoint does not return createdAt');
-  // Must NOT return the actual slot/code material — that would be a massive regression
-  if (/slot:/.test(body) || /recoveryKeySlots:/.test(body)) {
-    throw new Error('recovery-codes endpoint leaks slot material');
+  if (!/count/.test(body))       throw new Error('endpoint does not return count');
+  if (!/createdAt/.test(body))   throw new Error('endpoint does not return createdAt');
+  // Leak check: scan only the res.json payload, not the handler's locals
+  // (the handler legitimately reads user.recoveryKeySlots internally; we
+  // only care that it isn't forwarded to the client).
+  const jsonCall = body.match(/res\.json\(\{[\s\S]*?\}\)/);
+  if (!jsonCall) throw new Error('no res.json payload found');
+  if (/slot:/.test(jsonCall[0]) || /recoveryKeySlots/.test(jsonCall[0])) {
+    throw new Error('recovery-codes response leaks slot material');
   }
-  // Non-encrypted accounts return count:0, not a 404 — the client needs to
-  // render "not configured" rather than "could not load"
-  if (!/encrypted:\s*false/.test(body)) throw new Error('endpoint does not handle non-encrypted accounts');
+  // v1.19: always returns encrypted:true (all accounts are encrypted)
+  if (!/encrypted:\s*true/.test(body)) throw new Error('endpoint does not signal encrypted:true');
 });
 
 t('/api/recovery-codes/generate verifies password and rotates slots', () => {
@@ -844,18 +858,18 @@ t('/api/recovery-codes/generate verifies password and rotates slots', () => {
   if (!/user\.recoveryCodesGeneratedAt\s*=/.test(body))   throw new Error('generate does not update timestamp');
 });
 
-t('/api/enable-encryption upgrades plaintext account + atomically stores ciphertext jobs', () => {
+t('/api/enable-encryption returns 410 Gone (v1.19: accounts encrypted at registration)', () => {
   const idx = serverSrc.indexOf("app.post('/api/enable-encryption'");
-  if (idx < 0) throw new Error('/api/enable-encryption endpoint missing');
-  const body = serverSrc.slice(idx, idx + 3000);
-  if (!/bcrypt\.compare\(password/.test(body))            throw new Error('enable-encryption does not verify password');
-  if (!/user\.encrypted\s*=\s*true/.test(body))           throw new Error('enable-encryption does not flip encrypted flag');
-  if (!/user\.encryptedDataKey/.test(body))               throw new Error('enable-encryption does not store wrapped key');
-  if (!/encryptedJobs/.test(body))                        throw new Error('enable-encryption does not accept encrypted jobs blob');
-  // Must write the jobs file with the {__enc:true, data:...} envelope the loader expects
-  if (!/__enc:\s*true/.test(body))                        throw new Error('enable-encryption does not use __enc envelope');
-  // Must reject if account already encrypted (avoids overwriting slots/jobs)
-  if (!/already encrypted/.test(body))                    throw new Error('enable-encryption does not reject already-encrypted accounts');
+  if (idx < 0) throw new Error('/api/enable-encryption handler missing (should be 410 stub)');
+  const body = serverSrc.slice(idx, idx + 500);
+  if (!/410/.test(body)) throw new Error('enable-encryption should return 410 Gone');
+});
+
+t('/api/forgot returns 410 Gone (v1.19: password reset incompatible with zero-knowledge)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/forgot'");
+  if (idx < 0) throw new Error('/api/forgot handler missing (should be 410 stub)');
+  const body = serverSrc.slice(idx, idx + 500);
+  if (!/410/.test(body)) throw new Error('forgot should return 410 Gone');
 });
 
 t('/api/recover phase 1 returns ALL unused slots; phase 2 consumes by slotIndex', () => {
@@ -1116,12 +1130,14 @@ t('Frontend blocks pasted + dropped images', () => {
   if (!/startsWith\(['"]image\//.test(feSrc))         throw new Error('image MIME check missing');
 });
 
-t('Frontend encrypts note blobs with CryptoEngine envelope for ZK accounts', () => {
+t('Frontend encrypts note blobs with CryptoEngine envelope (v1.19: always)', () => {
   if (!/function encodeNoteBlob/.test(feSrc))       throw new Error('encodeNoteBlob missing');
   if (!/function decodeNoteBlob/.test(feSrc))       throw new Error('decodeNoteBlob missing');
   const idx = feSrc.indexOf('function encodeNoteBlob');
   const body = feSrc.slice(idx, idx + 600);
-  if (!/isEncrypted\s*&&\s*dataKey/.test(body))     throw new Error('encode does not check ZK state');
+  // v1.19: no conditional isEncrypted branch — always encrypt. Guard on
+  // dataKey existence only (the defensive "session issue" error case).
+  if (/isEncrypted/.test(body))                     throw new Error('encode still checks isEncrypted — should always encrypt in v1.19');
   if (!/CryptoEngine\.encrypt\(dataKey/.test(body)) throw new Error('encode does not use CryptoEngine');
   if (!/__enc:\s*true/.test(body))                  throw new Error('encode does not wrap __enc envelope');
 });
@@ -1930,13 +1946,12 @@ t('Server destructures every field the client sends (no silent-drop regression)'
     '/api/login': ['username', 'password'],
     '/api/change-password': [
       'currentPassword', 'newPassword',
-      // For encrypted accounts — dropping this orphans the wrapped key
+      // v1.19: always required (all accounts encrypted) — dropping this orphans the wrapped key
       'newEncryptedDataKey',
     ],
-    '/api/enable-encryption': [
-      'password',
-      'encryptedDataKey', 'recoveryKeySlots', 'encryptedJobs',
-    ],
+    // /api/enable-encryption contract removed in v1.19 — endpoint is a 410
+    // stub since all accounts are encrypted at registration. It no longer
+    // reads any body fields.
     '/api/recovery-codes/generate': [
       'password',
       'encryptedDataKey', 'recoveryKeySlots',
