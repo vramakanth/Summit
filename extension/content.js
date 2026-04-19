@@ -150,6 +150,42 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const isAppOrigin = host === 'jobsummit.app' || host === 'localhost' || host === '127.0.0.1';
   if (!isAppOrigin) return;
 
+  // ── Session sync (webapp → extension) ───────────────────────────────────
+  // When the user signs in on jobsummit.app, their token lives in
+  // localStorage as `applied_token`. The extension is a separate process
+  // with its own chrome.storage.local; without sync, the user has to log
+  // into the extension separately. Here we snapshot on every page load
+  // and listen for cross-tab storage events so the extension tracks the
+  // website's session automatically. Signs out cascade too — clearing the
+  // token in the site triggers a clear in the extension.
+  //
+  // One-way by design (site → extension). The reverse (extension →
+  // website) would need conflict resolution when the two diverge, and
+  // doesn't solve registration (new users always sign up via the site).
+  const pushSession = () => {
+    try {
+      const stored = localStorage.getItem('applied_token');
+      const username = localStorage.getItem('applied_user');
+      chrome.runtime.sendMessage({
+        action: 'syncSession',
+        token: stored || null,
+        username: username || null,
+      });
+    } catch (e) { /* extension may not be reachable; harmless */ }
+  };
+  // Push once on initial injection. If the user reloads jobsummit.app, the
+  // extension gets a fresh copy of the token.
+  pushSession();
+  // Storage events fire in OTHER tabs when the source tab writes to
+  // localStorage. So a login/logout in tab A will sync tab B's extension
+  // state. The source tab's own write doesn't emit this event — which is
+  // why pushSession() runs again on page load there.
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'applied_token' || e.key === 'applied_user' || e.key === null) {
+      pushSession();
+    }
+  });
+
   // Announce ourselves so the webapp knows the extension is installed and reachable
   const announce = () => window.postMessage(
     { type: 'summit-ext-ready', version: chrome.runtime.getManifest().version },
@@ -163,6 +199,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (ev.source !== window) return;
     const msg = ev.data;
     if (!msg || typeof msg !== 'object') return;
+
+    // Webapp-initiated session sync trigger. The webapp posts this after
+    // login/logout so the extension picks up the change immediately
+    // (otherwise, in the source tab, we'd wait until next page load —
+    // the `storage` event only fires in OTHER tabs).
+    if (msg.type === 'summit-session-changed') {
+      pushSession();
+      return;
+    }
+
     if (msg.type !== 'summit-bridge') return;
     const { nonce, action, url } = msg;
     if (!nonce) return;

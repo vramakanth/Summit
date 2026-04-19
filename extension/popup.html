@@ -46,7 +46,7 @@
   .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
   /* Status */
-  .status { font-size: 11px; padding: 7px 10px; border-radius: 6px; margin-top: 8px; display: none; line-height: 1.4; }
+  .status { font-size: 12px; font-weight: 500; padding: 8px 10px; border-radius: 6px; margin-top: 8px; display: none; line-height: 1.4; }
   .status.show { display: block; }
   .status.success { background: rgba(232,168,56,0.1); color: #e8a838; border: 1px solid rgba(232,168,56,0.2); }
   .status.error   { background: rgba(239,68,68,0.08); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
@@ -84,9 +84,9 @@
   </div>
   <div class="section">
     <label>Password</label>
-    <input id="password" type="password" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <input id="password" type="password" placeholder="Your password" autocomplete="current-password">
   </div>
-  <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+  <button class="btn btn-primary" id="login-btn">Sign in</button>
   <div class="status" id="login-status"></div>
 </div>
 
@@ -130,13 +130,13 @@
       <input id="job-salary" placeholder="e.g. $120k–$150k">
     </div>
 
-    <button class="btn btn-primary" id="add-btn" onclick="addJob()">+ Add to Summit</button>
+    <button class="btn btn-primary" id="add-btn">+ Add to Summit</button>
     <div class="status" id="add-status"></div>
   </div>
 
   <div class="footer">
-    <button class="link" onclick="openTracker()">Open Summit ↗</button>
-    <button class="link" onclick="signOut()">Sign out</button>
+    <button class="link" id="open-tracker-btn">Open Summit ↗</button>
+    <button class="link" id="sign-out-btn">Sign out</button>
   </div>
 </div>
 

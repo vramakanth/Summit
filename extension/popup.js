@@ -1,4 +1,4 @@
-// Summit Chrome Extension — popup.js v2.2
+// Summit Chrome Extension — popup.js v2.3
 const $ = id => document.getElementById(id);
 const TRACKER_URL = 'https://jobsummit.app';
 
@@ -38,6 +38,18 @@ function fillField(id, val, badge) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
+  // ── MV3 event wiring ────────────────────────────────────────────────────
+  // MV3's default extension CSP blocks inline event handlers in popup HTML
+  // (onclick=, onkeydown=). If the popup relies on them, nothing happens when
+  // the user clicks — including, critically, the Sign in button. We wire
+  // every handler here with addEventListener so it works under strict CSP.
+  $('login-btn').addEventListener('click', doLogin);
+  $('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('username').addEventListener('keydown', e => { if (e.key === 'Enter') $('password').focus(); });
+  $('add-btn').addEventListener('click', addJob);
+  $('open-tracker-btn').addEventListener('click', openTracker);
+  $('sign-out-btn').addEventListener('click', signOut);
+
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   currentTab = tabs[0];
   currentTabUrl = currentTab?.url || '';
@@ -68,27 +80,43 @@ async function init() {
 async function doLogin() {
   const user = $('username').value.trim();
   const pass = $('password').value;
+  const btn = $('login-btn');
   if (!user || !pass) { showStatus($('login-status'), 'error', 'Fill in all fields'); return; }
 
-  $('login-btn').disabled = true;
-  $('login-btn').textContent = 'Signing in...';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  // try/finally so the button is ALWAYS re-enabled. Previously an early
+  // return inside the try on a 401 skipped the reset lines — leaving the
+  // button stuck on "Signing in..." forever, making the 11px error message
+  // below easy to miss and giving the impression "nothing happened".
   try {
     const res = await fetch(TRACKER_URL + '/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: user, password: pass }),
     });
-    const data = await res.json();
-    if (!res.ok) { showStatus($('login-status'), 'error', data.error || 'Login failed'); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // 401 is the overwhelming common case. Show plain English rather than
+      // the server's raw "Invalid username or password" which is equivalent
+      // but slightly less friendly. Fall through to data.error for other
+      // codes (429 rate-limit → "rate_limited detail: ...", etc).
+      const msg = res.status === 401
+        ? 'Incorrect username or password'
+        : (data.error || data.detail || `Login failed (${res.status})`);
+      showStatus($('login-status'), 'error', msg);
+      return;
+    }
     token = data.token;
     await chrome.storage.local.set({ token: data.token, username: user });
     showMainView(user);
     startParsing();
   } catch(e) {
     showStatus($('login-status'), 'error', 'Cannot connect to Summit');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
   }
-  $('login-btn').disabled = false;
-  $('login-btn').textContent = 'Sign in';
 }
 
 function showMainView(username) {

@@ -23,6 +23,25 @@ function handleRequest(msg, sendResponse) {
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return false;
   }
+  if (msg.action === 'syncSession') {
+    // Webapp → extension session sync. Content.js pushes the current
+    // `applied_token` + `applied_user` from jobsummit.app's localStorage
+    // whenever the site loads or its localStorage changes. We mirror
+    // that state into chrome.storage.local so the extension popup can
+    // skip its login view when the user is already signed in on the
+    // site. A null token means the user signed out — we clear.
+    const { token, username } = msg;
+    if (token) {
+      chrome.storage.local.set({ token, username: username || '' }, () => {
+        sendResponse({ ok: true, synced: 'login' });
+      });
+    } else {
+      chrome.storage.local.remove(['token', 'username'], () => {
+        sendResponse({ ok: true, synced: 'logout' });
+      });
+    }
+    return true; // async
+  }
   if (msg.action === 'fetchPosting' && typeof msg.url === 'string') {
     fetchPostingInBackgroundTab(msg.url)
       .then(result => sendResponse(result))

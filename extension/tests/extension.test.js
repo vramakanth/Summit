@@ -141,11 +141,8 @@ t('popup skips /api/parse-job when page gives structured fields (zero round trip
     throw new Error('/api/parse-job called BEFORE early return — wasteful round trip');
   }
 });
-t('popup version comment bumped to v2.2', () => {
-  if (!/popup\.js v2\.2/.test(popup)) throw new Error('popup header not updated');
-});
-t('manifest version bumped to 2.2.0', () => {
-  if (manifest.version !== '2.2.0') throw new Error('manifest still at ' + manifest.version);
+t('popup version comment bumped to v2.3', () => {
+  if (!/popup\.js v2\.3/.test(popup)) throw new Error('popup header not updated');
 });
 
 // ── v2.2: webapp bridge fallback in parseJobUrl ───────────────────────────
@@ -284,6 +281,168 @@ t('parse failure message offers stale-update link when extension is stale (v1.18
   if (!/update to v[\$\{]/.test(body)) {
     throw new Error('no "update to" copy in failure branch');
   }
+});
+
+// ── v2.3.0: CSP-safe popup (no inline handlers) ──────────────────────────
+console.log('\n── extension v2.3.0 — CSP-safe popup');
+const popupHtml = fs.readFileSync(path.join(__dirname, '../../extension/popup.html'), 'utf8');
+t('popup.html has zero inline handlers (MV3 CSP fix)', () => {
+  // MV3's default extension CSP (`script-src 'self'; object-src 'self'`)
+  // blocks inline onclick/onkeydown handlers. Before v2.3 the popup relied
+  // on them — clicking Sign in did NOTHING because the handler was silently
+  // rejected by CSP. Regression guard: no inline handlers, period.
+  if (/\bonclick\s*=/i.test(popupHtml)) throw new Error('popup.html still has onclick= handler(s) — blocked by MV3 CSP');
+  if (/\bonkeydown\s*=/i.test(popupHtml)) throw new Error('popup.html still has onkeydown= handler(s) — blocked by MV3 CSP');
+  if (/\bonchange\s*=/i.test(popupHtml)) throw new Error('popup.html still has onchange= handler(s) — blocked by MV3 CSP');
+  if (/\bonsubmit\s*=/i.test(popupHtml)) throw new Error('popup.html still has onsubmit= handler(s) — blocked by MV3 CSP');
+});
+
+t('popup.html has required IDs for JS event wiring', () => {
+  // Sanity: every previously-inline button still needs an ID so popup.js
+  // can find it and attach a listener. If someone removes an ID without
+  // removing the listener wiring, the popup silently breaks again.
+  for (const id of ['login-btn', 'add-btn', 'open-tracker-btn', 'sign-out-btn', 'username', 'password']) {
+    if (!new RegExp(`id="${id}"`).test(popupHtml)) {
+      throw new Error(`popup.html missing required id="${id}"`);
+    }
+  }
+});
+
+t('popup.js init() wires login-btn + password Enter via addEventListener', () => {
+  const idx = popup.indexOf('async function init');
+  if (idx < 0) throw new Error('init() not found');
+  const body = popup.slice(idx, idx + 2500);
+  if (!/\$\(['"]login-btn['"]\)\.addEventListener\(['"]click['"]\s*,\s*doLogin\s*\)/.test(body)) {
+    throw new Error('init does not addEventListener click → doLogin on login-btn');
+  }
+  if (!/\$\(['"]password['"]\)\.addEventListener\(['"]keydown['"]/.test(body)) {
+    throw new Error('init does not wire password Enter via addEventListener');
+  }
+  if (!/\$\(['"]add-btn['"]\)\.addEventListener/.test(body)) {
+    throw new Error('init does not wire add-btn click');
+  }
+  if (!/\$\(['"]sign-out-btn['"]\)\.addEventListener/.test(body)) {
+    throw new Error('init does not wire sign-out-btn click');
+  }
+});
+
+t('doLogin uses try/finally so button always resets', () => {
+  // Previous bug: early return inside try on a 401 skipped the button reset,
+  // leaving "Signing in..." forever. The try/finally pattern guarantees the
+  // button returns to "Sign in" whether the call succeeds, fails, or throws.
+  const idx = popup.indexOf('async function doLogin');
+  if (idx < 0) throw new Error('doLogin not found');
+  const body = popup.slice(idx, idx + 2000);
+  if (!/\}\s*finally\s*\{/.test(body)) {
+    throw new Error('doLogin does not use try/finally — button can get stuck');
+  }
+  // Inside the finally block, the button must be reset. Grab the finally
+  // body and verify it touches btn.disabled + btn.textContent.
+  const finM = body.match(/\}\s*finally\s*\{([\s\S]*?)\}\s*\n/);
+  if (!finM) throw new Error('finally body not parseable');
+  if (!/disabled\s*=\s*false/.test(finM[1]) || !/textContent\s*=/.test(finM[1])) {
+    throw new Error('doLogin finally block does not reset button state');
+  }
+});
+
+t('doLogin shows specific "Incorrect username or password" on 401', () => {
+  // Server returns plain "Invalid username or password" but we prefer a
+  // friendlier copy client-side. Guard that a 401 branch is in place.
+  const idx = popup.indexOf('async function doLogin');
+  const body = popup.slice(idx, idx + 2000);
+  if (!/res\.status\s*===\s*401/.test(body)) {
+    throw new Error('doLogin does not branch on 401 status');
+  }
+  if (!/Incorrect username or password/i.test(body)) {
+    throw new Error('doLogin does not show user-friendly 401 message');
+  }
+});
+
+// ── v2.3.0: Website → extension session sync ─────────────────────────────
+console.log('\n── extension v2.3.0 — session sync');
+t('content.js pushes session from localStorage on load', () => {
+  // On every jobsummit.app page load, content.js reads applied_token +
+  // applied_user from localStorage and pings background.js with them.
+  // Without this the extension popup has its own independent auth state.
+  if (!/const\s+pushSession\s*=|function\s+pushSession\s*\(/.test(content)) {
+    throw new Error('content.js has no pushSession function');
+  }
+  if (!/localStorage\.getItem\(['"]applied_token['"]\)/.test(content)) {
+    throw new Error('content.js does not read applied_token from localStorage');
+  }
+  if (!/chrome\.runtime\.sendMessage\([\s\S]{0,200}syncSession/.test(content)) {
+    throw new Error('content.js does not call syncSession action');
+  }
+});
+
+t('content.js listens for storage events (cross-tab sync)', () => {
+  // Cross-tab case: login in tab A updates localStorage → tab B's content.js
+  // gets a storage event → pushes the new token to the extension.
+  if (!/addEventListener\(\s*['"]storage['"]/.test(content)) {
+    throw new Error('content.js does not listen for storage events');
+  }
+});
+
+t('content.js listens for summit-session-changed postMessage (same-tab sync)', () => {
+  // Same-tab case: storage events don't fire in the source tab. The webapp
+  // posts summit-session-changed after its own login/logout so content.js
+  // picks up changes without waiting for a page reload.
+  if (!/summit-session-changed/.test(content)) {
+    throw new Error('content.js does not handle summit-session-changed messages');
+  }
+});
+
+t('background.js handles syncSession action and writes to chrome.storage.local', () => {
+  if (!/msg\.action\s*===\s*['"]syncSession['"]/.test(background)) {
+    throw new Error('background.js has no syncSession handler');
+  }
+  if (!/chrome\.storage\.local\.set/.test(background)) {
+    throw new Error('syncSession handler does not write to chrome.storage.local');
+  }
+  if (!/chrome\.storage\.local\.remove/.test(background)) {
+    throw new Error('syncSession handler does not clear storage on logout (null token)');
+  }
+});
+
+t('webapp has _notifyExtensionSessionChanged helper', () => {
+  if (!/function\s+_notifyExtensionSessionChanged\s*\(/.test(webapp)) {
+    throw new Error('_notifyExtensionSessionChanged helper not defined');
+  }
+  // Must postMessage summit-session-changed so content.js can listen for it
+  const idx = webapp.indexOf('function _notifyExtensionSessionChanged');
+  const body = webapp.slice(idx, idx + 400);
+  if (!/summit-session-changed/.test(body)) {
+    throw new Error('_notifyExtensionSessionChanged does not post summit-session-changed');
+  }
+});
+
+t('doLogin/doLogout/doRegister/doRecover all call _notifyExtensionSessionChanged', () => {
+  // Every code path that writes or clears applied_token in the webapp must
+  // notify the extension — otherwise same-tab auth state diverges. Scans
+  // for each such localStorage operation and verifies a notify call
+  // appears within the next 200 chars (i.e., right after the setItem
+  // pair).
+  const writeRe = /localStorage\.setItem\(['"]applied_token['"]|localStorage\.removeItem\(['"]applied_token['"]/g;
+  let m, missing = [];
+  while ((m = writeRe.exec(webapp)) !== null) {
+    const windowAfter = webapp.slice(m.index, m.index + 400);
+    if (!/_notifyExtensionSessionChanged/.test(windowAfter)) {
+      const lineNo = webapp.slice(0, m.index).split('\n').length;
+      // Skip the error-rollback case inside the try (line ~1534) where
+      // the account is rejected — we roll the write back AND the user
+      // never considered signed in, so no notification needed.
+      const line = webapp.slice(webapp.lastIndexOf('\n', m.index) + 1, webapp.indexOf('\n', m.index));
+      if (/removeItem.*applied_token.*removeItem.*applied_user/.test(line)) continue; // rollback line
+      missing.push(`line ~${lineNo}: ${line.trim().slice(0, 80)}`);
+    }
+  }
+  if (missing.length) {
+    throw new Error('applied_token writes without session notify:\n  ' + missing.join('\n  '));
+  }
+});
+
+t('manifest version bumped to 2.3.0', () => {
+  if (manifest.version !== '2.3.0') throw new Error('manifest still at ' + manifest.version);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

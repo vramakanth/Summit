@@ -935,7 +935,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('forgot')" style="font-size:12px;color:var(--text3)">Forgot password?</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
   </div>
 </div>
 
@@ -975,7 +975,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
   </div>
 </div>
 
@@ -991,7 +991,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
   </div>
 </div>
 
@@ -1068,7 +1068,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.4</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.18.5</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1277,7 +1277,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.18.4';
+const APP_VERSION = '1.18.5';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -1520,6 +1520,7 @@ async function doLogin() {
     token=d.token; currentUser=d.username;
     localStorage.setItem('applied_token',token);
     localStorage.setItem('applied_user',currentUser);
+    _notifyExtensionSessionChanged();  // push new session to extension
 
     // Zero-knowledge: derive dataKey from password in browser — never sent to server
     if (d.encrypted && d.encryptedDataKey) {
@@ -1640,6 +1641,7 @@ async function doRecover() {
       isEncrypted = true;
       localStorage.setItem('applied_token', token);
       localStorage.setItem('applied_user', currentUser);
+      _notifyExtensionSessionChanged();  // push new session to extension
 
       ['recover-username','recover-code','recover-newpw','recover-confirmpw'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -1653,6 +1655,7 @@ async function doRecover() {
       dataKey = null; isEncrypted = false;
       localStorage.setItem('applied_token', token);
       localStorage.setItem('applied_user', currentUser);
+      _notifyExtensionSessionChanged();  // push new session to extension
       ['recover-username','recover-code','recover-newpw','recover-confirmpw'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
@@ -1842,6 +1845,7 @@ async function doRegister() {
     isEncrypted = true;
     localStorage.setItem('applied_token',token);
     localStorage.setItem('applied_user',currentUser);
+    _notifyExtensionSessionChanged();  // push new session to extension
 
     // Show recovery codes — must be saved before entering app
     showRecoveryCodesModal(formattedCodes, () => { showApp(); loadJobs(); loadUserSettings(); }, true);
@@ -2020,6 +2024,7 @@ async function doLogout() {
   document.querySelectorAll('.sidebar-action-btn').forEach(btn => btn.classList.remove('active'));
   localStorage.removeItem('applied_token');
   localStorage.removeItem('applied_user');
+  _notifyExtensionSessionChanged();  // push logout to extension
   showScreen('login');
   document.getElementById('login-username').value='';
   document.getElementById('login-password').value='';
@@ -3861,7 +3866,7 @@ let _extensionVersion = null;
 // since fixed (content.js returning structured fields is a v2.2.0 capability;
 // pre-2.2 extensions silently lose the Path 1 extraction that lets the
 // add-job modal's bridge fallback produce useful data on bot-gated sites).
-const MIN_EXTENSION_VERSION = '2.2.0';
+const MIN_EXTENSION_VERSION = '2.3.0';
 
 function _compareSemver(a, b) {
   // Returns -1 if a<b, 0 if equal, 1 if a>b. Tolerates "2.2", "2.2.0", "2.2.0-beta"
@@ -3878,6 +3883,19 @@ function _compareSemver(a, b) {
 function _extIsStale() {
   if (!_extensionAvailable || !_extensionVersion) return false;
   return _compareSemver(_extensionVersion, MIN_EXTENSION_VERSION) < 0;
+}
+
+// Nudge the Summit extension (if installed) to re-read the current
+// localStorage session state. Used after login, logout, register, and
+// recovery-code login so the extension popup picks up the auth change
+// immediately rather than waiting for the next page reload. content.js
+// listens for this postMessage type and re-runs pushSession().
+//
+// Safe to call unconditionally — no-op if the extension isn't installed
+// (nothing listening) or if we're not on jobsummit.app (content.js bridge
+// only activates on the app origin).
+function _notifyExtensionSessionChanged() {
+  try { window.postMessage({ type: 'summit-session-changed' }, location.origin); } catch {}
 }
 
 // Stale-extension banner: renders once in the app shell, dismissal is
@@ -8807,7 +8825,7 @@ setInterval(() => {
     </div>
     <button class="auth-btn" id="forgot-btn" onclick="doForgot()">Send recovery email</button>
     <div class="auth-switch" style="margin-top:12px"><a onclick="showScreen('login')">← Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.18.5 · private beta</div>
   </div>
 </div>
 
