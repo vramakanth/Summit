@@ -2469,7 +2469,7 @@ app.get('*', (req, res) => {
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Applied Tracker on port ${PORT}`);
+    console.log(`Summit on port ${PORT}`);
     console.log(`Data: ${DATA_DIR}`);
     console.log(`AI: groq=${!!GROQ_API_KEY} openrouter=${!!OPENROUTER_API_KEY} google=${!!GOOGLE_API_KEY}`);
   });

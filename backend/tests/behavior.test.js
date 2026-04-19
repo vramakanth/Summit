@@ -4251,5 +4251,39 @@ t('Anchor-styled auth-logo has cursor + hover affordance', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// v1.19.8 — rename leaks ("Applied" → "Summit")
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.8 no legacy product-name leaks');
+
+t('Recovery-codes print template says "Summit", not "Applied"', () => {
+  const idx = feSrc.indexOf('function printRecoveryCodes');
+  if (idx < 0) throw new Error('printRecoveryCodes missing');
+  const body = feSrc.slice(idx, idx + 1500);
+  if (/<title>Applied\b/.test(body)) throw new Error('print <title> still says "Applied"');
+  if (/<h2>Applied\b/.test(body))    throw new Error('print <h2> still says "Applied"');
+  if (!/<title>Summit\b/.test(body)) throw new Error('print <title> does not say "Summit"');
+  if (!/<h2>Summit\b/.test(body))    throw new Error('print <h2> does not say "Summit"');
+});
+
+t('No user-facing copy says "Applied export file" or "Applied Tracker"', () => {
+  // "Applied" as a job status ("I applied to this job") is fine and widely
+  // used in the UI; the regression guard targets only product-name uses
+  // that pre-date the rename to Summit.
+  const forbidden = [
+    /Applied Tracker/,
+    /Applied export file/,
+    /Applied\s+—\s+Recovery/,        // the pattern the print template used
+  ];
+  for (const re of forbidden) {
+    if (re.test(feSrc)) {
+      const m = feSrc.match(re);
+      const idx = feSrc.indexOf(m[0]);
+      const snippet = feSrc.slice(Math.max(0, idx - 60), idx + 120);
+      throw new Error(`Legacy product-name leak (${re}): …${snippet}…`);
+    }
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
