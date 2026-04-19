@@ -500,10 +500,10 @@ function makeFilterDOM(activeFilter) {
 
 // ── Version ──────────────────────────────────────────────────────────────────
 console.log('\n── version');
-t('App version is v1.19.4', () => {
+t('App version is v1.19.5', () => {
   const src2 = require('fs').readFileSync(require('path').join(__dirname,'../public/index.html'),'utf8');
-  if (!src2.includes('v1.19.4')) throw new Error('version not updated to v1.19.4');
-  if (src2.includes('v1.19.3')) throw new Error('old version v1.19.3 still present');
+  if (!src2.includes('v1.19.5')) throw new Error('version not updated to v1.19.5');
+  if (src2.includes('v1.19.4')) throw new Error('old version v1.19.4 still present');
 });
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass}/${pass + fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);

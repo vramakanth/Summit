@@ -4014,5 +4014,85 @@ t('Registration email copy does not mention password recovery', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// v1.19.5 — install-extension nudges
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.19.5 install-nudge guards');
+
+t('Install-nudge slots exist in empty state + add modal', () => {
+  if (!/id="ext-install-nudge-slot"/.test(feSrc)) {
+    throw new Error('empty-state nudge slot missing');
+  }
+  if (!/id="ext-install-nudge-modal-slot"/.test(feSrc)) {
+    throw new Error('add-modal nudge slot missing');
+  }
+});
+
+t('Install-nudge render functions exist for both surfaces', () => {
+  if (!/function _renderExtInstallNudgeEmptyState/.test(feSrc)) {
+    throw new Error('_renderExtInstallNudgeEmptyState missing');
+  }
+  if (!/function _renderExtInstallNudgeModal/.test(feSrc)) {
+    throw new Error('_renderExtInstallNudgeModal missing');
+  }
+});
+
+t('Install nudge: no-op when extension is already installed', () => {
+  // Both render functions must short-circuit on _extensionAvailable so we
+  // don't render an "install it" prompt to users who have it. This is
+  // the biggest visible bug if it regresses.
+  for (const fn of ['_renderExtInstallNudgeEmptyState', '_renderExtInstallNudgeModal']) {
+    const idx = feSrc.indexOf(`function ${fn}`);
+    const body = feSrc.slice(idx, idx + 2000);
+    if (!/_extensionAvailable/.test(body)) {
+      throw new Error(`${fn} does not check _extensionAvailable`);
+    }
+  }
+});
+
+t('Install nudge: dismissal persists and is respected on re-render', () => {
+  // Both render functions must check _extInstallNudgeDismissed() so a
+  // user who said "not now" doesn't keep seeing the prompt every time
+  // they open the modal or hit the empty state.
+  for (const fn of ['_renderExtInstallNudgeEmptyState', '_renderExtInstallNudgeModal']) {
+    const idx = feSrc.indexOf(`function ${fn}`);
+    const body = feSrc.slice(idx, idx + 2000);
+    if (!/_extInstallNudgeDismissed/.test(body)) {
+      throw new Error(`${fn} does not respect the dismissal flag`);
+    }
+  }
+  // The dismiss flag must be keyed on MIN_EXTENSION_VERSION, not a
+  // single boolean. Otherwise when we bump extension versions in a
+  // future release, users who said "not now" last time never see the
+  // updated prompt.
+  const dismissIdx = feSrc.indexOf('function _extInstallNudgeDismissed');
+  const dismissBody = feSrc.slice(dismissIdx, dismissIdx + 400);
+  if (!/MIN_EXTENSION_VERSION/.test(dismissBody)) {
+    throw new Error('dismiss flag does not key on MIN_EXTENSION_VERSION — future bumps won\'t re-prompt');
+  }
+});
+
+t('summit-ext-ready handler removes install nudges (extension belatedly announced)', () => {
+  const idx = feSrc.indexOf("msg.type === 'summit-ext-ready'");
+  if (idx < 0) throw new Error('summit-ext-ready handler missing');
+  const body = feSrc.slice(idx, idx + 1200);
+  if (!/_removeExtInstallNudges\(\)/.test(body)) {
+    throw new Error('handler does not clean up install nudges when ext announces');
+  }
+});
+
+t('showApp triggers empty-state nudge render; openAddModal triggers inline nudge', () => {
+  const showAppIdx = feSrc.indexOf('function showApp');
+  const showAppBody = feSrc.slice(showAppIdx, showAppIdx + 3000);
+  if (!/_renderExtInstallNudgeEmptyState\(\)/.test(showAppBody)) {
+    throw new Error('showApp does not trigger empty-state nudge render');
+  }
+  const openIdx = feSrc.indexOf('function openAddModal');
+  const openBody = feSrc.slice(openIdx, openIdx + 2500);
+  if (!/_renderExtInstallNudgeModal\(\)/.test(openBody)) {
+    throw new Error('openAddModal does not trigger inline nudge render');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

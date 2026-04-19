@@ -692,7 +692,7 @@ input[type=\"file\"] { display: none; }
   12%  { background-color: rgba(232,168,56,0.08); }
   100% { background-color: rgba(232,168,56,0.0); }
 }
-/* v1.19.4: highlight new-from-inbox job cards. Tells the user "this just
+/* v1.19.5: highlight new-from-inbox job cards. Tells the user "this just
    arrived from the extension" without a toast or extra chrome. Animation
    self-removes via animationend listener; class is one-shot. */
 .job-item.inbox-just-added { animation: inboxArrive 2s ease-out; }
@@ -701,7 +701,7 @@ input[type=\"file\"] { display: none; }
   70%  { background-color: rgba(232,168,56,0.06); border-color: rgba(232,168,56,0.15); }
   100% { background-color: transparent; border-color: transparent; }
 }
-/* v1.19.4: passive advisory when an extension-add was silently skipped
+/* v1.19.5: passive advisory when an extension-add was silently skipped
    because it matched an existing job. Different tint from inbox-just-added
    so the user can tell at a glance: amber = new arrival, blue = duplicate
    caught. Same one-shot lifecycle. */
@@ -711,6 +711,90 @@ input[type=\"file\"] { display: none; }
   70%  { background-color: rgba(96,165,250,0.05); border-color: rgba(96,165,250,0.12); }
   100% { background-color: transparent; border-color: transparent; }
 }
+/* v1.19.5: extension-install nudges. Subtle card on the empty state and
+   a one-liner inside the add-job modal. Both fade in only after confirming
+   the extension isn't installed (to avoid flashing on users who have it).
+   Dismissal is persisted so users who prefer the paste flow don't keep
+   seeing it. */
+.ext-nudge-card {
+  background: rgba(232,168,56,0.06);
+  border: 1px solid rgba(232,168,56,0.22);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  max-width: 440px;
+  margin: 28px auto 0;
+  text-align: left;
+  position: relative;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.ext-nudge-card.visible { opacity: 1; }
+.ext-nudge-card .eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-bg);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.ext-nudge-card .title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.ext-nudge-card .body {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+.ext-nudge-card .actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 12px;
+}
+.ext-nudge-card .install-link {
+  color: var(--accent-bg);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: var(--font);
+  padding: 0;
+}
+.ext-nudge-card .install-link:hover { text-decoration: underline; }
+.ext-nudge-card .dismiss-link {
+  color: var(--text3);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 0;
+}
+.ext-nudge-card .dismiss-link:hover { color: var(--text2); }
+/* Modal variant — same semantics, tighter frame to fit under the URL
+   input without stealing attention. */
+.ext-nudge-inline {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.55;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(232,168,56,0.05);
+  border-left: 2px solid rgba(232,168,56,0.35);
+  border-radius: 0 4px 4px 0;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.ext-nudge-inline.visible { opacity: 1; }
+.ext-nudge-inline a { color: var(--accent-bg); text-decoration: underline; cursor: pointer; }
 .settings-group-label { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.22em; text-transform: uppercase; padding: 0 0 6px; margin: 32px 0 20px; border-bottom: 1px solid var(--border); }
 .settings-group-label:first-child { margin-top: 0; }
 .settings-group-label--danger { color: var(--red); border-bottom-color: rgba(192,57,43,0.25); }
@@ -955,7 +1039,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       Don't have an account? <a onclick="showScreen('register')">Create one</a>
       <br><a onclick="showScreen('recover')" style="font-size:12px;color:var(--text3)">Forgot password? Use a recovery code</a>
     </div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.5 · private beta</div>
   </div>
 </div>
 
@@ -996,7 +1080,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     </div>
     <button id="register-btn" class="auth-btn" onclick="doRegister()">Create account</button>
     <div class="auth-switch">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.5 · private beta</div>
   </div>
 </div>
 
@@ -1012,7 +1096,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
     <div class="auth-field"><label>CONFIRM PASSWORD</label><input id="recover-confirmpw" type="password" placeholder="Confirm new password"></div>
     <button id="recover-btn" class="auth-btn" onclick="recoverAccount()">Reset password</button>
     <div class="auth-switch"><a onclick="showScreen('login')">Back to sign in</a></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.4 · private beta</div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:#7a6a50;font-family:monospace">v1.19.5 · private beta</div>
   </div>
 </div>
 
@@ -1089,7 +1173,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <div class="user-avatar" id="user-avatar" style="display:flex">VR</div>
       <div style="flex:1;min-width:0">
         <div class="user-name" id="user-name-display">user</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.19.4</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)" id="version-label">v1.19.5</div>
       </div>
 
       <button class="user-bar-settings" onclick="doLogout()" title="Sign out" style="color:var(--text3)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">
@@ -1107,6 +1191,10 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" style="opacity:0.15"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/></svg>
       <h2>No application selected</h2>
       <p>Click <strong>Add job</strong> to start tracking your applications, or select one from the list.</p>
+      <!-- v1.19.5: extension-install nudge. Populated + shown by
+           _renderExtInstallNudge() after confirming the extension isn't
+           detected. Hidden by default; fades in only when appropriate. -->
+      <div id="ext-install-nudge-slot"></div>
     </div>
     <!-- Detail view (populated by JS) -->
     <div id="detail-view" style="display:none;flex:1;overflow:hidden;flex-direction:column"></div>
@@ -1137,6 +1225,10 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
         <label for="upload-input" style="cursor:pointer;color:var(--accent-bg);text-decoration:underline">upload a saved page (HTML or PDF)</label>
         <input id="upload-input" type="file" accept=".html,.htm,.mhtml,.mht,.pdf" style="display:none" onchange="parseUploadedFile(event)">
       </div>
+      <!-- v1.19.5: extension-install inline nudge. Populated + shown by
+           _renderExtInstallNudge() when modal opens if extension is absent.
+           Hidden by default — never appears for users who already have it. -->
+      <div id="ext-install-nudge-modal-slot"></div>
     </div>
     <button id="manual-toggle" onclick="toggleManualFields()" style="margin-top:14px;display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;font-family:var(--font);font-size:12px;color:var(--text3);cursor:pointer;width:100%;text-align:left">
       <svg id="manual-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.2s;flex-shrink:0"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -1298,7 +1390,7 @@ kbd { background:var(--bg3); border:1px solid var(--border2); border-radius:5px;
 
 <script>
 const API = '';
-const APP_VERSION = '1.19.4';
+const APP_VERSION = '1.19.5';
 let token = localStorage.getItem('applied_token');
 let currentUser = localStorage.getItem('applied_user');
 let jobs = {}, currentJobId = null, currentFilter = 'all', activeDetailTab = 'notes';
@@ -1307,7 +1399,7 @@ let sessionTailoredResume = null, sessionTailoredCover = null;
 let sessionTailoredResumeHtml = null, sessionTailoredCoverHtml = null;
 let activeTailorDoc = 'resume'; // which doc type is selected in tailoring UI
 let pendingHtml = null, pendingText = null;
-// v1.19.4: carry req ID + label from the URL parse (JSON-LD / HTML scrape /
+// v1.19.5: carry req ID + label from the URL parse (JSON-LD / HTML scrape /
 // AI extract) so addJob can stamp it on the new job record. Kept as module
 // state rather than a form input — it's a silent metadata field, not
 // something the user should have to see or edit.
@@ -1530,14 +1622,19 @@ function showApp() {
 
   // Notes editor is now inline (no CDN / no module imports) — nothing to prefetch.
 
-  // v1.19.4: start polling inbox for near-instant extension-added job pickup
+  // v1.19.5: start polling inbox for near-instant extension-added job pickup
   _startInboxPolling();
 
-  // v1.19.4: if an extension announced itself while the user was on a
+  // v1.19.5: if an extension announced itself while the user was on a
   // pre-login screen, the banner handler returned early. Re-check here so
   // a stale extension still surfaces a banner — just on the app chrome,
   // not the landing page.
   if (_extIsStale()) _renderStaleExtensionBanner();
+
+  // v1.19.5: render the install-extension nudge on the empty state for
+  // users who don't have it installed. Delayed internally so we don't
+  // flash it on users whose extension is just slow to announce.
+  _renderExtInstallNudgeEmptyState();
 }
 
 // ── AUTH ──
@@ -1827,7 +1924,7 @@ async function doRegister() {
   const err = document.getElementById('register-error');
   const btn = document.getElementById('register-btn');
   err.classList.remove('show');
-  // v1.19.4: email is truly optional now. Summit is end-to-end encrypted and
+  // v1.19.5: email is truly optional now. Summit is end-to-end encrypted and
   // can't recover accounts via email, so there's no functional requirement
   // for it. Only username + password are required; email is reserved for
   // future notification features.
@@ -2032,8 +2129,8 @@ async function doLogout() {
   // is gone, the PUT would 401 and the user's last typing would be lost.
   // We await so state is deterministic before we clear everything.
   try { await tearDownNotesEditor(); } catch {}
-  _stopInboxPolling();  // v1.19.4: halt inbox drain loop
-  // v1.19.4: stale-ext banner is only shown post-login, so remove it on
+  _stopInboxPolling();  // v1.19.5: halt inbox drain loop
+  // v1.19.5: stale-ext banner is only shown post-login, so remove it on
   // logout. Don't write the dismiss flag — if the user re-logs-in and the
   // extension is still stale, we want the banner back.
   const sb = document.getElementById('stale-ext-banner');
@@ -2126,7 +2223,7 @@ async function loadJobs() {
       });
     });
 
-    // v1.19.4 backfill: jobs added before reqId tracking don't have one.
+    // v1.19.5 backfill: jobs added before reqId tracking don't have one.
     // We can't re-scrape the page, but we can extract from the URL alone
     // for the common ATS patterns (Workday req-codes, LinkedIn/Greenhouse
     // numeric IDs). Best-effort — leaves reqId empty for anything that
@@ -2143,17 +2240,17 @@ async function loadJobs() {
     });
     if (strippedAnyNotes || backfilledAny) scheduleSave();
   } catch(e) { console.error('loadJobs error:', e); jobs={}; }
-  // v1.19.4: drain any pending inbox entries (posted by the extension while
+  // v1.19.5: drain any pending inbox entries (posted by the extension while
   // the user was away). Fold them into jobs BEFORE rendering so new additions
   // appear on the very first paint.
   await _drainInbox();
   renderJobList();
-  _applyInboxHighlights();  // v1.19.4: highlight any entries that arrived while away
-  _applyDupeAdvisory();     // v1.19.4: advisory for silently-skipped duplicates
+  _applyInboxHighlights();  // v1.19.5: highlight any entries that arrived while away
+  _applyDupeAdvisory();     // v1.19.5: advisory for silently-skipped duplicates
   renderStaleNudge();
 }
 
-// ── Job inbox drain (v1.19.4) ───────────────────────────────────────────────
+// ── Job inbox drain (v1.19.5) ───────────────────────────────────────────────
 // The extension can't encrypt (no dataKey), so it POSTs plaintext jobs to
 // /api/jobs/inbox. We poll/drain that inbox here, merge entries into the
 // encrypted `jobs` store, and DELETE each consumed entry atomically.
@@ -2178,7 +2275,7 @@ let _inboxJustAdded = new Set();
 // user knows a duplicate add happened while they were away.
 let _inboxDupeMatched = new Map();  // existingJobId -> { candidate, reason }
 
-// ── Dedupe helpers (v1.19.4) ────────────────────────────────────────────────
+// ── Dedupe helpers (v1.19.5) ────────────────────────────────────────────────
 // Centralized "is this a duplicate?" decision so the paste-URL path and the
 // inbox drain path use identical rules. Returns { job, reason } on hit or
 // null on miss.
@@ -2393,7 +2490,7 @@ async function _drainInbox() {
         if (!deleted) continue;  // racing tab got it first
       } catch { continue; }
 
-      // v1.19.4: dedupe check before merge. The user wasn't present when
+      // v1.19.5: dedupe check before merge. The user wasn't present when
       // the extension posted this, so we can't show a decision modal —
       // policy is: duplicates are silently skipped (not merged) but we
       // track them so the existing card can get a passive advisory flash
@@ -2429,7 +2526,7 @@ async function _drainInbox() {
         resume:   null,
         cover:    null,
         source:   entry.source || 'extension',
-        // v1.19.4: carry requisition ID onto the merged job so future
+        // v1.19.5: carry requisition ID onto the merged job so future
         // dedupe checks against this job work correctly.
         reqId:      entry.reqId      || '',
         reqIdLabel: entry.reqIdLabel || '',
@@ -2473,7 +2570,7 @@ function _applyInboxHighlights() {
   _inboxJustAdded.clear();
 }
 
-// v1.19.4: passive advisory for inbox entries skipped as duplicates.
+// v1.19.5: passive advisory for inbox entries skipped as duplicates.
 // Flashes the existing matched card in blue so the user understands a
 // duplicate add happened while they were away. No modal — they weren't
 // present at the add. One-shot, self-cleaning, same pattern as highlights.
@@ -2734,7 +2831,7 @@ async function parseJobUrl() {
 
     // Populate form fields via shared helper
     let filled = _populateFormFields(finalFields);
-    // v1.19.4: req ID is a silent field — stash for addJob to stamp on the
+    // v1.19.5: req ID is a silent field — stash for addJob to stamp on the
     // new job record rather than rendering a form input. Overwritten below
     // if the extension-bridge path produces a new set of fields.
     pendingReqId      = finalFields?.reqId      || null;
@@ -3019,6 +3116,10 @@ function openAddModal() {
   if (mf) mf.style.display = 'none';
   if (mc) mc.style.transform = '';
   setTimeout(() => document.getElementById('job-url').focus(), 60);
+  // v1.19.5: render install-nudge inline if extension isn't detected.
+  // No-op for users who have it, have dismissed it, or for whom ext
+  // announces itself between now and when they click Parse.
+  _renderExtInstallNudgeModal();
 }
 function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
 
@@ -3029,7 +3130,7 @@ function addJob() {
   const workType = document.getElementById('job-worktype')?.value || '';
   const url      = document.getElementById('job-url').value.trim();
 
-  // v1.19.4: dedupe candidate — the fields we'll compare against existing
+  // v1.19.5: dedupe candidate — the fields we'll compare against existing
   // jobs. reqId comes from the URL parse pipeline (stashed in pendingReqId)
   // and is the primary match signal when present. URL is the fallback signal.
   const candidate = { title, company, url, reqId: pendingReqId || '' };
@@ -3061,7 +3162,7 @@ function _commitAddJob(title, company, url, workType) {
     tailoredResume: null, tailoredCover: null,
     postingHtml: pendingHtml,
     postingText: pendingText,
-    // v1.19.4: requisition ID — silent metadata, used for dedupe. Empty if
+    // v1.19.5: requisition ID — silent metadata, used for dedupe. Empty if
     // the extraction pipeline didn't find one (small companies, custom pages).
     reqId:      pendingReqId      || '',
     reqIdLabel: pendingReqIdLabel || '',
@@ -4387,8 +4488,108 @@ window.addEventListener('message', (ev) => {
     // the add-job nudge but still deserve to know their extension is out
     // of date. Rendered as a dismissible banner in the app shell.
     if (_extIsStale()) _renderStaleExtensionBanner();
+    // v1.19.5: if an install nudge was shown because we thought no extension
+    // was present, the extension announced itself — remove the nudge so the
+    // user isn't being told to install something they already have.
+    _removeExtInstallNudges();
   }
 });
+
+// ── v1.19.5: extension-install nudges ──────────────────────────────────────
+// Two unobtrusive prompts to install the extension, shown only to users
+// whose extension hasn't announced itself:
+//
+//   1. A subtle card on the empty state (first thing a new user sees)
+//   2. A one-liner inside the add-job modal (contextual to the add flow)
+//
+// Both are dismissible — once dismissed, the dismissal persists in
+// localStorage keyed on the current MIN_EXTENSION_VERSION so a future
+// extension-version bump can reintroduce the nudge for users who once
+// said "not interested."
+//
+// Both fade in after a short delay (fail-safe against slow extension
+// announce, which posts summit-ext-ready during content.js bootstrap).
+// If the extension announces itself while the nudge is visible, the
+// message handler removes the card.
+
+const _EXT_NUDGE_DISMISS_KEY = 'applied_ext_install_nudge_dismissed';
+
+function _extInstallNudgeDismissed() {
+  try {
+    return localStorage.getItem(_EXT_NUDGE_DISMISS_KEY) === MIN_EXTENSION_VERSION;
+  } catch { return false; }
+}
+
+function _dismissExtInstallNudge() {
+  try { localStorage.setItem(_EXT_NUDGE_DISMISS_KEY, MIN_EXTENSION_VERSION); } catch {}
+  _removeExtInstallNudges();
+}
+
+function _removeExtInstallNudges() {
+  // Empty-state card
+  const slot1 = document.getElementById('ext-install-nudge-slot');
+  if (slot1) slot1.innerHTML = '';
+  // Add-modal inline
+  const slot2 = document.getElementById('ext-install-nudge-modal-slot');
+  if (slot2) slot2.innerHTML = '';
+}
+
+// Called from showApp (after login) for the empty-state card, and from
+// openAddModal for the inline one. The delay gives the extension a
+// fair chance to announce itself via postMessage before we render the
+// "install it" message — we don't want a flash on users who already have it.
+function _renderExtInstallNudgeEmptyState() {
+  const slot = document.getElementById('ext-install-nudge-slot');
+  if (!slot || !token) return;
+  if (_extensionAvailable) return;          // already installed — nothing to do
+  if (_extInstallNudgeDismissed()) return;  // user said no before
+
+  // Wait a beat. If the extension is installed it will have posted
+  // summit-ext-ready by now. Re-check before rendering.
+  setTimeout(() => {
+    if (_extensionAvailable) return;
+    if (_extInstallNudgeDismissed()) return;
+    if (slot.innerHTML) return;  // already rendered by another call
+
+    slot.innerHTML = `
+      <div class="ext-nudge-card" id="ext-nudge-card">
+        <div class="eyebrow">One-click capture</div>
+        <div class="title">Add jobs straight from the page you&rsquo;re on.</div>
+        <div class="body">The Summit browser extension captures job postings from LinkedIn, Workday, Greenhouse, Lever &mdash; right from the site. No URL paste, no parsing, no bot blocks.</div>
+        <div class="actions">
+          <button class="install-link" onclick="downloadExtension()">Install extension &rarr;</button>
+          <button class="dismiss-link" onclick="_dismissExtInstallNudge()">Not now</button>
+        </div>
+      </div>`;
+    // Two-frame rAF to ensure the opacity transition fires (otherwise
+    // the browser batches the insert + class-add and we skip the fade).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const card = document.getElementById('ext-nudge-card');
+      if (card) card.classList.add('visible');
+    }));
+  }, 600);
+}
+
+function _renderExtInstallNudgeModal() {
+  const slot = document.getElementById('ext-install-nudge-modal-slot');
+  if (!slot) return;
+  // Modal might open before showApp's nudge-render timer settles, so do
+  // the same re-check pattern. If the user dismissed on the empty state,
+  // respect that here too.
+  if (_extensionAvailable) { slot.innerHTML = ''; return; }
+  if (_extInstallNudgeDismissed()) { slot.innerHTML = ''; return; }
+
+  slot.innerHTML = `
+    <div class="ext-nudge-inline" id="ext-nudge-inline">
+      <strong style="color:var(--text2);font-weight:600">Tip:</strong>
+      with the <a onclick="downloadExtension()">Summit extension</a> installed, one click from any job page adds it here &mdash; no URL paste, no parsing failures. &middot;
+      <a onclick="_dismissExtInstallNudge()" style="color:var(--text3);text-decoration:none">dismiss</a>
+    </div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const el = document.getElementById('ext-nudge-inline');
+    if (el) el.classList.add('visible');
+  }));
+}
 
 // Unresolved bridge calls keyed by nonce
 const _bridgePending = new Map();
