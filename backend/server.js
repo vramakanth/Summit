@@ -737,6 +737,7 @@ app.post('/api/login', _loginLimiter, async (req, res) => {
 // This endpoint lets the client fetch the wrapped key and prompt only
 // for the password (not full credentials) to unlock.
 app.get('/api/me', authMiddleware, (req, res) => {
+  const users = loadUsers();
   const user = users[req.user.id];
   if (!user) return res.status(404).json({ error: 'user not found' });
   if (!user.encrypted || !user.encryptedDataKey) {

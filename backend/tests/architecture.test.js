@@ -296,5 +296,64 @@ t('Mirror finder excludes the original URL\'s host from results', () => {
   if (!/origHost/.test(body)) throw new Error('no original-host exclusion');
 });
 
+// ── v1.19.16: bare `users` references in route handlers are ReferenceErrors ──
+// Caught a real 500 on /api/me where the handler read `users[req.user.id]`
+// without first calling `const users = loadUsers()`. There's no module-scope
+// `users` object — every handler is supposed to load its own snapshot. This
+// guard sweeps the server source and flags any route that reads `users[...]`
+// without having loaded it first.
+t('Every route that reads users[] loads it via loadUsers() first', () => {
+  const lines = serverSrc.split('\n');
+  let inFn = false, fnStart = 0, hasLoad = false, depth = 0;
+  const warnings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/app\.(get|post|put|delete|patch)\(/.test(line)) {
+      fnStart = i; hasLoad = false; inFn = true; depth = 0;
+    }
+    if (inFn) {
+      for (const c of line) { if (c === '{') depth++; else if (c === '}') depth--; }
+      if (/(?:const|let)\s+users\s*=\s*loadUsers/.test(line)) hasLoad = true;
+      // Reads `users[` but not `loadUsers(` / `saveUsers(` / declaration
+      if (/\busers\s*\[/.test(line) && !hasLoad &&
+          !/loadUsers|saveUsers|(?:const|let|var)\s+users/.test(line)) {
+        warnings.push(`line ${i+1}: bare users[...] ${line.trim().slice(0,80)}`);
+      }
+      if (depth === 0 && i > fnStart) inFn = false;
+    }
+  }
+  if (warnings.length) throw new Error('bare users[] in route handler(s):\n  ' + warnings.join('\n  '));
+});
+
+// ── v1.19.17: no stray editor/backup artifacts in the repo ───────────────────
+// Caught a lingering backend/server.js.bak from a sed -i.bak used during
+// bug-catching. Harmless but sloppy — package gets bloat and review diffs
+// get noise. Prevent by failing the suite if any .bak / .orig / swap / DS
+// files sneak in.
+t('No stray editor/backup artifacts in the repo', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '../..');
+  const skip = new Set(['node_modules', '.git', 'data']);
+  const stray = [];
+  function walk(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      if (skip.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (/\.(bak|orig|swp|swo)$/i.test(e.name) || e.name === '.DS_Store' || e.name.endsWith('~')) {
+        stray.push(path.relative(root, full));
+      }
+    }
+  }
+  walk(root);
+  if (stray.length) {
+    throw new Error('stray files in repo:\n  ' + stray.join('\n  '));
+  }
+});
+
 console.log(`\n${pass}/${pass+fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
 if (fail) process.exit(1);
