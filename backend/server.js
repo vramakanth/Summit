@@ -29,15 +29,22 @@ const APP_URL        = process.env.APP_URL        || 'https://job-application-tr
 const GROQ_API_KEY   = process.env.GROQ_API_KEY   || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
-const GROQ_MODEL     = process.env.GROQ_MODEL     || 'llama-3.3-70b-versatile';
+// v1.20.4: Groq deprecated llama-3.3-70b-versatile and llama-3.1-8b-instant
+// on June 17, 2026. Their recommended migration path is:
+//   llama-3.3-70b-versatile → openai/gpt-oss-120b
+//   llama-3.1-8b-instant    → openai/gpt-oss-20b (smaller = higher rate limits,
+//                                                 matches the "primary big, fallback
+//                                                 small" pattern for burst overload)
+// Both stay env-overridable for future rotations without a redeploy.
+const GROQ_MODEL     = process.env.GROQ_MODEL     || 'openai/gpt-oss-120b';
 // Cheap high-TPM fallback when primary hits 429. Groq's free tier gives 8b-instant
 // 25K TPM vs 12K for 70B, so it usually gets through when the big model is throttled.
-const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant';
+const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-20b';
 // OpenRouter fallback path. Using openrouter/free (an auto-router across free
-// models — Nemotron Super/Nano, Trinity Large, etc.) instead of pinning
-// llama-3.3-70b — the Llama free tier has the same rate limits as Groq's
-// primary model, so when Groq rate-limited us the OR fallback just hit the
-// same wall. The auto-router smartly filters for models supporting our
+// models — Nemotron Super/Nano, Trinity Large, etc.) instead of pinning any
+// single big model — a pinned free-tier model tends to hit the same rate-limit
+// wall as our Groq primary during bursts, so the fallback wouldn't actually
+// buy us anything. The auto-router smartly filters for models supporting our
 // required features (structured JSON output) and spreads load across
 // providers so transient rate limits on one don't break the whole request.
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free';

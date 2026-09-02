@@ -1,4 +1,4 @@
-// Summit Chrome Extension — popup.js v2.6.1
+// Summit Chrome Extension — popup.js v2.6.2
 //
 // Two-stage flow:
 //   Stage A (initial)    — show URL, "Add to Summit" button
@@ -138,6 +138,44 @@ function showMainView(username) {
 }
 
 // ── STAGE B: extract ─────────────────────────────────────────────────────────
+
+// Ask content.js for the reader payload. Resolves to the payload, or null
+// if content.js doesn't respond in time or returns an error. Timeout is
+// caller-controlled — brief on the first attempt (so we can try injection
+// quickly), longer after inject (script needs a moment to run).
+function _askContentScript(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    try {
+      chrome.tabs.sendMessage(tabId, { action: 'extractJob' }, r => {
+        clearTimeout(timer);
+        resolve(chrome.runtime.lastError ? null : r);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
+// Programmatically inject content.js into the active tab. Chrome doesn't
+// retro-inject content scripts into already-open tabs on extension install
+// or reload — this covers that case invisibly, so users don't have to
+// reload every tab after updating the extension. Fails on chrome://,
+// chrome-extension://, and some CSP-strict sites — those return false and
+// the caller falls back to URL-only extraction.
+async function _injectContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function startExtract() {
   if (!currentTabUrl || currentTabUrl.startsWith('chrome://') || currentTabUrl.startsWith('chrome-extension://')) {
     showStatus($('initial-status'), 'error', 'Not a job posting URL');
@@ -153,12 +191,21 @@ async function startExtract() {
   const hintTimer2 = setTimeout(() => { $('extracting-msg').textContent = 'Almost done...'; }, 6000);
 
   try {
-    // Ask content.js for the reader payload
-    const reader = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(currentTab.id, { action: 'extractJob' }, r => {
-        resolve(chrome.runtime.lastError ? null : r);
-      });
-    });
+    // Ask content.js for the reader payload. If content.js isn't running
+    // in this tab (common right after extension install/reload — Chrome
+    // doesn't retro-inject scripts into already-open tabs), we get no
+    // response within ~1s. Then try programmatic injection and retry.
+    let reader = await _askContentScript(currentTab.id, 1000);
+    if (!reader) {
+      // Attempt on-demand injection. Requires the "scripting" permission
+      // (already in manifest). Fails on chrome://, chrome-extension://,
+      // and some CSP-locked pages — that's fine, we still send the URL
+      // and the server does its own fetch.
+      const injected = await _injectContentScript(currentTab.id);
+      if (injected) {
+        reader = await _askContentScript(currentTab.id, 1500);
+      }
+    }
 
     // v1.20.1: stash the plain text for the subsequent inbox POST so the
     // job's description tab gets populated without another fetch. Cap the

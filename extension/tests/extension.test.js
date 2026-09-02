@@ -375,8 +375,8 @@ t('doLogin/doLogout/doRegister/doRecover all call _notifyExtensionSessionChanged
   }
 });
 
-t('manifest version bumped to 2.6.1', () => {
-  if (manifest.version !== '2.6.1') throw new Error('manifest still at ' + manifest.version);
+t('manifest version bumped to 2.6.2', () => {
+  if (manifest.version !== '2.6.2') throw new Error('manifest still at ' + manifest.version);
 });
 
 // v1.20.2: catch drift between popup.js header comment and manifest version.
@@ -389,6 +389,50 @@ t('popup.js header version matches manifest.version', () => {
   if (!headerMatch) throw new Error('popup.js header does not declare a version');
   if (headerMatch[1] !== manifest.version) {
     throw new Error(`popup.js header says v${headerMatch[1]} but manifest is ${manifest.version} — bump one to match`);
+  }
+});
+
+// v1.20.3: content.js auto-inject when the tab doesn't have it running.
+// Chrome doesn't retro-inject content scripts into already-open tabs on
+// extension install/reload — the user would have to reload every tab
+// manually. Popup detects the missing content script and injects it
+// programmatically. Without this guard we regress into "silently missing
+// postingText on any tab open during extension update".
+t('popup falls back to chrome.scripting.executeScript when content.js does not respond', () => {
+  const idx = popup.indexOf('async function startExtract');
+  const body = popup.slice(idx, idx + 3500);
+  // Must try to inject when the initial ask returns null
+  if (!/_injectContentScript/.test(body)) {
+    throw new Error('startExtract does not attempt content.js injection on missing response');
+  }
+  // And retry the ask after injection
+  if (!/_askContentScript\([^)]*\)[\s\S]{0,500}?_injectContentScript[\s\S]{0,300}?_askContentScript/.test(body)) {
+    throw new Error('startExtract does not retry the ask after injection');
+  }
+});
+
+t('_injectContentScript uses chrome.scripting API + tolerates failure', () => {
+  if (!/async function _injectContentScript/.test(popup)) {
+    throw new Error('_injectContentScript helper missing');
+  }
+  const idx = popup.indexOf('async function _injectContentScript');
+  const body = popup.slice(idx, idx + 400);
+  if (!/chrome\.scripting\.executeScript/.test(body)) {
+    throw new Error('_injectContentScript does not use chrome.scripting.executeScript');
+  }
+  if (!/files:\s*\[['"]content\.js['"]\]/.test(body)) {
+    throw new Error('_injectContentScript does not target content.js');
+  }
+  // Must swallow injection errors — chrome://, chrome-extension://, some
+  // CSP-strict sites will reject scripting.executeScript and that's OK.
+  if (!/try\s*\{[\s\S]*?\}\s*catch/.test(body)) {
+    throw new Error('_injectContentScript has no try/catch — injection failures would crash startExtract');
+  }
+});
+
+t('manifest declares scripting permission (required for auto-inject)', () => {
+  if (!Array.isArray(manifest.permissions) || !manifest.permissions.includes('scripting')) {
+    throw new Error('manifest.permissions is missing "scripting" — auto-inject will fail');
   }
 });
 

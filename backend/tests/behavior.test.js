@@ -574,9 +574,23 @@ t('/api/insights returns distinct 429 response when all providers rate-limited',
   if (!/error:\s*['"]rate_limited['"]/.test(block))       throw new Error('no error code "rate_limited" returned');
 });
 
-t('Groq has an 8B-instant fallback when 70B hits 429 (higher TPM ceiling)', () => {
+t('Groq has a small-model fallback when primary hits 429 (higher TPM ceiling)', () => {
+  // v1.20.4: llama-3.3-70b-versatile and llama-3.1-8b-instant were both
+  // deprecated by Groq on June 17, 2026 (confirmed via render logs: "Groq
+  // 404: model_not_found" for llama-3.3-70b-versatile). Migrated to Groq's
+  // recommended replacements — openai/gpt-oss-120b (primary) and
+  // openai/gpt-oss-20b (fallback, smaller = higher rate limits, same
+  // "big primary / small fallback" pattern as before).
   if (!/GROQ_FALLBACK_MODEL/.test(serverSrc))           throw new Error('GROQ_FALLBACK_MODEL not declared');
-  if (!/llama-3\.1-8b-instant/.test(serverSrc))        throw new Error('8B instant model not referenced');
+  // Check the actual const assignments, not comments (which legitimately
+  // mention the deprecated names as migration history).
+  const primaryDecl  = serverSrc.match(/const GROQ_MODEL\s*=[^\n]+/)?.[0] || '';
+  const fallbackDecl = serverSrc.match(/const GROQ_FALLBACK_MODEL\s*=[^\n]+/)?.[0] || '';
+  if (/llama-3\.[13]/.test(primaryDecl) || /llama-3\.[13]/.test(fallbackDecl)) {
+    throw new Error('deprecated llama-3.x model id still referenced in the const declarations — Groq returns 404 for these');
+  }
+  if (!/openai\/gpt-oss-120b/.test(serverSrc)) throw new Error('primary model not set to openai/gpt-oss-120b');
+  if (!/openai\/gpt-oss-20b/.test(serverSrc))  throw new Error('fallback model not set to openai/gpt-oss-20b');
   const idx = serverSrc.indexOf('async function callGroq');
   const body = serverSrc.slice(idx, idx + 1500);
   if (!/e\.status\s*===\s*429/.test(body)) throw new Error('callGroq does not detect 429 for fallback');
