@@ -31,9 +31,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     .map(s => s.textContent || '')
     .filter(s => s.trim().length > 0);
 
-  // Flattened text — same thing the browser shows. Whitespace-collapsed so
-  // the payload stays compact.
-  const text = document.body.innerText.replace(/\s+/g, ' ').trim();
+  // Text: preserve paragraph structure. innerText inserts newlines between
+  // block elements naturally (unlike textContent), so keeping newlines gives
+  // the description tab something to split into paragraphs. We only tidy
+  // horizontal whitespace (spaces + tabs) and cap runs of 3+ newlines to 2.
+  //
+  // v1.20.2: was `\s+ → ' '` which collapsed everything into one giant line,
+  // making the description tab render as an unreadable wall.
+  const text = document.body.innerText
+    .replace(/[ \t\f\v]+/g, ' ')         // collapse horizontal runs
+    .replace(/\n[ \t]+/g, '\n')          // trim per-line leading space
+    .replace(/[ \t]+\n/g, '\n')          // trim per-line trailing space
+    .replace(/\n{3,}/g, '\n\n')          // cap blank runs
+    .trim();
 
   // Meta tags — OpenGraph + description. Often accurate when JSON-LD is absent.
   const metaFrom = (sel) => {

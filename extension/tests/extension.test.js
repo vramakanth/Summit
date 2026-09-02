@@ -375,8 +375,39 @@ t('doLogin/doLogout/doRegister/doRecover all call _notifyExtensionSessionChanged
   }
 });
 
-t('manifest version bumped to 2.6.0', () => {
-  if (manifest.version !== '2.6.0') throw new Error('manifest still at ' + manifest.version);
+t('manifest version bumped to 2.6.1', () => {
+  if (manifest.version !== '2.6.1') throw new Error('manifest still at ' + manifest.version);
+});
+
+// v1.20.2: catch drift between popup.js header comment and manifest version.
+// If popup.js changes behavior (as in v1.20.1's postingText forwarding) but
+// manifest.json doesn't bump, users on the old bundle keep the stale behavior
+// and the stale-ext banner never fires. Pinning the header to manifest.version
+// makes the tests fail if you ship popup changes without a manifest bump.
+t('popup.js header version matches manifest.version', () => {
+  const headerMatch = popup.match(/popup\.js v(\d+\.\d+\.\d+)/);
+  if (!headerMatch) throw new Error('popup.js header does not declare a version');
+  if (headerMatch[1] !== manifest.version) {
+    throw new Error(`popup.js header says v${headerMatch[1]} but manifest is ${manifest.version} — bump one to match`);
+  }
+});
+
+// v1.20.2: content.js was collapsing ALL whitespace (including newlines) into
+// single spaces, so postingText arrived as one giant line and the description
+// tab rendered as an unreadable wall of text (buildPostingHtml splits on
+// double-newlines to form paragraphs, and got nothing to split on).
+t('content.js text field preserves newlines for paragraph structure', () => {
+  // Must NOT use the greedy /\s+/g on innerText — that eats newlines.
+  const idx = content.indexOf('const text = document.body.innerText');
+  if (idx < 0) throw new Error('cannot locate text field derivation');
+  const decl = content.slice(idx, idx + 500);
+  if (/\.replace\(\s*\/\\s\+\/g\s*,\s*['"] ['"]\s*\)/.test(decl)) {
+    throw new Error('text field uses /\\s+/g which destroys newlines');
+  }
+  // Should collapse horizontal whitespace specifically
+  if (!/\[ \\t/.test(decl)) {
+    throw new Error('text field does not target horizontal whitespace specifically');
+  }
 });
 
 // ── v1.20.0: two-stage extract → review flow ─────────────────────────────────

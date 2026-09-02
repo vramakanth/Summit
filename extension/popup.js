@@ -1,4 +1,4 @@
-// Summit Chrome Extension — popup.js v2.6.0
+// Summit Chrome Extension — popup.js v2.6.1
 //
 // Two-stage flow:
 //   Stage A (initial)    — show URL, "Add to Summit" button
