@@ -1146,6 +1146,12 @@ app.post('/api/jobs/inbox', authMiddleware, (req, res) => {
     salary:   b.salary ? String(b.salary).slice(0, 80) : '',
     source:   'extension',
   };
+  // v1.20.1: extension forwards the rendered-page text so the webapp can
+  // populate the job-description tab without another fetch. Cap at 50KB —
+  // enough for any realistic posting, keeps inbox entries small on disk.
+  if (b.postingText && typeof b.postingText === 'string') {
+    entry.postingText = String(b.postingText).slice(0, 50000);
+  }
   if (b.reqId && typeof b.reqId === 'string') {
     const v = b.reqId.trim();
     if (v.length <= 50 && /^[A-Za-z0-9][A-Za-z0-9._\-]{2,40}$/.test(v) && !/^https?:\/\//i.test(v)) {

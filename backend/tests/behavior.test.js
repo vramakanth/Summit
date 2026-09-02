@@ -3382,14 +3382,13 @@ t('INBOX_DIR defined and included in bootstrap mkdir list', () => {
 t('POST /api/jobs/inbox requires title + company (auth-protected)', () => {
   const idx = serverSrc.indexOf("app.post('/api/jobs/inbox'");
   if (idx < 0) throw new Error('POST /api/jobs/inbox missing');
-  const body = serverSrc.slice(idx, idx + 1500);
+  // Scan window bumped in v1.20.1 when inbox POST grew the postingText path.
+  const body = serverSrc.slice(idx, idx + 2500);
   if (!/authMiddleware/.test(body)) throw new Error('POST /api/jobs/inbox is not auth-protected');
   if (!/title required/.test(body))   throw new Error('does not reject missing title');
   if (!/company required/.test(body)) throw new Error('does not reject missing company');
-  // Must generate an id + receivedAt timestamp
   if (!/crypto\.randomBytes/.test(body)) throw new Error('does not generate random id');
   if (!/receivedAt/.test(body))          throw new Error('does not record receivedAt');
-  // Must persist as a file per entry (for atomic delete)
   if (!/fs\.writeFileSync/.test(body))   throw new Error('does not persist entry to disk');
 });
 
@@ -4813,6 +4812,70 @@ t('openEditJobModal pre-fills inputs from current job values', () => {
       throw new Error(`openEditJobModal does not pre-fill from j.${field}`);
     }
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.20.1 — extension forwards posting text so description tab auto-fills
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.20.1 posting text pipeline');
+
+t('Extension popup stashes reader.text for the subsequent inbox POST', () => {
+  const popupSrc = fs.readFileSync(path.join(__dirname, '../../extension/popup.js'), 'utf8');
+  // Must declare a module-scope variable that survives across stage B → C → save.
+  // Using a local in startExtract and reading in saveJob wouldn't work — they're
+  // separate function scopes.
+  if (!/_capturedPostingText/.test(popupSrc)) {
+    throw new Error('popup has no _capturedPostingText holder');
+  }
+  // Must be assigned from reader.text inside startExtract
+  const sx = popupSrc.indexOf('async function startExtract');
+  const sxBody = popupSrc.slice(sx, sx + 3000);
+  if (!/_capturedPostingText\s*=[^;]*reader/.test(sxBody)) {
+    throw new Error('startExtract does not capture reader.text into _capturedPostingText');
+  }
+});
+
+t('Extension popup saveJob forwards postingText in inbox POST body', () => {
+  const popupSrc = fs.readFileSync(path.join(__dirname, '../../extension/popup.js'), 'utf8');
+  const idx = popupSrc.indexOf('async function saveJob');
+  const body = popupSrc.slice(idx, idx + 2500);
+  if (!/body\.postingText\s*=/.test(body)) {
+    throw new Error('saveJob does not forward postingText in the POST body');
+  }
+});
+
+t('Server /api/jobs/inbox accepts and stores postingText (capped)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/jobs/inbox'");
+  const body = serverSrc.slice(idx, idx + 2500);
+  if (!/b\.postingText/.test(body)) {
+    throw new Error('inbox POST does not read b.postingText');
+  }
+  if (!/entry\.postingText\s*=/.test(body)) {
+    throw new Error('inbox POST does not store postingText on the entry');
+  }
+  // Must cap the length — don't let a runaway page bloat inbox entries
+  if (!/\.slice\(0,\s*\d{4,}\)/.test(body.match(/entry\.postingText[\s\S]{0,200}/)?.[0] || '')) {
+    throw new Error('inbox POST does not cap postingText length');
+  }
+});
+
+t('Webapp drain carries postingText from inbox entry to job record', () => {
+  // Find the drain merge block — the big literal that builds jobs[jobId]
+  const idx = feSrc.indexOf('async function _drainInbox');
+  const body = feSrc.slice(idx, idx + 5000);
+  if (!/postingText:\s*entry\.postingText/.test(body)) {
+    throw new Error('_drainInbox does not copy entry.postingText onto the job');
+  }
+});
+
+t('Posting toolbar no longer shows the "refresh cache" button', () => {
+  const idx = feSrc.indexOf('function renderPostingTab');
+  const body = feSrc.slice(idx, idx + 2000);
+  if (/refresh cache/i.test(body)) {
+    throw new Error('"refresh cache" button still present on the posting toolbar');
+  }
+  // The "Fetch from URL" button in emptyPosting stays — it's different UX
+  // (only shown when we have NO description content at all).
 });
 
 // ════════════════════════════════════════════════════════════════════════════

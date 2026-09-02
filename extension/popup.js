@@ -16,6 +16,11 @@ const EXTRACT_TIMEOUT_MS = 15000;
 
 let token = '', currentTabUrl = '', currentTab = null;
 
+// v1.20.1: after extraction, we hold onto the plain text of the posting so
+// the subsequent inbox POST can carry it forward. This lets the job's
+// description tab populate immediately without another server fetch.
+let _capturedPostingText = '';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showStatus(el, type, msg) {
   el.className = 'status show ' + type;
@@ -155,6 +160,12 @@ async function startExtract() {
       });
     });
 
+    // v1.20.1: stash the plain text for the subsequent inbox POST so the
+    // job's description tab gets populated without another fetch. Cap the
+    // size — 50KB is plenty for any realistic posting and keeps the inbox
+    // entry small.
+    _capturedPostingText = reader?.text ? String(reader.text).slice(0, 50000) : '';
+
     // Build the server payload. If content script is blocked (some browser
     // pages, some CSP-strict sites), we still post with url only and let
     // the server fall back to its own fetch.
@@ -237,6 +248,7 @@ function cancelReview() {
   $('rev-salary').value = '';
   $('rev-title').dataset.reqId = '';
   $('rev-title').dataset.reqIdLabel = '';
+  _capturedPostingText = '';
   showStage('initial');
 }
 
@@ -261,6 +273,10 @@ async function saveJob() {
       workType: $('rev-worktype').value,
       salary:   $('rev-salary').value.trim(),
     };
+    // v1.20.1: forward the captured posting text so the description tab
+    // populates immediately. Server stores it on the inbox entry; drain
+    // carries it onto the job record.
+    if (_capturedPostingText) body.postingText = _capturedPostingText;
     const reqId      = $('rev-title').dataset.reqId;
     const reqIdLabel = $('rev-title').dataset.reqIdLabel;
     if (reqId) body.reqId = reqId;
