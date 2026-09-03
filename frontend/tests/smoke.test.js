@@ -606,20 +606,45 @@ t('Settings colophon shows version + brand (replaces mobile-invisible version la
     throw new Error('settings-version-label not populated on openSettings');
   }
 });
-t('Stale filter pill matches the tile chip: red-orange, 3px square radius', () => {
-  // CSS rule must exist and use the same red-orange palette + 3px radius
-  const m = src.match(/\.filter-tab\[data-filter="stale"\]\s*\{[^}]*\}/);
-  if (!m) throw new Error('no dedicated CSS rule for the stale filter pill');
-  if (!/border-radius:\s*3px/.test(m[0]))                 throw new Error('stale pill not 3px square');
-  if (!/color:\s*#ea580c/.test(m[0]))                     throw new Error('stale pill not red-orange text');
-  if (!/rgba\(234,\s*88,\s*12,/.test(m[0]))               throw new Error('stale pill not using red-orange bg');
-});
-t('Stale filter pill does NOT fall back to amber accent when active', () => {
-  // The .filter-tab.active rule would apply amber to every pill including stale.
-  // A scoped active rule for [data-filter="stale"].active overrides it.
-  if (!/\.filter-tab\[data-filter="stale"\]\.active\s*\{/.test(src)) {
-    throw new Error('no scoped active rule — stale pill would go amber when selected');
+// v1.20.12: the stale filter tab is a NEUTRAL pill again. The old guards here
+// pinned a square orange chip that broke the filter row's visual set. The
+// "attention" signal is now a small dot, shown only while stale jobs exist.
+t('Stale filter tab is a neutral pill — no square/orange override rule', () => {
+  if (/\.filter-tab\[data-filter="stale"\]\s*\{/.test(src)) {
+    throw new Error('dedicated stale-tab colour/shape rule is back — it made the tab look like a different control');
   }
+  if (/\.filter-tab\[data-filter="stale"\]\.active\s*\{/.test(src)) {
+    throw new Error('scoped stale .active rule is back — stale should take the same amber active state as every other tab');
+  }
+});
+t('Stale filter tab shows an orange dot ONLY when data-has-stale="1"', () => {
+  const rule = src.match(/\.filter-tab\[data-filter="stale"\]\[data-has-stale="1"\]::before\s*\{[^}]*\}/);
+  if (!rule) throw new Error('no ::before dot rule gated on data-has-stale="1"');
+  if (!/border-radius:\s*50%/.test(rule[0])) throw new Error('indicator should be a round dot');
+  if (!/#ea580c/.test(rule[0])) throw new Error('dot should use the stale orange so it matches tile badges');
+  // and the dot must be set from actual data, on every list render
+  const helper = src.slice(src.indexOf('function _syncStaleDot'), src.indexOf('function _syncStaleDot') + 400);
+  if (!/dataset\.hasStale\s*=\s*Object\.values\(jobs\)\.some\(j\s*=>\s*j\.stale\)/.test(helper)) {
+    throw new Error('_syncStaleDot must set data-has-stale from jobs — otherwise the dot is stale itself');
+  }
+  const rl = src.slice(src.indexOf('function renderJobList'), src.indexOf('\n}\n', src.indexOf('function renderJobList')));
+  if (!/_syncStaleDot\(\)/.test(rl)) throw new Error('renderJobList must call _syncStaleDot() so the dot refreshes on every render');
+});
+t('Filter row separates statuses from flags with a divider (v1.20.13)', () => {
+  // to apply → rejected are mutually-exclusive statuses (j.status); stale and
+  // starred are orthogonal flags (j.stale / j.watchlist). The divider must sit
+  // after the last status and before the first flag.
+  const row = src.slice(src.indexOf('id="filter-tabs"'), src.indexOf('</div>', src.indexOf('id="filter-tabs"')));
+  const iRejected = row.indexOf('data-filter="rejected"');
+  const iDivider  = row.indexOf('class="filter-divider"');
+  const iStale    = row.indexOf('data-filter="stale"');
+  const iStar     = row.indexOf('data-filter="watchlist"');
+  if (iDivider < 0) throw new Error('filter-divider missing');
+  if (!(iRejected < iDivider && iDivider < iStale && iDivider < iStar)) {
+    throw new Error('divider must be after "rejected" and before both flag tabs');
+  }
+  if (!/role="separator"/.test(row)) throw new Error('divider should be role="separator" for AT');
+  if (!/\.filter-divider\s*\{[^}]*width:\s*1px/.test(src)) throw new Error('.filter-divider CSS missing or not 1px');
 });
 t('Stale toggle button on job detail is square (3px), matches tile chip', () => {
   // Regression target: old button used border-radius:100px pill shape

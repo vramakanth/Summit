@@ -180,7 +180,7 @@ tr:hover td{background:rgba(255,235,180,0.02);}
       </div>
       <span class="topbar-name">Pursuit</span>
       <span class="topbar-pill">ADMIN</span>
-      <span class="topbar-version" id="topbar-version">v1.20.11</span>
+      <span class="topbar-version" id="topbar-version">v1.20.13</span>
     </div>
     <div class="topbar-right">
       <button class="topbar-btn" onclick="loadUsers()" id="refresh-btn" title="Refresh">
@@ -260,7 +260,7 @@ tr:hover td{background:rgba(255,235,180,0.02);}
       </div>
     </div>
 
-    <!-- VISITORS TAB (v1.20.11) — cookie-free, third-party-free page-view stats -->
+    <!-- VISITORS TAB (v1.20.13) — cookie-free, third-party-free page-view stats -->
     <div class="admin-tab-pane" data-pane="visitors" style="display:none">
       <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.5">
         Counted from a first-party beacon on public screens only. No cookies, no IP stored, visitor hash rotates daily. Do-Not-Track and GPC are honoured.
@@ -363,7 +363,7 @@ tr:hover td{background:rgba(255,235,180,0.02);}
 </div>
 
 <script>
-const API='', APP_VERSION = '1.20.11';
+const API='', APP_VERSION = '1.20.13';
 let token=sessionStorage.getItem('admin_token');
 let adminUser=sessionStorage.getItem('admin_user');
 let users=[],selectedUser=null,deactivateAction=null;
@@ -637,7 +637,7 @@ async function loadTokenUsage(){
   }
 }
 
-// ── Visitors (v1.20.11) ────────────────────────────────────────────────────
+// ── Visitors (v1.20.13) ────────────────────────────────────────────────────
 async function loadVisitors(){
   const fmt=n=>(n||0).toLocaleString();
   try{

@@ -6,7 +6,7 @@
 
 Summit is a job-application planning and tracking web app with a companion Chrome/Safari extension. Its defining property is **zero-knowledge encryption**: your job data is encrypted in your browser with a key derived from your password, and the server only ever stores ciphertext. Nobody — including the operator — can read your workspace without your password.
 
-Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.11** · Extension **v2.6.2**
+Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.13** · Extension **v2.6.2**
 
 ---
 
@@ -138,7 +138,7 @@ Three tiers, all run by CI on every push. The first two are **blocking**.
 | Tier | Files | Tests | Deps |
 |---|---|---|---|
 | Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 420 | none |
-| Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 333 | none |
+| Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 334 | none |
 | Integration | `encryption` (boots the server, HTTP round-trips) · `ats` (jest) | 66 | `npm install` |
 
 ```bash
