@@ -1,436 +1,260 @@
 /**
- * Summit — ATS Parsing Unit Tests  v2
- * Covers: cleanJobUrl, detectATS, slugFallback,
- *         salary extraction (baseSalary, description text, script-tag, body text),
- *         JSON-LD field extraction, SPA shell fallback to jsonLdText.
- * All tests are pure — zero network calls.
+ * Summit — ats-helpers.js unit tests  v3
+ *
+ * v1.20.6 rewrite. The previous version (v2) had been failing in CI since
+ * v1.18 without anyone noticing, because it lives in the non-blocking tier.
+ * Three problems, all fixed here:
+ *
+ *   1. It imported `detectATS` and `slugFallback`, both deliberately removed
+ *      in v1.18 (see the header comment in ats-helpers.js — slugFallback's
+ *      output was silently wrong and polluted job records). 34 tests were
+ *      throwing "is not a function".
+ *
+ *   2. It contained "mirror" copies of server-side extraction logic
+ *      (extractFromHtml, salaryFromDescription) defined inside the test
+ *      file and tested against themselves. Those mirrors drifted from the
+ *      real code across v1.17 (Chromium render) and v1.20 (unified
+ *      extractJobFields). A test that passes or fails independently of the
+ *      code it claims to cover is worse than no test. The real extraction
+ *      pipeline is covered by backend/tests/behavior.test.js (source guards)
+ *      and backend/tests/encryption.test.js (HTTP round-trips).
+ *
+ *   3. It caught one REAL regression while I was cleaning it up:
+ *      cleanJobUrl had stopped stripping Chrome's `#:~:text=` text-fragment
+ *      directive. That's fixed in ats-helpers.js and pinned below.
+ *
+ * Everything in this file now tests an actual export of ats-helpers.js.
+ * All tests are pure — zero network, zero server boot.
  */
 
-const { cleanJobUrl, detectATS, slugFallback } = require('../ats-helpers');
+const { cleanJobUrl, decodeEntities, looksLikeId, trimIdTokens } = require('../ats-helpers');
 
-// ─── Shared helpers (mirror server-side logic) ────────────────────────────────
-const fmt = (s) => {
-  const n = parseFloat(String(s).replace(/,/g, ''));
-  return n >= 1000 ? '$' + Math.round(n / 1000) + 'k' : '$' + Math.round(n).toLocaleString();
-};
+// ─── cleanJobUrl ─────────────────────────────────────────────────────────────
 
-function salaryFromDescription(text) {
-  const m = text.match(
-    /[Ss]alary[\s\S]{0,20}\$([\d,]+(?:\.\d+)?)\s*[-\u2013\u2014to]+\s*\$([\d,]+(?:\.\d+)?)/
-  );
-  return m ? fmt(m[1]) + '\u2013' + fmt(m[2]) : null;
-}
-
-function extractFromHtml(html) {
-  let scriptSalary = null, jsonLdText = '', jsonLdFields = null;
-  const scriptTags = html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi);
-  for (const [, sc] of scriptTags) {
-    if (sc.length < 50) continue;
-    if (sc.includes('"@type"') && sc.includes('JobPosting')) {
-      try {
-        const jld = JSON.parse(sc.trim());
-        const jobs = Array.isArray(jld) ? jld : [jld];
-        const job = jobs.find(d => d['@type'] === 'JobPosting') || jobs[0];
-        if (job) {
-          const loc = job.jobLocation?.address;
-          jsonLdFields = {
-            title:    job.title || null,
-            company:  job.hiringOrganization?.name || null,
-            location: [loc?.addressLocality, loc?.addressRegion].filter(Boolean).join(', ') || null,
-            workType: job.jobLocationType === 'TELECOMMUTE' ? 'Remote' : null,
-            remote:   job.jobLocationType === 'TELECOMMUTE',
-          };
-          if (job.description) {
-            jsonLdText = job.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
-            if (!scriptSalary) scriptSalary = salaryFromDescription(jsonLdText);
-          }
-          if (!scriptSalary && job.baseSalary?.value) {
-            const bv = job.baseSalary.value;
-            if (bv.minValue && bv.maxValue) scriptSalary = fmt(bv.minValue) + '\u2013' + fmt(bv.maxValue);
-          }
-        }
-      } catch {}
-    }
-    if (!scriptSalary) {
-      const m = sc.match(/"Salary":\s*"\$([\d,.]+ ?[-\u2013\u2014] ?\$?[\d,.]+)"/)
-             || sc.match(/"minValue":\s*([\d.]+)[\s\S]{0,100}"maxValue":\s*([\d.]+)/);
-      if (m) scriptSalary = m[2] ? fmt(m[1]) + '\u2013' + fmt(m[2]) : m[1].trim();
-    }
-  }
-  const bodyMatch = html.match(/<(?:main|article)[^>]*>([\s\S]*?)<\/(?:main|article)>/i);
-  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
-  const bodyText = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
-  const isSpaShell = bodyText.length < 200;
-  const text = isSpaShell && jsonLdText ? jsonLdText : bodyText;
-  const fields = scriptSalary ? { ...(jsonLdFields || {}), salary: scriptSalary } : jsonLdFields;
-  return { fields, text, isSpaShell };
-}
-
-// ─── cleanJobUrl ──────────────────────────────────────────────────────────────
-
-describe('cleanJobUrl', () => {
-  it('strips #:~:text= text fragment (Dexcom/Chrome share link)', () => {
-    const clean = cleanJobUrl('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com#:~:text=As%20the%20Senior,algorithms.');
-    expect(clean).not.toContain('#:~:text');
-    expect(clean).toContain('domain=dexcom.com');
+describe('cleanJobUrl — tracking params', () => {
+  it('strips utm_* params', () => {
+    const c = cleanJobUrl('https://example.com/job/1?utm_source=google&utm_medium=cpc&utm_campaign=x&id=42');
+    expect(c).not.toContain('utm_');
+    expect(c).toContain('id=42');
   });
 
-  it('preserves regular hash anchors', () => {
-    const url = 'https://example.com/jobs/123#description';
-    expect(cleanJobUrl(url)).toBe(url);
+  it('strips click IDs (fbclid, gclid, msclkid)', () => {
+    const c = cleanJobUrl('https://example.com/job/1?fbclid=a&gclid=b&msclkid=c&keep=1');
+    expect(c).not.toMatch(/fbclid|gclid|msclkid/);
+    expect(c).toContain('keep=1');
   });
 
-  it('handles invalid URL gracefully', () => {
-    expect(() => cleanJobUrl('not-a-url#:~:text=foo')).not.toThrow();
-    expect(cleanJobUrl('not-a-url#:~:text=foo')).toBe('not-a-url');
+  it('strips generic referral params (ref, from, via, src)', () => {
+    const c = cleanJobUrl('https://example.com/job/1?ref=twitter&from=feed&via=bot&src=x&real=y');
+    expect(c).not.toMatch(/[?&](ref|from|via|src)=/);
+    expect(c).toContain('real=y');
   });
 
-  it('preserves query params', () => {
-    expect(cleanJobUrl('https://careers.dexcom.com/careers/job/123?domain=dexcom.com')).toContain('domain=dexcom.com');
+  it('strips Indeed/Google noise (shndl, shmd, jbr, sv)', () => {
+    const c = cleanJobUrl('https://www.indeed.com/viewjob?jk=abc&shndl=1&shmd=2&jbr=3&sv=4');
+    expect(c).toBe('https://www.indeed.com/viewjob?jk=abc');
+  });
+
+  it('strips jid and job_id (ZipRecruiter-style session ids)', () => {
+    const c = cleanJobUrl('https://www.ziprecruiter.com/c/Acme/Job/SWE?jid=abc123&job_id=999');
+    expect(c).toBe('https://www.ziprecruiter.com/c/Acme/Job/SWE');
+  });
+
+  it('preserves non-tracking query params (domain=, gh_jid=)', () => {
+    expect(cleanJobUrl('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com'))
+      .toBe('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com');
+    expect(cleanJobUrl('https://job-boards.greenhouse.io/x/jobs/5109197007?gh_jid=5109197007'))
+      .toContain('gh_jid=5109197007');
+  });
+
+  it('is idempotent', () => {
+    const once = cleanJobUrl('https://example.com/j?utm_source=a&id=1#:~:text=foo');
+    expect(cleanJobUrl(once)).toBe(once);
+  });
+});
+
+describe('cleanJobUrl — text-fragment directive (#:~:text=)', () => {
+  // Chrome's "Copy link to highlight" appends `#:~:text=...`. It's not part
+  // of the resource identity; leaving it in poisons URL-based dedupe.
+  // REGRESSION: this was silently broken from v1.18 until v1.20.6.
+
+  it('strips #:~:text= (Dexcom/Chrome share link)', () => {
+    const c = cleanJobUrl('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com#:~:text=As%20the%20Senior,algorithms.');
+    expect(c).not.toContain(':~:');
+    expect(c).toContain('domain=dexcom.com');
+    expect(c).toBe('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com');
   });
 
   it('strips fragment but keeps all query params', () => {
-    const clean = cleanJobUrl('https://example.com/job?id=123&domain=co.com#:~:text=foo');
-    expect(clean).toContain('id=123');
-    expect(clean).not.toContain('#:~:text');
+    const c = cleanJobUrl('https://example.com/job?id=123&domain=co.com#:~:text=foo');
+    expect(c).toContain('id=123');
+    expect(c).toContain('domain=co.com');
+    expect(c).not.toContain(':~:');
+  });
+
+  it('preserves regular hash anchors', () => {
+    expect(cleanJobUrl('https://example.com/job#apply')).toBe('https://example.com/job#apply');
+  });
+
+  it('preserves the anchor part when anchor + directive are both present', () => {
+    // Spec: everything before `:~:` is the ordinary fragment.
+    expect(cleanJobUrl('https://example.com/job#apply:~:text=foo')).toBe('https://example.com/job#apply');
+  });
+
+  it('clears an empty hash left behind', () => {
+    expect(cleanJobUrl('https://example.com/job#')).toBe('https://example.com/job');
+  });
+
+  it('two Chrome-share URLs of the same posting normalise to the same string (dedupe key)', () => {
+    const a = cleanJobUrl('https://example.com/job/1?domain=x#:~:text=first%20highlight');
+    const b = cleanJobUrl('https://example.com/job/1?domain=x#:~:text=different%20highlight');
+    expect(a).toBe(b);
   });
 });
 
-// ─── detectATS ────────────────────────────────────────────────────────────────
-
-describe('detectATS', () => {
-  const cases = [
-    ['https://boards.greenhouse.io/stripe/jobs/5678901',        'greenhouse',      'Greenhouse boards subdomain'],
-    ['https://stripe.greenhouse.io/jobs/5678901',               'greenhouse',      'Greenhouse company subdomain'],
-    ['https://jobs.lever.co/airbnb/abc-123-def-456',            'lever',           'Lever'],
-    ['https://amazon.wd5.myworkdayjobs.com/en-US/Ext/job/S/T',  'workday',         'Workday wd5'],
-    ['https://amazon.wd1.myworkdayjobs.com/en-US/Ext/job/S/T',  'workday',         'Workday wd1'],
-    ['https://jobs.myworkdaysite.com/recruiting/co/site/job/x', 'workday',         'Workday myworkdaysite'],
-    ['https://acme.bamboohr.com/jobs/view.php?id=123',          'bamboohr',        'BambooHR'],
-    ['https://jobs.ashbyhq.com/openai/abc-123',                 'ashby',           'Ashby'],
-    ['https://jobs.smartrecruiters.com/Salesforce/12345-sr',    'smartrecruiters', 'SmartRecruiters'],
-    ['https://www.linkedin.com/jobs/view/3912345678/',          'linkedin',        'LinkedIn'],
-    ['https://careers.dexcom.com/careers/job/41204804-sr-director-algorithm-engineering-remote-united-states?domain=dexcom.com',
-                                                                'eightfold',       'Dexcom (Eightfold, ?domain= param)'],
-    ['https://careers.google.com/jobs/results/1234?domain=google.com', 'eightfold', 'Generic Eightfold ?domain='],
-    ['https://app.eightfold.ai/careers?domain=co.com',          'eightfold',       'eightfold.ai domain'],
-    ['https://careers.nvidia.com/careers/job/9999?domain=nvidia.com', 'eightfold', 'Nvidia (Eightfold)'],
-    ['https://www.indeed.com/viewjob?jk=abc123',                'indeed',          'Indeed viewjob'],
-    ['https://www.indeed.com/jobs?q=engineer',                  'indeed',          'Indeed search'],
-    ['https://www.glassdoor.com/job-listing/engineer-JV.htm',   'glassdoor',       'Glassdoor'],
-    ['https://company.icims.com/jobs/123/job',                  'icims',           'iCIMS direct domain'],
-    ['https://apply.workable.com/acme/j/abc123/',               'workable',        'Workable'],
-    ['https://www.ziprecruiter.com/c/Co/Job/x',                 'generic',         'ZipRecruiter → generic'],
-    ['https://wellfound.com/jobs/12345678-senior-engineer',     'generic',         'Wellfound → generic'],
-    ['https://www.dice.com/jobs/detail/abc123',                 'generic',         'Dice → generic'],
-    ['https://randomcompany.com/open-positions/42',             'generic',         'Unknown → generic'],
-  ];
-
-  cases.forEach(([url, expected, desc]) => {
-    it(`${desc}: → ${expected}`, () => {
-      expect(detectATS(url)).toBe(expected);
-    });
+describe('cleanJobUrl — malformed input', () => {
+  it('does not throw on an unparseable string', () => {
+    expect(() => cleanJobUrl('not-a-url')).not.toThrow();
+    expect(() => cleanJobUrl('')).not.toThrow();
   });
 
-  it('Dexcom is NOT icims (regression — was misclassified before fix)', () => {
-    expect(detectATS('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com')).not.toBe('icims');
-    expect(detectATS('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com')).toBe('eightfold');
+  it('still strips the text-fragment directive from an unparseable string', () => {
+    expect(cleanJobUrl('not-a-url#:~:text=foo')).toBe('not-a-url');
   });
 
-  it('works after cleanJobUrl strips text fragment', () => {
-    expect(detectATS(cleanJobUrl('https://careers.dexcom.com/careers/job/41204804?domain=dexcom.com#:~:text=foo'))).toBe('eightfold');
+  it('trims surrounding whitespace', () => {
+    expect(cleanJobUrl('   https://example.com/job   ')).toBe('https://example.com/job');
   });
 });
 
-// ─── slugFallback ─────────────────────────────────────────────────────────────
+// ─── decodeEntities ──────────────────────────────────────────────────────────
 
-describe('slugFallback', () => {
-  it('Dexcom URL: title, company=Dexcom, workType=Remote, remote=true', () => {
-    const r = slugFallback('https://careers.dexcom.com/careers/job/41204804-sr-director-algorithm-engineering-remote-united-states?domain=dexcom.com');
-    expect(r).not.toBeNull();
-    expect(r.title).toMatch(/director|algorithm|engineering/i);
-    expect(r.company).toBe('Dexcom');
-    expect(r.workType).toBe('Remote');
-    expect(r.remote).toBe(true);
+describe('decodeEntities', () => {
+  it('decodes &amp; (the original bug: "Validation &amp; Verification")', () => {
+    expect(decodeEntities('Validation &amp; Verification')).toBe('Validation & Verification');
   });
 
-  it('careers.stripe.com → company=Stripe', () => {
-    expect(slugFallback('https://careers.stripe.com/jobs/123-senior-software-engineer')?.company).toBe('Stripe');
+  it('decodes the common named entities', () => {
+    expect(decodeEntities('&lt;b&gt;&quot;x&quot;&#39;y&apos;&nbsp;z')).toBe('<b>"x"\'y\' z');
   });
 
-  it('jobs.netflix.com → company=Netflix', () => {
-    expect(slugFallback('https://jobs.netflix.com/jobs/42-senior-engineer')?.company).toBe('Netflix');
+  it('decodes numeric and hex entities', () => {
+    expect(decodeEntities('&#8211; &#x2013;')).toBe('\u2013 \u2013');
   });
 
-  it('detects Hybrid from slug', () => {
-    expect(slugFallback('https://careers.acme.com/job/123-engineer-hybrid-new-york')?.workType).toBe('Hybrid');
+  it('passes through non-strings and empty values unchanged', () => {
+    expect(decodeEntities(null)).toBe(null);
+    expect(decodeEntities(undefined)).toBe(undefined);
+    expect(decodeEntities('')).toBe('');
+    expect(decodeEntities(42)).toBe(42);
   });
 
-  it('strips 8-digit numeric job ID prefix', () => {
-    const r = slugFallback('https://careers.acme.com/job/41204804-product-manager-remote');
-    expect(r?.title).toMatch(/product|manager/i);
-    expect(r?.title ?? '').not.toMatch(/\d{8}/);
-  });
-
-  it('strips JR-prefixed IDs from Workday slugs', () => {
-    expect(slugFallback('https://amazon.wd5.myworkdayjobs.com/External/job/Seattle-WA/SDE_JR-12345')?.title ?? '').not.toContain('JR');
-  });
-
-  it('returns null for very short slugs', () => {
-    expect(slugFallback('https://example.com/jobs/123')).toBeNull();
-  });
-
-  it('returns null for invalid URL without throwing', () => {
-    expect(() => slugFallback('not-a-url')).not.toThrow();
-    expect(slugFallback('not-a-url')).toBeNull();
+  it('leaves already-plain text alone', () => {
+    expect(decodeEntities('Senior Engineer, Platform')).toBe('Senior Engineer, Platform');
   });
 });
 
-// ─── salaryFromDescription ────────────────────────────────────────────────────
+// ─── looksLikeId ─────────────────────────────────────────────────────────────
 
-describe('salaryFromDescription — salary buried in description text', () => {
-  it('Dexcom exact pattern: $231,100.00 - $385,100.00 → $231k–$385k', () => {
-    const desc = 'Dexcom is not responsible...\n\nSalary:\n\n$231,100.00 - $385,100.00\n';
-    expect(salaryFromDescription(desc)).toBe('$231k\u2013$385k');
+describe('looksLikeId — machine IDs that should not appear in titles/companies', () => {
+  // Cases lifted from the doc comment in ats-helpers.js.
+
+  it('empty / very short tokens are IDs (locale codes, grades)', () => {
+    expect(looksLikeId('')).toBe(true);
+    expect(looksLikeId(null)).toBe(true);
+    expect(looksLikeId('US')).toBe(true);
+    expect(looksLikeId('L5')).toBe(true);
   });
 
-  it('en-dash (–) separator', () => {
-    expect(salaryFromDescription('Salary: $120,000.00 \u2013 $180,000.00')).toBe('$120k\u2013$180k');
+  it('pure digit strings are IDs (Workday "001", "005" prefixes)', () => {
+    expect(looksLikeId('001')).toBe(true);
+    expect(looksLikeId('005')).toBe(true);
+    expect(looksLikeId('12345678')).toBe(true);
   });
 
-  it('em-dash (—) separator', () => {
-    expect(salaryFromDescription('Salary: $150,000 \u2014 $200,000')).toBe('$150k\u2013$200k');
+  it('...except 4-digit years, which are legitimate title qualifiers', () => {
+    expect(looksLikeId('2026')).toBe(false);
+    expect(looksLikeId('2025')).toBe(false);
+    expect(looksLikeId('1999')).toBe(false);
+    // Outside the plausible range → still an ID
+    expect(looksLikeId('1800')).toBe(true);
+    expect(looksLikeId('3000')).toBe(true);
   });
 
-  it('"to" word separator', () => {
-    expect(salaryFromDescription('Salary $95,000 to $140,000 per year')).toBe('$95k\u2013$140k');
+  it('UUIDs are IDs (Lever / Ashby)', () => {
+    expect(looksLikeId('7c185ae4-3fdd-4613-8152-3ede45d2b7c0')).toBe(true);
+    expect(looksLikeId('7c185ae43fdd461381523ede45d2b7c0')).toBe(true);
   });
 
-  it('formats in k notation for large numbers', () => {
-    const r = salaryFromDescription('Salary:\n$200,000 - $350,000');
-    expect(r).toBe('$200k\u2013$350k');
-    expect(r).not.toContain('200,000');
+  it('long hex blobs are IDs', () => {
+    expect(looksLikeId('4e259fb258883c881a851cfd8db6a4de')).toBe(true);
   });
 
-  it('returns null for "Competitive"', () => {
-    expect(salaryFromDescription('Salary: Competitive.')).toBeNull();
+  it('uppercase alphanumeric codes are IDs (Workable "BFAAE89AEF")', () => {
+    expect(looksLikeId('BFAAE89AEF')).toBe(true);
+    expect(looksLikeId('20E43B7913')).toBe(true);
   });
 
-  it('returns null for "DOE"', () => {
-    expect(salaryFromDescription('Compensation: DOE')).toBeNull();
+  it('...but case matters — "Firecrawl" is a real word, not a code', () => {
+    expect(looksLikeId('Firecrawl')).toBe(false);
+    expect(looksLikeId('ANTHROPIC')).toBe(true);   // all-caps 8+ → code by the rule; documented trade-off
   });
 
-  it('returns null when no salary text', () => {
-    expect(salaryFromDescription('Great benefits and culture.')).toBeNull();
-  });
-});
-
-// ─── extractFromHtml ──────────────────────────────────────────────────────────
-
-describe('extractFromHtml — full HTML extraction', () => {
-  it('Dexcom: all fields + salary from JSON-LD description text', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@context":"http://schema.org","@type":"JobPosting",
-         "title":"Sr Director Algorithm Engineering",
-         "description":"Job duties...\n\nSalary:\n\n$231,100.00 - $385,100.00\n",
-         "hiringOrganization":{"@type":"Organization","name":"Dexcom"},
-         "jobLocationType":"TELECOMMUTE"}
-      </script>
-    </head><body><div id="app">Loading...</div></body></html>`;
-
-    const { fields, isSpaShell } = extractFromHtml(html);
-    expect(fields?.title).toBe('Sr Director Algorithm Engineering');
-    expect(fields?.company).toBe('Dexcom');
-    expect(fields?.workType).toBe('Remote');
-    expect(fields?.remote).toBe(true);
-    expect(fields?.salary).toBe('$231k\u2013$385k');
-    expect(isSpaShell).toBe(true);
+  it('digit-heavy short tokens are IDs (Workday suffixes)', () => {
+    expect(looksLikeId('R-056359')).toBe(true);
+    expect(looksLikeId('JR-0104403-1')).toBe(true);
+    expect(looksLikeId('R83098')).toBe(true);
+    expect(looksLikeId('2503435-2')).toBe(true);
   });
 
-  it('uses structured baseSalary when no salary in description', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@type":"JobPosting","title":"Engineer","hiringOrganization":{"name":"Acme"},
-         "baseSalary":{"@type":"MonetaryAmount","currency":"USD",
-           "value":{"@type":"QuantitativeValue","minValue":120000,"maxValue":180000}}}
-      </script>
-    </head><body><div id="app"></div></body></html>`;
-    expect(extractFromHtml(html).fields?.salary).toBe('$120k\u2013$180k');
+  it('ordinary words and job-title tokens are NOT IDs', () => {
+    for (const w of ['Senior', 'Software', 'Engineer', 'Java', 'Azure', 'Migration', 'Dexcom', 'Director', 'Platform']) {
+      expect(looksLikeId(w)).toBe(false);
+    }
   });
 
-  it('description salary takes priority over baseSalary', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@type":"JobPosting","title":"Engineer",
-         "description":"Salary:\n\n$200,000 - $300,000\n",
-         "baseSalary":{"value":{"minValue":100000,"maxValue":150000}}}
-      </script>
-    </head><body><div id="app"></div></body></html>`;
-    expect(extractFromHtml(html).fields?.salary).toBe('$200k\u2013$300k');
-  });
-
-  it('workType=Remote from jobLocationType TELECOMMUTE', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@type":"JobPosting","title":"Remote Engineer","jobLocationType":"TELECOMMUTE",
-         "hiringOrganization":{"name":"RemoteCo"}}
-      </script>
-    </head><body><div id="app"></div></body></html>`;
-    const { fields } = extractFromHtml(html);
-    expect(fields?.workType).toBe('Remote');
-    expect(fields?.remote).toBe(true);
-  });
-
-  it('SPA shell: text falls back to JSON-LD description for AI', () => {
-    const desc = 'We need a great engineer. Salary:\n\n$150,000 - $250,000\n';
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@type":"JobPosting","title":"Staff Engineer","description":${JSON.stringify(desc)},
-         "hiringOrganization":{"name":"Acme"}}
-      </script>
-    </head><body><div id="app">Loading...</div></body></html>`;
-    const { isSpaShell, text } = extractFromHtml(html);
-    expect(isSpaShell).toBe(true);
-    expect(text).toContain('Salary');
-    expect(text).toContain('150');
-  });
-
-  it('non-SPA page: uses body text, not JSON-LD description', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">{"@type":"JobPosting","title":"Engineer","description":"Short."}</script>
-    </head><body>
-      <main>
-        <h1>Senior Engineer</h1>
-        <p>We are looking for a talented engineer to join our team and build amazing products
-        with modern technologies. Great opportunity for growth and learning in a fast-paced environment.</p>
-      </main>
-    </body></html>`;
-    const { isSpaShell, text } = extractFromHtml(html);
-    expect(isSpaShell).toBe(false);
-    expect(text).toContain('Senior Engineer');
-  });
-
-  it('non-JSON-LD script with embedded "Salary" key', () => {
-    const html = `<html><body>
-      <script>window.__d = {"Salary":"$180,000 - $240,000","title":"Director"};</script>
-      <div>Loading...</div>
-    </body></html>`;
-    expect(extractFromHtml(html).fields?.salary).toMatch(/180|240/);
-  });
-
-  it('returns null salary when only "Competitive" in scripts', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@type":"JobPosting","title":"Engineer","description":"Competitive salary."}
-      </script>
-    </head><body><div></div></body></html>`;
-    expect(extractFromHtml(html).fields?.salary).toBeFalsy();
+  it('short version-like tokens in titles are preserved ("Java 8", "C++")', () => {
+    // "8" is ≤2 chars so it IS flagged — but trimIdTokens only strips from
+    // the ends, so "Java 8 Azure" keeps its "8". Pin that interaction below.
+    expect(looksLikeId('C++')).toBe(false);
   });
 });
 
-// ─── End-to-end regression ────────────────────────────────────────────────────
+// ─── trimIdTokens ────────────────────────────────────────────────────────────
 
-describe('End-to-end regression: Dexcom URL with text fragment', () => {
-  const url = 'https://careers.dexcom.com/careers/job/41204804-sr-director-algorithm-engineering-remote-united-states?domain=dexcom.com#:~:text=As%20the%20Senior%20Director%20Engineering,cloud%2Dbased%20predictive%20analytic%20algorithms.';
-
-  it('clean → no text fragment, keeps domain param', () => {
-    const c = cleanJobUrl(url);
-    expect(c).not.toContain('#:~:text');
-    expect(c).toContain('domain=dexcom.com');
+describe('trimIdTokens — strip leading/trailing ID tokens, keep the middle', () => {
+  it('strips a trailing Workday requisition code', () => {
+    expect(trimIdTokens('Senior Software Engineer Java 8 Azure Migration R83098'))
+      .toBe('Senior Software Engineer Java 8 Azure Migration');
   });
 
-  it('detect → eightfold (not icims)', () => {
-    expect(detectATS(cleanJobUrl(url))).toBe('eightfold');
+  it('strips a leading Workday company prefix ("001 MTB Inc.")', () => {
+    expect(trimIdTokens('001 MTB Inc.')).toBe('MTB Inc.');
   });
 
-  it('slug → company=Dexcom, remote=true', () => {
-    const r = slugFallback(cleanJobUrl(url));
-    expect(r?.company).toBe('Dexcom');
-    expect(r?.remote).toBe(true);
+  it('strips from both ends at once', () => {
+    expect(trimIdTokens('005 Director of Engineering JR-0104403-1')).toBe('Director of Engineering');
   });
 
-  it('full HTML → title + company + remote + salary $231k–$385k', () => {
-    const html = `<html><head>
-      <script type="application/ld+json">
-        {"@context":"http://schema.org","@type":"JobPosting",
-         "title":"Sr Director Algorithm Engineering",
-         "description":"Meet the team...\\n\\nSalary:\\n\\n$231,100.00 - $385,100.00\\n",
-         "hiringOrganization":{"@type":"Organization","name":"Dexcom"},
-         "jobLocation":{"@type":"Place","address":{"addressLocality":"","addressRegion":""}},
-         "jobLocationType":"TELECOMMUTE","employmentType":"FULL_TIME"}
-      </script>
-    </head><body><div id="app">Loading...</div></body></html>`;
-
-    const { fields, isSpaShell } = extractFromHtml(html);
-    expect(fields?.title).toBe('Sr Director Algorithm Engineering');
-    expect(fields?.company).toBe('Dexcom');
-    expect(fields?.workType).toBe('Remote');
-    expect(fields?.salary).toBe('$231k\u2013$385k');
-    expect(isSpaShell).toBe(true);
-  });
-});
-
-// ─── Google Jobs detection ─────────────────────────────────────────────────────
-
-describe('detectATS — Google Jobs', () => {
-  it('share.google short link → googlejobs', () => {
-    expect(detectATS('https://share.google/q7ODZaozjbqowhl8g')).toBe('googlejobs');
+  it('preserves ID-like tokens in the MIDDLE (e.g. "Java 8")', () => {
+    expect(trimIdTokens('Java 8 Developer')).toBe('Java 8 Developer');
   });
 
-  it('google.com/search?udm=8 → googlejobs', () => {
-    const url = 'https://www.google.com/search?q=director+engineer&udm=8&kgs=5098b5577bcdf208';
-    expect(detectATS(url)).toBe('googlejobs');
+  it('preserves 4-digit years anywhere', () => {
+    expect(trimIdTokens('Summer 2026 Intern')).toBe('Summer 2026 Intern');
+    expect(trimIdTokens('2026 New Grad Engineer')).toBe('2026 New Grad Engineer');
   });
 
-  it('google.com/search with jobs detail viewer → googlejobs', () => {
-    const url = 'https://www.google.com/search?q=swe&source=sh/x/job/li/m1/1&udm=8';
-    expect(detectATS(url)).toBe('googlejobs');
+  it('collapses runs of whitespace', () => {
+    expect(trimIdTokens('  Senior   Engineer  ')).toBe('Senior Engineer');
   });
 
-  it('regular google.com search (not jobs) → generic', () => {
-    expect(detectATS('https://www.google.com/search?q=nodejs+tutorial')).toBe('generic');
+  it('returns falsy input unchanged', () => {
+    expect(trimIdTokens('')).toBe('');
+    expect(trimIdTokens(null)).toBe(null);
   });
 
-  it('cleanJobUrl + detectATS works for share.google', () => {
-    const url = cleanJobUrl('https://share.google/q7ODZaozjbqowhl8g#:~:text=foo');
-    expect(detectATS(url)).toBe('googlejobs');
-  });
-});
-
-// ─── URL parsing fixes for 10 URLs ────────────────────────────────────────────
-
-describe('detectATS — job board URLs', () => {
-  it('indeed viewjob → indeed', () => {
-    expect(detectATS('https://www.indeed.com/viewjob?jk=18715e3be76cb999&utm_campaign=google_jobs_apply')).toBe('indeed');
-  });
-
-  it('ziprecruiter company job → ziprecruiter', () => {
-    expect(detectATS('https://www.ziprecruiter.com/c/Saratech/Job/Director-of-Engineering/-in-Mission-Viejo,CA?jid=333f4e6c313bd1ef&utm_campaign=google_jobs_apply')).toBe('ziprecruiter');
-  });
-
-  it('career.io job → careerdotio', () => {
-    expect(detectATS('https://career.io/job/director-of-engineering-brea-karman-space-defense-497b80a6f57f779eb26cdf078d4b39b5?utm_campaign=google_jobs_apply')).toBe('careerdotio');
-  });
-
-  it('simplyhired job → simplyhired', () => {
-    expect(detectATS('https://www.simplyhired.com/job/ENwJKdE3ZlxzefU4UxlJ48J6a27gkkXcqhsVizEK1KlhJsIx3LG2fQ?utm_campaign=google_jobs_apply')).toBe('simplyhired');
-  });
-
-  it('lensa job → lensa', () => {
-    expect(detectATS('https://lensa.com/job-v1/karman-space-and-defense/brea-ca/director-of-engineering/4e259fb258883c881a851cfd8db6a4de?utm_campaign=google_jobs_apply')).toBe('lensa');
-  });
-
-  it('job-boards.greenhouse.io → greenhouse', () => {
-    expect(detectATS('https://job-boards.greenhouse.io/andurilindustries/jobs/5109197007?gh_jid=5109197007')).toBe('greenhouse');
-  });
-
-  it('boards.greenhouse.io → greenhouse', () => {
-    expect(detectATS('https://boards.greenhouse.io/stripe/jobs/123456')).toBe('greenhouse');
-  });
-
-  it('UTM params stripped before ATS detection', () => {
-    const url = cleanJobUrl('https://www.ziprecruiter.com/c/Acme/Job/SWE?jid=abc123&utm_campaign=test&utm_source=google');
-    expect(detectATS(url)).toBe('ziprecruiter');
+  it('returns empty string if every token is an ID', () => {
+    expect(trimIdTokens('001 R83098')).toBe('');
   });
 });

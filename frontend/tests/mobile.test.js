@@ -249,24 +249,57 @@ t('No duplicate #mobile-avatar span in DOM', () => {
   if (matches.length !== 1) throw new Error(`expected exactly 1 mobile-avatar span, found ${matches.length}`);
 });
 
-// ── v1.20.5: no horizontal scroll from off-screen panels ─────────────────────
+// ── v1.20.7: no horizontal scroll from off-screen panels ─────────────────────
 console.log('\n── No horizontal overflow on mobile');
-t('html + body clip horizontal overflow (fixes sideways scroll on mobile Safari/Chrome)', () => {
-  // The mobile layout slides .sidebar / .main / .file-editor-drawer off-screen
-  // with transform:translateX(±100%). Mobile browsers count those toward the
-  // scrollable canvas, so without this rule the page is 2× viewport wide.
-  // body{overflow:hidden} alone is NOT sufficient — on iOS the scroller is <html>.
-  if (!/html,\s*body\s*\{[^}]*overflow-x:\s*hidden/.test(src)) {
-    throw new Error('html, body must set overflow-x: hidden — mobile will scroll sideways into empty space');
+// History: v1.20.5 tried html,body{overflow-x:hidden}. It didn't work on real
+// phones because .sidebar/.main are position:fixed — they're in the viewport's
+// coordinate space, not body's, so body's overflow can't clip them. On iOS and
+// Android a fixed element translated off-screen widens the scrollable
+// viewport. v1.20.7 fixes it at the right layer with two independent
+// mechanisms; both are pinned here.
+const mobileBlock = src.slice(src.indexOf('@media (max-width: 680px)'));
+
+t('#screen-app is a containing block for its fixed panels (contain:paint) on mobile', () => {
+  // Without this, .app's overflow:hidden cannot clip .sidebar/.main.
+  if (!/#screen-app\.app\s*\{[^}]*contain:\s*paint/.test(mobileBlock)) {
+    throw new Error('#screen-app.app must set contain:paint on ≤680px — otherwise fixed panels escape overflow:hidden and phones scroll sideways');
   }
 });
-t('off-screen mobile panels still use transform (not left/margin) so the clip works', () => {
-  // If someone changes the hide mechanism to e.g. left:-100% the html clip
-  // still works, but this pins the current approach so the guard above
-  // stays meaningful.
-  const mobileBlock = src.slice(src.indexOf('@media (max-width: 680px)'));
-  if (!/\.main\s*\{[^}]*transform:\s*translateX\(100%\)/.test(mobileBlock)) {
-    throw new Error('.main mobile hide mechanism changed — re-verify horizontal overflow on a real device');
+
+t('off-screen .main is visibility:hidden (with delayed transition so slide-out still animates)', () => {
+  const rule = mobileBlock.match(/\.main\s*\{[^}]*\}/)?.[0] || '';
+  if (!/visibility:\s*hidden/.test(rule)) throw new Error('.main (hidden state) must be visibility:hidden on mobile');
+  if (!/visibility\s+0s\s+linear\s+0\.25s/.test(rule)) throw new Error('.main must delay the visibility flip until after the 0.25s slide');
+  const shown = mobileBlock.match(/\.main\.visible-mobile\s*\{[^}]*\}/)?.[0] || '';
+  if (!/visibility:\s*visible/.test(shown)) throw new Error('.main.visible-mobile must restore visibility:visible');
+  if (!/visibility\s+0s\s+linear\s+0s/.test(shown)) throw new Error('.main.visible-mobile must flip visibility immediately (0s delay) so slide-in is visible');
+});
+
+t('off-screen .sidebar.hidden-mobile is visibility:hidden with delayed transition', () => {
+  const rule = mobileBlock.match(/\.sidebar\.hidden-mobile\s*\{[^}]*\}/)?.[0] || '';
+  if (!/visibility:\s*hidden/.test(rule)) throw new Error('.sidebar.hidden-mobile must be visibility:hidden');
+  if (!/visibility\s+0s\s+linear\s+0\.25s/.test(rule)) throw new Error('.sidebar.hidden-mobile must delay visibility until after the slide');
+});
+
+t('file-editor-drawer (outside the shell) is visibility:hidden when closed', () => {
+  // This drawer lives OUTSIDE #screen-app so contain:paint doesn't cover it;
+  // visibility is its only guard against widening the viewport.
+  const base = src.match(/\.file-editor-drawer\s*\{[^}]*\}/)?.[0] || '';
+  const open = src.match(/\.file-editor-drawer\.open\s*\{[^}]*\}/)?.[0] || '';
+  if (!/visibility:\s*hidden/.test(base)) throw new Error('.file-editor-drawer must be visibility:hidden when closed');
+  if (!/visibility:\s*visible/.test(open)) throw new Error('.file-editor-drawer.open must restore visibility');
+});
+
+t('hidden panels also get pointer-events:none (no invisible touch targets)', () => {
+  for (const sel of ['.main', '.sidebar.hidden-mobile']) {
+    const rule = mobileBlock.match(new RegExp(sel.replace(/\./g, '\\.') + '\\s*\\{[^}]*\\}'))?.[0] || '';
+    if (!/pointer-events:\s*none/.test(rule)) throw new Error(`${sel} should be pointer-events:none while off-screen`);
+  }
+});
+
+t('html + body still clip horizontal overflow (belt for any non-fixed overflow)', () => {
+  if (!/html,\s*body\s*\{[^}]*overflow-x:\s*hidden/.test(src)) {
+    throw new Error('html, body should keep overflow-x:hidden as a fallback for in-flow overflow');
   }
 });
 

@@ -23,6 +23,14 @@
  * Strip tracking params and normalise a job URL. Idempotent.
  */
 function cleanJobUrl(raw) {
+  // Text-fragment directive (#:~:text=...). Chrome's "Copy link to highlight"
+  // appends these; they're not part of the resource identity and would
+  // poison URL-based dedupe. The `:~:` delimiter marks the start of the
+  // directive; anything before it is a normal anchor and is preserved.
+  const stripDirective = (hash) => {
+    const i = hash.indexOf(':~:');
+    return i < 0 ? hash : hash.slice(0, i);
+  };
   try {
     const u = new URL(raw.trim());
     const REMOVE = [
@@ -34,10 +42,15 @@ function cleanJobUrl(raw) {
       'shndl','shmd','shmds','jbr','sv',
     ];
     REMOVE.forEach(p => u.searchParams.delete(p));
+    u.hash = stripDirective(u.hash);
     if (u.hash === '#' || u.hash === '') u.hash = '';
     return u.toString();
   } catch {
-    return raw.trim();
+    // Unparseable input — still strip the directive so a bare-string caller
+    // gets the same normalisation.
+    const s = raw.trim();
+    const h = s.indexOf('#');
+    return h < 0 ? s : s.slice(0, h) + stripDirective(s.slice(h)).replace(/^#$/, '');
   }
 }
 
