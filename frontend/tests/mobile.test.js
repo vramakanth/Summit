@@ -249,6 +249,27 @@ t('No duplicate #mobile-avatar span in DOM', () => {
   if (matches.length !== 1) throw new Error(`expected exactly 1 mobile-avatar span, found ${matches.length}`);
 });
 
+// ── v1.20.5: no horizontal scroll from off-screen panels ─────────────────────
+console.log('\n── No horizontal overflow on mobile');
+t('html + body clip horizontal overflow (fixes sideways scroll on mobile Safari/Chrome)', () => {
+  // The mobile layout slides .sidebar / .main / .file-editor-drawer off-screen
+  // with transform:translateX(±100%). Mobile browsers count those toward the
+  // scrollable canvas, so without this rule the page is 2× viewport wide.
+  // body{overflow:hidden} alone is NOT sufficient — on iOS the scroller is <html>.
+  if (!/html,\s*body\s*\{[^}]*overflow-x:\s*hidden/.test(src)) {
+    throw new Error('html, body must set overflow-x: hidden — mobile will scroll sideways into empty space');
+  }
+});
+t('off-screen mobile panels still use transform (not left/margin) so the clip works', () => {
+  // If someone changes the hide mechanism to e.g. left:-100% the html clip
+  // still works, but this pins the current approach so the guard above
+  // stays meaningful.
+  const mobileBlock = src.slice(src.indexOf('@media (max-width: 680px)'));
+  if (!/\.main\s*\{[^}]*transform:\s*translateX\(100%\)/.test(mobileBlock)) {
+    throw new Error('.main mobile hide mechanism changed — re-verify horizontal overflow on a real device');
+  }
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass}/${pass + fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
 if (fail) process.exit(1);
