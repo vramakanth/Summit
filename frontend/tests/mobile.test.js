@@ -303,6 +303,26 @@ t('html + body still clip horizontal overflow (belt for any non-fixed overflow)'
   }
 });
 
+// ── v1.20.8: iOS auto-zoom on input focus ────────────────────────────────────
+console.log('\n── No iOS auto-zoom on input focus');
+t('inputs are >=16px on touch devices (Safari zooms on focus of anything smaller, and never zooms back)', () => {
+  const m = src.match(/@media\s*\(\s*pointer:\s*coarse\s*\)\s*\{([^}]*\{[^}]*\})+\s*\}/);
+  if (!m) throw new Error('missing @media (pointer: coarse) block for input font-size floor');
+  if (!/input\s*,\s*select\s*,\s*textarea\s*\{[^}]*font-size:\s*16px\s*!important/.test(m[0])) {
+    throw new Error('input/select/textarea must be font-size:16px !important on touch devices — otherwise the auto-focused unlock password field zooms the page permanently');
+  }
+});
+t('the unlock screen still auto-focuses the password field (feature — must not be "fixed" by removing focus)', () => {
+  // The zoom bug was caused by this focus() + a 13px input. The correct fix
+  // is the 16px floor above, NOT removing the focus. Pin both so nobody
+  // solves the symptom by degrading the UX.
+  const idx = src.indexOf('function showUnlockPrompt');
+  const body = src.slice(idx, idx + 800);
+  if (!/unlock-password'\)\?\.focus\(\)/.test(body)) {
+    throw new Error('showUnlockPrompt should still focus #unlock-password — fix zoom via font-size, not by removing focus');
+  }
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass}/${pass + fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
 if (fail) process.exit(1);
