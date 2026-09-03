@@ -338,6 +338,49 @@ t('Every route that reads users[] loads it via loadUsers() first', () => {
 // bug-catching. Harmless but sloppy — package gets bloat and review diffs
 // get noise. Prevent by failing the suite if any .bak / .orig / swap / DS
 // files sneak in.
+// ── v1.20.11: README must not drift from the code ────────────────────────────
+// The README went ~30 releases without an update and ended up describing
+// optional encryption, a Jina renderer, and 99 tests. These pin the facts
+// most likely to rot so a version bump or a new test file fails CI until
+// the README is touched too.
+t('README states the current APP_VERSION and extension version', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '../../README.md'), 'utf8');
+  const feSrc = fs.readFileSync(path.join(__dirname, '../../frontend/public/index.html'), 'utf8');
+  const appV = (feSrc.match(/const APP_VERSION = '([^']+)'/) || [])[1];
+  const extV = JSON.parse(fs.readFileSync(path.join(__dirname, '../../extension/manifest.json'), 'utf8')).version;
+  if (!appV) throw new Error('APP_VERSION not found in index.html');
+  if (!readme.includes(`v${appV}`)) throw new Error(`README does not mention v${appV} (bump the version line)`);
+  if (!readme.includes(`v${extV}`))  throw new Error(`README does not mention extension v${extV}`);
+});
+t('README test-tier counts match the actual suites', () => {
+  if (process.env.SUMMIT_COUNTING) return;   // we are a child of ourselves — don't recurse
+  const readme = fs.readFileSync(path.join(__dirname, '../../README.md'), 'utf8');
+  const root = path.join(__dirname, '../..');
+  // Count what actually RUNS (✓ lines), not `t(` in source — tests generated
+  // inside loops are one call in source but many at runtime.
+  const { execSync } = require('child_process');
+  const count = f => {
+    try { return (execSync(`node ${JSON.stringify(path.join(root, f))}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, SUMMIT_COUNTING: '1' }, timeout: 60000 }).match(/^ ✓/gm) || []).length; }
+    catch (e) { return (String(e.stdout || '').match(/^ ✓/gm) || []).length; }
+  };
+  const backend  = ['architecture','behavior','e2e','crypto'].reduce((n, f) => n + count(`backend/tests/${f}.test.js`), 0);
+  const frontend = ['smoke','filter','mobile','joblist'].reduce((n, f) => n + count(`frontend/tests/${f}.test.js`), 0)
+                 + count('extension/tests/extension.test.js');
+  const row = (label) => {
+    const m = readme.match(new RegExp(`\\|\\s*${label}[^|]*\\|[^|]*\\|\\s*(\\d+)\\s*\\|`));
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const rb = row('Backend zero-dep'), rf = row('Frontend \\+ extension zero-dep');
+  if (rb !== backend)  throw new Error(`README says ${rb} backend zero-dep tests, actual ${backend}`);
+  if (rf !== frontend) throw new Error(`README says ${rf} frontend+extension tests, actual ${frontend}`);
+});
+t('README does not describe removed subsystems (Jina, slug fallback, optional encryption)', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '../../README.md'), 'utf8');
+  for (const stale of ['Jina', 'slug fallback', 'Optional AES', 'llama-3.3', 'Job-Application-Tracker']) {
+    if (readme.includes(stale)) throw new Error(`README still mentions "${stale}"`);
+  }
+});
+
 t('No stray editor/backup artifacts in the repo', () => {
   const fs = require('fs');
   const path = require('path');

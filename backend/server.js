@@ -19,12 +19,22 @@ const PORT           = process.env.PORT           || 3000;
 const JWT_SECRET     = process.env.JWT_SECRET     || 'change-this-secret-please';
 const DATA_DIR       = process.env.DATA_DIR       || path.join(__dirname, 'data');
 const USAGE_DIR      = path.join(DATA_DIR, 'usage');
+const VISITS_DIR     = path.join(DATA_DIR, 'visits');   // v1.20.9: cookie-free page-view log
 // Per-user daily token cap. User sees a warning banner at 80%, requests are
 // rejected once the cap is reached. Override via DAILY_TOKEN_CAP env var.
 // Default 100K is enough for ~4 typical user sessions per day (insights +
 // a few tailors + interview questions) without exhausting free-tier budgets.
 const DAILY_TOKEN_CAP = parseInt(process.env.DAILY_TOKEN_CAP || '100000', 10);
 const ADMIN_SECRET   = process.env.ADMIN_SECRET   || '';
+// v1.20.9: usernames (comma-separated, case-insensitive) that get admin access
+// in admin.html via their normal login. ADMIN_SECRET still works for scripts.
+// Accepts ADMIN_USERNAMES (plural, comma-separated) or ADMIN_USERNAME (singular,
+// already present on the production Render env). Both may be set; they merge.
+const ADMIN_USERNAMES = new Set(
+  [process.env.ADMIN_USERNAMES, process.env.ADMIN_USERNAME]
+    .filter(Boolean).join(',').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+);
+function isAdminUsername(u) { return ADMIN_USERNAMES.has(String(u || '').toLowerCase()); }
 const APP_URL        = process.env.APP_URL        || 'https://job-application-tracker-hf1f.onrender.com';
 const GROQ_API_KEY   = process.env.GROQ_API_KEY   || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
@@ -62,7 +72,7 @@ const DOCS_DIR    = path.join(DATA_DIR, 'docs');
 const SETTINGS_DIR = path.join(DATA_DIR, 'settings');
 const INBOX_DIR   = path.join(DATA_DIR, 'inbox');  // v1.19.2: extension → webapp job handoff
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
-for (const d of [DATA_DIR, JOBS_DIR, DOCS_DIR, SETTINGS_DIR, USAGE_DIR, NOTES_DIR, INBOX_DIR]) {
+for (const d of [DATA_DIR, JOBS_DIR, DOCS_DIR, SETTINGS_DIR, USAGE_DIR, NOTES_DIR, INBOX_DIR, VISITS_DIR]) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
@@ -170,9 +180,20 @@ function authMiddleware(req, res, next) {
 }
 
 function adminMiddleware(req, res, next) {
+  // Path 1: shared secret (curl / scripts / cron)
   const s = req.headers['x-admin-secret'] || req.query.secret;
-  if (!ADMIN_SECRET || s !== ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-  next();
+  if (ADMIN_SECRET && s === ADMIN_SECRET) return next();
+  // Path 2 (v1.20.9): a normal login JWT whose username is in ADMIN_USERNAMES.
+  // This is what admin.html uses — it was sending Bearer tokens to an
+  // endpoint that only ever checked the secret, so the page could never load.
+  const h = req.headers.authorization;
+  if (h && h.startsWith('Bearer ')) {
+    try {
+      const claims = jwt.verify(h.slice(7), JWT_SECRET);
+      if (claims.admin === true && isAdminUsername(claims.username)) { req.user = claims; return next(); }
+    } catch {}
+  }
+  return res.status(403).json({ error: 'Forbidden' });
 }
 
 // ── Token usage tracking ────────────────────────────────────────────────────
@@ -191,6 +212,81 @@ function appendUsageLog(entry) {
     fs.appendFileSync(file, JSON.stringify(entry) + '\n');
   } catch (e) { console.warn('usage log append failed:', e.message); }
 }
+
+// ── Visitor tracking (v1.20.9) ───────────────────────────────────────────────
+// Cookie-free, third-party-free page-view counting, built to match the
+// product's privacy posture rather than bolted on.
+//
+// What is stored, per view, in data/visits/YYYY-MM.log (NDJSON):
+//   { ts, s (screen), r (referrer HOST only), b (browser family), v (visitor hash) }
+//
+// What is NOT stored: IP address, full referrer URL, user-agent string,
+// cookies, any persistent identifier. The visitor hash `v` is
+//   sha256(ip + ua + DAILY_SALT)[0:16]
+// where DAILY_SALT is derived from the date — so the same person is counted
+// once per day (for uniques) but cannot be recognised across days, and the
+// hash cannot be reversed to an IP. This is the same approach Plausible and
+// GoatCounter use. No consent banner is required because no cookie or
+// persistent identifier is set.
+//
+// Do-Not-Track / Global-Privacy-Control are honoured client-side: the beacon
+// is never sent if either is on. Authenticated in-app navigation is not
+// tracked at all — only public screens (landing/login/register/unlock).
+
+function _dailySalt() {
+  // Rotates at UTC midnight. Bound to JWT_SECRET so two deployments with the
+  // same date don't produce cross-comparable hashes.
+  return crypto.createHash('sha256').update(JWT_SECRET + '|' + todayKey()).digest('hex');
+}
+function _visitorHash(req) {
+  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const ua = req.headers['user-agent'] || '';
+  return crypto.createHash('sha256').update(ip + '|' + ua + '|' + _dailySalt()).digest('hex').slice(0, 16);
+}
+function _browserFamily(ua = '') {
+  if (/Edg\//.test(ua)) return 'edge';
+  if (/OPR\/|Opera/.test(ua)) return 'opera';
+  if (/Firefox\//.test(ua)) return 'firefox';
+  if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) return 'chrome';
+  if (/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'safari';
+  if (/bot|crawl|spider|slurp|facebookexternalhit|preview/i.test(ua)) return 'bot';
+  return 'other';
+}
+function _referrerHost(r = '') {
+  try { return new URL(r).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+function appendVisitLog(entry) {
+  try {
+    fs.appendFileSync(path.join(VISITS_DIR, `${monthKey()}.log`), JSON.stringify(entry) + '\n');
+  } catch (e) { console.warn('visit log append failed:', e.message); }
+}
+
+const _visitLimiter = rateLimit({ windowMs: 60_000, max: 60, keyFn: r => _visitorHash(r), label: 'visit-beacon' });
+
+// Public beacon. Body: { s: 'landing'|'login'|'register'|'unlock'|'recover', r: document.referrer }
+// Accepts sendBeacon's text/plain body as well as JSON.
+app.post('/api/v', express.text({ type: '*/*', limit: '2kb' }), _visitLimiter, (req, res) => {
+  let b = {};
+  try { b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); } catch {}
+  const ALLOWED = new Set(['landing', 'login', 'register', 'unlock', 'recover']);
+  const s = ALLOWED.has(b.s) ? b.s : 'other';
+  const ua = req.headers['user-agent'] || '';
+  const fam = _browserFamily(ua);
+  if (fam === 'bot') return res.status(204).end();   // don't count crawlers
+  appendVisitLog({ ts: Date.now(), s, r: _referrerHost(b.r), b: fam, v: _visitorHash(req) });
+  res.status(204).end();
+});
+
+// Funnel step 3: "added first job". The jobs blob is encrypted, so the server
+// can't count jobs — the client tells us when it goes 0→1. Stored as a single
+// timestamp on the user record; idempotent; reveals nothing about the job.
+app.post('/api/v/first-job', authMiddleware, (req, res) => {
+  const users = loadUsers();
+  const user = users[req.user.id];
+  if (!user) return res.status(404).json({ error: 'user not found' });
+  if (!user.firstJobAt) { user.firstJobAt = Date.now(); saveUsers(users); }
+  res.json({ ok: true, firstJobAt: user.firstJobAt });
+});
 
 function loadUserUsage(user) {
   const file = path.join(USAGE_DIR, `${user}.json`);
@@ -726,12 +822,14 @@ app.post('/api/login', _loginLimiter, async (req, res) => {
   if (!user.encrypted || !user.encryptedDataKey) {
     return res.status(409).json({ error: 'Account predates encryption migration — contact support' });
   }
-  const payload = { id: username.toLowerCase(), username: user.username };
+  const admin = isAdminUsername(user.username);
+  const payload = { id: username.toLowerCase(), username: user.username, ...(admin ? { admin: true } : {}) };
   res.json({
     token: jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' }),
     username: user.username,
     encrypted: true,
     encryptedDataKey: user.encryptedDataKey,
+    isAdmin: admin,
   });
 });
 
@@ -2379,6 +2477,72 @@ app.get('/api/user-usage', authMiddleware, (req, res) => {
 
 // Admin usage: aggregate across all users. Reads the NDJSON month logs so we
 // can produce per-user and per-endpoint breakdowns.
+// v1.20.9: visitor rollup for the admin "Visitors" tab.
+// Returns { days, daySeries:[{day, views, uniques}], totals:{views, uniques},
+//           byReferrer, byScreen, byBrowser, funnel:{landing, registered, firstJob} }
+// The funnel's three stages come from three sources:
+//   landing    = unique visitors who hit the landing screen (visits log)
+//   registered = users with createdAt in window       (users.json)
+//   firstJob   = users with firstJobAt in window      (users.json, set by /api/v/first-job)
+app.get('/api/admin/visits', adminMiddleware, (req, res) => {
+  const days = Math.min(365, Math.max(1, parseInt(req.query.days || '30', 10)));
+  const cutoff = Date.now() - days * 86400000;
+
+  let lines = [];
+  try {
+    const files = fs.readdirSync(VISITS_DIR).filter(f => f.endsWith('.log')).sort().reverse();
+    for (const f of files.slice(0, Math.ceil(days / 28) + 1)) {
+      for (const line of fs.readFileSync(path.join(VISITS_DIR, f), 'utf8').split('\n')) {
+        if (!line.trim()) continue;
+        try { lines.push(JSON.parse(line)); } catch {}
+      }
+    }
+  } catch (e) { console.warn('admin visits read fail:', e.message); }
+  lines = lines.filter(e => e.ts >= cutoff);
+
+  // Per-day series (fill every day so the chart has no gaps)
+  const dayMap = new Map();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    dayMap.set(d, { day: d, views: 0, uniq: new Set() });
+  }
+  const byReferrer = {}, byScreen = {}, byBrowser = {};
+  const landingUniques = new Set();
+  for (const e of lines) {
+    const d = new Date(e.ts).toISOString().slice(0, 10);
+    const row = dayMap.get(d);
+    if (row) { row.views++; row.uniq.add(e.v); }
+    const r = e.r || '(direct)';
+    byReferrer[r] = (byReferrer[r] || 0) + 1;
+    byScreen[e.s || 'other'] = (byScreen[e.s || 'other'] || 0) + 1;
+    byBrowser[e.b || 'other'] = (byBrowser[e.b || 'other'] || 0) + 1;
+    if (e.s === 'landing') landingUniques.add(e.v);
+  }
+  const daySeries = [...dayMap.values()].map(r => ({ day: r.day, views: r.views, uniques: r.uniq.size }));
+  const allUniques = new Set(lines.map(e => e.v)).size;
+
+  // Funnel from users.json
+  const users = loadUsers();
+  let registered = 0, firstJob = 0;
+  for (const u of Object.values(users)) {
+    if (u.createdAt && u.createdAt >= cutoff) registered++;
+    if (u.firstJobAt && u.firstJobAt >= cutoff) firstJob++;
+  }
+
+  const top = (o, n = 10) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n)
+    .map(([k, v]) => ({ key: k, count: v }));
+
+  res.json({
+    days,
+    daySeries,
+    totals: { views: lines.length, uniques: allUniques },
+    byReferrer: top(byReferrer, 15),
+    byScreen: top(byScreen),
+    byBrowser: top(byBrowser),
+    funnel: { landing: landingUniques.size, registered, firstJob },
+  });
+});
+
 app.get('/api/admin/usage', adminMiddleware, (req, res) => {
   const days = parseInt(req.query.days || '30', 10);
   const cutoff = Date.now() - days * 86400000;

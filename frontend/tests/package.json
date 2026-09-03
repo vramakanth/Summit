@@ -1,14 +1,9 @@
 {
   "name": "summit-frontend-tests",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Zero-dependency frontend regression guards. Each file is a plain Node script with its own t() harness — no jest, no install.",
   "scripts": {
-    "test": "jest"
-  },
-  "jest": {
-    "testEnvironment": "node",
-    "testMatch": ["**/*.test.js"]
-  },
-  "devDependencies": {
-    "jest": "^29.7.0"
+    "test": "node smoke.test.js && node filter.test.js && node mobile.test.js && node joblist.test.js"
   }
 }

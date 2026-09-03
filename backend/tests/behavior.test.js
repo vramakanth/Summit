@@ -1674,6 +1674,7 @@ t('Every fetch(API + ...) to a protected endpoint sends Authorization: Bearer', 
     '/api/reset-password',
     '/api/ping',
     '/api/extension',    // served without auth so install flow works
+    '/api/v',            // v1.20.9: public visitor beacon — fires on landing before any login
   ]);
 
   // Paren-balanced walk. `fetch(...)` calls where the URL starts with `API + `.
@@ -1784,6 +1785,7 @@ t('Every non-public /api route has authMiddleware OR an explicit allowlist entry
   const PUBLIC = new Set([
     '/api/register', '/api/login', '/api/forgot', '/api/recover',
     '/api/reset-password', '/api/ping',
+    '/api/v',   // v1.20.9: visitor beacon — fires on public screens before login; rate-limited, no PII
   ]);
   const lines = serverSrc.split('\n');
   const offenders = [];
@@ -1865,6 +1867,7 @@ t('server.js loads cleanly with stubbed deps (catches TDZ, typos, missing import
     return app;
   };
   express.json = () => (req, res, next) => next && next();
+  express.text = () => (req, res, next) => next && next();   // v1.20.9: /api/v uses express.text for sendBeacon
   express.urlencoded = () => (req, res, next) => next && next();
   express.static = () => (req, res, next) => next && next();
   express.Router = () => ({ use: () => {}, get: () => {}, post: () => {} });
@@ -4890,6 +4893,157 @@ t('Posting toolbar no longer shows the "refresh cache" button', () => {
   }
   // The "Fetch from URL" button in emptyPosting stays — it's different UX
   // (only shown when we have NO description content at all).
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v1.20.9 — first-party visitor tracking + admin auth repair
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── v1.20.9 visitor tracking (privacy invariants)');
+
+const adminHtml = fs.readFileSync(path.join(__dirname, '../../frontend/public/admin.html'), 'utf8');
+
+t('Visit log stores NO ip, NO user-agent, NO full referrer — only host + daily hash', () => {
+  const idx = serverSrc.indexOf('function appendVisitLog');
+  const call = serverSrc.slice(serverSrc.indexOf("app.post('/api/v'"), serverSrc.indexOf("app.post('/api/v'") + 1200);
+  const entry = call.match(/appendVisitLog\(\{([^}]*)\}\)/)?.[1] || '';
+  if (!entry) throw new Error('appendVisitLog call not found in /api/v');
+  for (const forbidden of ['ip', 'remoteAddress', 'x-forwarded-for', 'user-agent', 'ua:']) {
+    if (entry.includes(forbidden)) throw new Error(`visit log entry includes "${forbidden}" — that is PII we promised not to store`);
+  }
+  if (!/r:\s*_referrerHost\(/.test(entry)) throw new Error('referrer must go through _referrerHost (hostname only)');
+  if (!/v:\s*_visitorHash\(/.test(entry))  throw new Error('visitor id must be the daily-salted hash, not a raw identifier');
+});
+
+t('Visitor hash is sha256 of ip+ua+DAILY salt (rotates, non-reversible)', () => {
+  const idx = serverSrc.indexOf('function _visitorHash');
+  const body = serverSrc.slice(idx, idx + 500);
+  if (!/createHash\(['"]sha256['"]\)/.test(body)) throw new Error('_visitorHash must use sha256');
+  if (!/_dailySalt\(\)/.test(body)) throw new Error('_visitorHash must include the daily-rotating salt');
+  const salt = serverSrc.slice(serverSrc.indexOf('function _dailySalt'), serverSrc.indexOf('function _dailySalt') + 300);
+  if (!/todayKey\(\)/.test(salt)) throw new Error('_dailySalt must be bound to the current date so hashes cannot be linked across days');
+  if (!/JWT_SECRET/.test(salt)) throw new Error('_dailySalt should be bound to JWT_SECRET so hashes are not cross-deployment comparable');
+});
+
+t('/api/v beacon is public (no authMiddleware), rate-limited, drops bots', () => {
+  const idx = serverSrc.indexOf("app.post('/api/v'");
+  if (idx < 0) throw new Error('/api/v endpoint missing');
+  const sig = serverSrc.slice(idx, serverSrc.indexOf('=>', idx));
+  if (/authMiddleware/.test(sig)) throw new Error('/api/v must NOT require auth — it fires on public screens before login');
+  if (!/_visitLimiter/.test(sig)) throw new Error('/api/v must be rate-limited');
+  const body = serverSrc.slice(idx, idx + 1200);
+  if (!/fam === 'bot'/.test(body)) throw new Error('/api/v must drop crawler traffic before logging');
+  // sendBeacon sends text/plain — the endpoint must parse it
+  if (!/express\.text\(/.test(sig)) throw new Error('/api/v must accept text/plain (navigator.sendBeacon)');
+});
+
+t('/api/v whitelists screen names (no free-text into the log)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/v'");
+  const body = serverSrc.slice(idx, idx + 1200);
+  if (!/ALLOWED\s*=\s*new Set\(/.test(body)) throw new Error('screen name must be checked against an allow-list');
+  if (!/ALLOWED\.has\(b\.s\)\s*\?\s*b\.s\s*:\s*'other'/.test(body)) throw new Error('non-whitelisted screen must coerce to "other"');
+});
+
+t('/api/admin/visits exists, admin-gated, returns funnel + daySeries', () => {
+  const idx = serverSrc.indexOf("app.get('/api/admin/visits'");
+  if (idx < 0) throw new Error('/api/admin/visits missing');
+  const sig = serverSrc.slice(idx, serverSrc.indexOf('=>', idx));
+  if (!/adminMiddleware/.test(sig)) throw new Error('/api/admin/visits must be adminMiddleware-gated');
+  const body = serverSrc.slice(idx, idx + 3500);
+  for (const k of ['daySeries', 'byReferrer', 'byScreen', 'byBrowser', 'funnel']) {
+    if (!body.includes(k)) throw new Error(`/api/admin/visits response missing ${k}`);
+  }
+  if (!/registered\+\+/.test(body) || !/firstJob\+\+/.test(body)) throw new Error('funnel must count registered + firstJob from users.json');
+});
+
+t('/api/v/first-job is auth-gated and idempotent', () => {
+  const idx = serverSrc.indexOf("app.post('/api/v/first-job'");
+  if (idx < 0) throw new Error('/api/v/first-job missing');
+  const sig = serverSrc.slice(idx, serverSrc.indexOf('=>', idx));
+  if (!/authMiddleware/.test(sig)) throw new Error('/api/v/first-job must require auth');
+  const body = serverSrc.slice(idx, idx + 600);
+  if (!/if\s*\(\s*!user\.firstJobAt\s*\)/.test(body)) throw new Error('first-job must only set firstJobAt once (idempotent)');
+  if (!/loadUsers\(\)/.test(body)) throw new Error('first-job must loadUsers() (bare users[] guard)');
+});
+
+console.log('\n── v1.20.9 admin auth repair');
+
+t('adminMiddleware accepts EITHER x-admin-secret OR an admin-claim JWT', () => {
+  // Pre-v1.20.9 it only checked the secret, but admin.html sends Bearer
+  // tokens — so the admin page could never load. Both paths must work.
+  const idx = serverSrc.indexOf('function adminMiddleware');
+  const body = serverSrc.slice(idx, idx + 900);
+  if (!/x-admin-secret/.test(body)) throw new Error('secret path removed');
+  if (!/jwt\.verify\(/.test(body)) throw new Error('adminMiddleware does not verify a Bearer JWT');
+  if (!/claims\.admin === true/.test(body)) throw new Error('adminMiddleware must require the admin claim');
+  if (!/isAdminUsername\(claims\.username\)/.test(body)) throw new Error('adminMiddleware must re-check the username against ADMIN_USERNAMES (revocation without waiting for JWT expiry)');
+});
+
+t('login returns isAdmin and stamps admin claim into the JWT for ADMIN_USERNAMES', () => {
+  const idx = serverSrc.indexOf("app.post('/api/login'");
+  const body = serverSrc.slice(idx, idx + 3000);
+  if (!/isAdmin:\s*admin/.test(body)) throw new Error('login response must include isAdmin');
+  if (!/admin\s*\?\s*\{\s*admin:\s*true\s*\}/.test(body)) throw new Error('JWT payload must carry admin:true for admin users');
+  if (!/const ADMIN_USERNAMES = new Set\(/.test(serverSrc)) throw new Error('ADMIN_USERNAMES env parsing missing');
+  // v1.20.10: production already had ADMIN_USERNAME (singular) set — both must be read
+  const decl = serverSrc.slice(serverSrc.indexOf('const ADMIN_USERNAMES'), serverSrc.indexOf('const ADMIN_USERNAMES') + 400);
+  if (!/process\.env\.ADMIN_USERNAMES/.test(decl) || !/process\.env\.ADMIN_USERNAME\b/.test(decl)) {
+    throw new Error('must read BOTH ADMIN_USERNAMES and ADMIN_USERNAME env vars');
+  }
+  if (!/\.toLowerCase\(\)/.test(serverSrc.slice(serverSrc.indexOf('const ADMIN_USERNAMES'), serverSrc.indexOf('const ADMIN_USERNAMES') + 300))) {
+    throw new Error('ADMIN_USERNAMES match must be case-insensitive');
+  }
+});
+
+t('admin.html uses the Bearer token everywhere (no undefined adminSecret)', () => {
+  if (/adminSecret/.test(adminHtml)) throw new Error('admin.html still references adminSecret — that variable was never defined and threw ReferenceError');
+  if (!/api\/admin\/visits/.test(adminHtml)) throw new Error('admin.html does not load /api/admin/visits');
+  if (!/data-tab="visitors"/.test(adminHtml) || !/data-pane="visitors"/.test(adminHtml)) throw new Error('Visitors tab/pane missing from admin.html');
+  if (!/function loadVisitors/.test(adminHtml)) throw new Error('loadVisitors() missing');
+  if (!/vis-funnel/.test(adminHtml)) throw new Error('funnel table missing from Visitors pane');
+});
+
+console.log('\n── v1.20.9 client beacon');
+
+t('client beacon honours Do-Not-Track and Global Privacy Control', () => {
+  const idx = feSrc.indexOf('function _privacySignalOn');
+  if (idx < 0) throw new Error('_privacySignalOn missing');
+  const body = feSrc.slice(idx, idx + 300);
+  if (!/doNotTrack/.test(body)) throw new Error('must check doNotTrack');
+  if (!/globalPrivacyControl/.test(body)) throw new Error('must check globalPrivacyControl');
+  const beacon = feSrc.slice(feSrc.indexOf('function _beacon'), feSrc.indexOf('function _beacon') + 500);
+  if (!/_privacySignalOn\(\)\)\s*return/.test(beacon)) throw new Error('_beacon must early-return when a privacy signal is on');
+});
+
+t('client beacon fires only on public screens, never in-app', () => {
+  const set = feSrc.match(/_TRACKED_SCREENS\s*=\s*new Set\(\[([^\]]*)\]\)/)?.[1] || '';
+  if (!set) throw new Error('_TRACKED_SCREENS missing');
+  if (/['"]app['"]/.test(set)) throw new Error('"app" must NOT be a tracked screen — in-app navigation is never tracked');
+  for (const s of ['landing', 'register']) if (!set.includes(`'${s}'`)) throw new Error(`${s} should be tracked (funnel)`);
+  const ss = feSrc.slice(feSrc.indexOf('function showScreen'), feSrc.indexOf('function showScreen') + 900);
+  if (!/_beacon\(n\)/.test(ss)) throw new Error('showScreen must call _beacon(n)');
+});
+
+t('client beacon sends only screen + referrer (no user identity)', () => {
+  const beacon = feSrc.slice(feSrc.indexOf('function _beacon'), feSrc.indexOf('function _beacon') + 500);
+  const payload = beacon.match(/JSON\.stringify\(\{([^}]*)\}\)/)?.[1] || '';
+  if (!payload) throw new Error('beacon payload not found');
+  for (const forbidden of ['token', 'currentUser', 'username', 'email']) {
+    if (payload.includes(forbidden)) throw new Error(`beacon payload must not include ${forbidden}`);
+  }
+});
+
+t('first-job funnel hook runs from scheduleSave and is once-per-device', () => {
+  const ss = feSrc.slice(feSrc.indexOf('function scheduleSave'), feSrc.indexOf('function scheduleSave') + 200);
+  if (!/_maybeReportFirstJob\(\)/.test(ss)) throw new Error('scheduleSave must call _maybeReportFirstJob()');
+  const fn = feSrc.slice(feSrc.indexOf('function _maybeReportFirstJob'), feSrc.indexOf('function _maybeReportFirstJob') + 800);
+  if (!/localStorage\.(get|set)Item\(flag/.test(fn)) throw new Error('first-job report should be guarded by a per-user localStorage flag');
+  if (!/api\/v\/first-job/.test(fn)) throw new Error('must POST to /api/v/first-job');
+});
+
+t('security contract discloses the analytics in one line', () => {
+  const reg = feSrc.slice(feSrc.indexOf('id="screen-register"'), feSrc.indexOf('id="screen-unlock"'));
+  if (!/Analytics:/.test(reg)) throw new Error('register-screen security contract must disclose analytics');
+  if (!/no cookies/i.test(reg) || !/Do(&#8209;|-|\u2011)Not(&#8209;|-|\u2011)Track/i.test(reg)) throw new Error('disclosure should state no-cookies + DNT honoured');
 });
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -70,8 +70,6 @@ t('Extension download link exists', () => has('/api/extension'));
 console.log('\n── Removed features absent');
 t('No referral pipeline',      () => not('referralPipeline'));
 
-console.log(`\n${pass}/${pass+fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
-if (fail) process.exit(1);
 
 // ── Landing page features (editorial layout) ────────────────────────────────
 console.log('\n── Feature sections');
@@ -1142,3 +1140,8 @@ t('renderAnalytics stashes when called with #section-view as target', () => {
     throw new Error('renderAnalytics does not stash when target is section-view');
   }
 });
+
+// ── Summary (must be LAST — v1.20.11 fix: this sat at line 73 of 1144, so 164
+// tests below it could fail without ever setting a non-zero exit code) ───────
+console.log(`\n${pass}/${pass+fail} passed${fail ? ' ← FAILURES' : '  ✓'}`);
+if (fail) process.exit(1);
