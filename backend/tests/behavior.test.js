@@ -5042,6 +5042,65 @@ t('Legacy email-reset landing page and route are gone', () => {
   if (/app\.get\('\/reset-password'/.test(serverSrc)) throw new Error('/reset-password route still registered');
 });
 
+console.log('\n── v1.20.15 export/import are client-side (zero-knowledge)');
+
+t('No server endpoint writes the jobs file from a request body except the encrypted PUT', () => {
+  // The only legitimate writer of a user's jobs file is PUT /api/jobs, which
+  // receives {__enc:true, data}. Anything else that calls saveUserJobs(...)
+  // with request-derived data is a plaintext-on-server bug (see v1.20.15).
+  const writers = [...serverSrc.matchAll(/saveUserJobs\(\s*req\.user\.id\s*,\s*([^)]+)\)/g)].map(m => m[1].trim());
+  for (const arg of writers) {
+    const ctx = serverSrc.slice(serverSrc.indexOf(`saveUserJobs(req.user.id, ${arg})`) - 1200, serverSrc.indexOf(`saveUserJobs(req.user.id, ${arg})`));
+    if (!/app\.put\('\/api\/jobs'/.test(ctx)) throw new Error(`saveUserJobs called with request data outside PUT /api/jobs (arg: ${arg}) — would store plaintext`);
+  }
+});
+
+t('/api/export-data and /api/import-data are 410 tombstones', () => {
+  for (const ep of ["app.get('/api/export-data'", "app.post('/api/import-data'"]) {
+    const i = serverSrc.indexOf(ep); if (i < 0) throw new Error(ep + ' missing (old clients would get an unexplained 404)');
+    const body = serverSrc.slice(i, i + 400);
+    if (!/status\(410\)/.test(body)) throw new Error(ep + ' must be 410');
+    if (/loadUserJobs|saveUserJobs|archiver\(/.test(body)) throw new Error(ep + ' still touches the jobs file');
+  }
+});
+
+t('exportAllData builds the file from in-memory jobs; never calls the server', () => {
+  const fn = feSrc.slice(feSrc.indexOf('async function exportAllData'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function exportAllData')));
+  if (/fetch\(/.test(fn)) throw new Error('export must not fetch — the server only has ciphertext');
+  if (!/Object\.values\(jobs\)/.test(fn)) throw new Error('export must serialise the decrypted in-memory jobs');
+  if (!/__app:\s*'applied-tracker'/.test(fn)) throw new Error('format signature must stay applied-tracker so old files import');
+  if (!/if \(!dataKey\)/.test(fn)) throw new Error('export must refuse when locked');
+  if (/exportData\(/.test(feSrc)) throw new Error('old exportData(format) still present — it downloaded a ZIP with a .json extension');
+});
+
+t('doImportData merges client-side, encrypts, and PUTs /api/jobs — never /api/import-data', () => {
+  const fn = feSrc.slice(feSrc.indexOf('async function doImportData'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function doImportData')));
+  if (/api\/import-data/.test(fn)) throw new Error('import still posts to /api/import-data (plaintext to server)');
+  if (!/_sanitizeImportedJob/.test(fn)) throw new Error('import must sanitise each job');
+  if (!/CryptoEngine\.encrypt\(dataKey, jobs\)/.test(fn)) throw new Error('import must encrypt the merged set');
+  if (!/method:\s*'PUT'[\s\S]{0,300}__enc:\s*true/.test(fn)) throw new Error('import must PUT {__enc:true,...}');
+  if (!/if \(!dataKey\)/.test(fn)) throw new Error('import must refuse when locked');
+  if (/zerKnowledge/.test(feSrc)) throw new Error('dead zerKnowledge branch still present');
+});
+
+t('Import sanitiser: strips tags, validates ids, migrates legacy statuses, rejects empties', () => {
+  const src = feSrc.slice(feSrc.indexOf('function _sanitizeImportedJob'), feSrc.indexOf('\n}\n', feSrc.indexOf('function _sanitizeImportedJob')));
+  if (!/replace\(\/<\[\^>\]\*>\/g, ''\)/.test(src)) throw new Error('must strip HTML tags');
+  if (!/STATUS_MIGRATE\[j\.status\]/.test(src)) throw new Error('must migrate legacy statuses');
+  if (!/STATUSES\.includes\(j\.status\)/.test(src)) throw new Error('must validate status against STATUSES');
+  if (!/genId\(\)/.test(src)) throw new Error('must regenerate invalid ids');
+  if (!/if \(!j\.title && !j\.company\) return null/.test(src)) throw new Error('must reject rows with neither title nor company');
+});
+
+console.log('\n── v1.20.15 status vocabulary');
+
+t('Add-job status dropdown offers only canonical statuses', () => {
+  const sel = feSrc.match(/<select id="job-status">([\s\S]*?)<\/select>/)?.[1] || '';
+  const opts = [...sel.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
+  const canon = ['to apply','applied','interview','offer','rejected'];
+  if (JSON.stringify(opts) !== JSON.stringify(canon)) throw new Error(`dropdown offers ${opts.join('|')}, expected ${canon.join('|')} — screening/interviewing were folded into "interview"`);
+});
+
 console.log('\n── v1.20.9 admin auth repair');
 
 t('adminMiddleware accepts EITHER x-admin-secret OR an admin-claim JWT', () => {

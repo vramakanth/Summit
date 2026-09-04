@@ -2702,22 +2702,19 @@ app.get('/api/extension', authMiddleware, async (req, res) => {
   await arc.finalize();
 });
 
-app.get('/api/export-data', authMiddleware, async (req, res) => {
-  const jobs = loadUserJobs(req.user.id);
-  const arc  = archiver('zip', { zlib: { level: 9 } });
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="applied-export-${Date.now()}.zip"`);
-  arc.pipe(res);
-  arc.append(JSON.stringify(jobs, null, 2), { name: 'jobs.json' });
-  arc.append(JSON.stringify(loadUserDocs(req.user.id), null, 2), { name: 'docs.json' });
-  await arc.finalize();
+// v1.20.15: REMOVED. Under zero-knowledge the server holds only ciphertext, so
+// this endpoint zipped up an encrypted blob the user could not read. Export
+// now happens in the browser from the decrypted in-memory state.
+app.get('/api/export-data', authMiddleware, (req, res) => {
+  res.status(410).json({ error: 'Export moved into the app (Settings > Export) - the server cannot decrypt your data.' });
 });
 
-app.post('/api/import-data', authMiddleware, express.json({ limit: '10mb' }), async (req, res) => {
-  const { jobs } = req.body;
-  if (!jobs || typeof jobs !== 'object') return res.status(400).json({ error: 'Invalid data' });
-  saveUserJobs(req.user.id, jobs);
-  res.json({ ok: true, count: Object.keys(jobs).length });
+// v1.20.15: REMOVED. This endpoint wrote whatever the client posted straight
+// over the user's encrypted jobs file - a zero-knowledge violation (plaintext
+// on the server) that then failed to decrypt on next load, i.e. data loss.
+// Import now merges client-side and PUTs ciphertext via /api/jobs.
+app.post('/api/import-data', authMiddleware, (req, res) => {
+  res.status(410).json({ error: 'Import moved into the app (Settings > Import) - the server must never receive plaintext jobs.' });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════

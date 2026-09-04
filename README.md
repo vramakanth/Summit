@@ -6,7 +6,7 @@
 
 Summit is a job-application planning and tracking web app with a companion Chrome/Safari extension. Its defining property is **zero-knowledge encryption**: your job data is encrypted in your browser with a key derived from your password, and the server only ever stores ciphertext. Nobody — including the operator — can read your workspace without your password.
 
-Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.14** · Extension **v2.6.2**
+Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.15** · Extension **v2.6.2**
 
 ---
 
@@ -17,7 +17,7 @@ Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.14
 - **Research** the company from inside the job: news, culture signals, ratings, and market salary benchmarks for the role and location.
 - **Tailor** your resume and cover letter to the specific posting, from a versioned document library (PDF/DOCX upload supported).
 - **Prepare** with AI-generated, role-specific interview questions you can categorise and track.
-- **Own your data** — export the whole workspace as a ZIP and import it back; recovery codes let you unlock the account if you forget your password.
+- **Own your data** — export your jobs as JSON and import them back, both entirely in the browser; recovery codes let you unlock the account if you forget your password. (Documents and notes are not yet part of the backup.)
 
 Installable as a PWA on mobile. Works on any job board; there is no site-specific parsing.
 
@@ -136,7 +136,7 @@ Three tiers, all run by CI on every push. The first two are **blocking**.
 
 | Tier | Files | Tests | Deps |
 |---|---|---|---|
-| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 430 | none |
+| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 436 | none |
 | Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 334 | none |
 | Integration | `encryption` (boots the server, HTTP round-trips) · `ats` (jest) | 66 | `npm install` |
 
@@ -162,6 +162,7 @@ Most tests are **regression guards**: each fix ships with a test that fails if t
 - Admin routes require an admin-claim JWT re-validated against the env allow-list on every request, or the shared secret
 - Admins cannot read, reset, or regenerate a user's recovery codes — the server only ever holds the data key wrapped *by* each code, never the code. Admin password reset is intentionally absent: it would lock the user out of their own data
 - No third-party scripts, no cookies, no ad or analytics vendors
+- Export/import run client-side; no server endpoint can read or write a user's jobs in plaintext (enforced by test)
 
 ---
 
