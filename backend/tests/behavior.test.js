@@ -1888,6 +1888,7 @@ t('server.js loads cleanly with stubbed deps (catches TDZ, typos, missing import
     'mammoth': { extractRawText: async () => ({ value: '' }), convertToHtml: async () => ({ value: '' }) },
     'archiver': () => ({ append: ()=>{}, pipe: ()=>{}, finalize: ()=>{}, on: ()=>{} }),
     'adm-zip': function AdmZip() { return { addLocalFile: ()=>{}, toBuffer: ()=>Buffer.alloc(0), getEntries: ()=>[] }; },
+    'fast-geoip': { lookup: async () => null },   // v1.20.17: added to server in v1.20.14 without a stub - load test only passed when node_modules happened to be installed
   };
 
   // Hook Module._load to return stubs for known specs
@@ -5167,6 +5168,18 @@ t('JSON and CSV imports share one commit path (_commitImportedJobs) that encrypt
   if (!/_migrateContactIds\(\)/.test(c)) throw new Error('commit must assign cids to imported contacts');
   const json = feSrc.slice(feSrc.indexOf('async function doImportData'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function doImportData')));
   if (!/_commitImportedJobs\(incoming, mode\)/.test(json)) throw new Error('JSON import must use the shared commit path');
+});
+
+console.log('\n── v1.20.17 test-environment independence');
+
+t('Every third-party require() in server.js is stubbed in the load test (zero-dep tier must not need node_modules)', () => {
+  const builtins = new Set(require('module').builtinModules);
+  const required = [...new Set([...serverSrc.matchAll(/require\(['"]([^'"./][^'"]*)['"]\)/g)].map(m => m[1]))]
+    .filter(m => !builtins.has(m) && !m.startsWith('node:'));
+  const self = fs.readFileSync(__filename, 'utf8');
+  const stubBlock = self.slice(self.indexOf('const stubs = {'), self.indexOf('\n  };', self.indexOf('const stubs = {')));
+  const missing = required.filter(m => !stubBlock.includes(`'${m}'`));
+  if (missing.length) throw new Error(`server.js requires ${missing.join(', ')} but the load test has no stub for it - it will fail in a fresh checkout / CI`);
 });
 
 console.log('\n── v1.20.9 admin auth repair');
