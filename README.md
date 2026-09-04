@@ -6,7 +6,7 @@
 
 Summit is a job-application planning and tracking web app with a companion Chrome/Safari extension. Its defining property is **zero-knowledge encryption**: your job data is encrypted in your browser with a key derived from your password, and the server only ever stores ciphertext. Nobody — including the operator — can read your workspace without your password.
 
-Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.15** · Extension **v2.6.2**
+Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.16** · Extension **v2.6.2**
 
 ---
 
@@ -17,7 +17,8 @@ Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.15
 - **Research** the company from inside the job: news, culture signals, ratings, and market salary benchmarks for the role and location.
 - **Tailor** your resume and cover letter to the specific posting, from a versioned document library (PDF/DOCX upload supported).
 - **Prepare** with AI-generated, role-specific interview questions you can categorise and track.
-- **Own your data** — export your jobs as JSON and import them back, both entirely in the browser; recovery codes let you unlock the account if you forget your password. (Documents and notes are not yet part of the backup.)
+- **Keep one record per person** — a contact linked to several jobs is a single entry; edit it anywhere and it updates everywhere. A Contacts page shows everyone across your search and which jobs they're tied to.
+- **Own your data** — export your jobs as JSON and import them back, both entirely in the browser; bring jobs in from any spreadsheet via CSV with a column-mapping preview before anything is saved; recovery codes let you unlock the account if you forget your password. (Documents and notes are not yet part of the backup.)
 
 Installable as a PWA on mobile. Works on any job board; there is no site-specific parsing.
 
@@ -136,7 +137,7 @@ Three tiers, all run by CI on every push. The first two are **blocking**.
 
 | Tier | Files | Tests | Deps |
 |---|---|---|---|
-| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 436 | none |
+| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 444 | none |
 | Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 334 | none |
 | Integration | `encryption` (boots the server, HTTP round-trips) · `ats` (jest) | 66 | `npm install` |
 

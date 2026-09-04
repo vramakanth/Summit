@@ -5077,8 +5077,8 @@ t('doImportData merges client-side, encrypts, and PUTs /api/jobs — never /api/
   const fn = feSrc.slice(feSrc.indexOf('async function doImportData'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function doImportData')));
   if (/api\/import-data/.test(fn)) throw new Error('import still posts to /api/import-data (plaintext to server)');
   if (!/_sanitizeImportedJob/.test(fn)) throw new Error('import must sanitise each job');
-  if (!/CryptoEngine\.encrypt\(dataKey, jobs\)/.test(fn)) throw new Error('import must encrypt the merged set');
-  if (!/method:\s*'PUT'[\s\S]{0,300}__enc:\s*true/.test(fn)) throw new Error('import must PUT {__enc:true,...}');
+  // v1.20.16: encryption + PUT moved into _commitImportedJobs (shared with CSV); accept delegation
+  if (!/_commitImportedJobs\(/.test(fn) && !/CryptoEngine\.encrypt\(dataKey, jobs\)/.test(fn)) throw new Error('import must encrypt the merged set (directly or via _commitImportedJobs)');
   if (!/if \(!dataKey\)/.test(fn)) throw new Error('import must refuse when locked');
   if (/zerKnowledge/.test(feSrc)) throw new Error('dead zerKnowledge branch still present');
 });
@@ -5099,6 +5099,74 @@ t('Add-job status dropdown offers only canonical statuses', () => {
   const opts = [...sel.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
   const canon = ['to apply','applied','interview','offer','rejected'];
   if (JSON.stringify(opts) !== JSON.stringify(canon)) throw new Error(`dropdown offers ${opts.join('|')}, expected ${canon.join('|')} — screening/interviewing were folded into "interview"`);
+});
+
+console.log('\n── v1.20.16 shared contacts');
+
+t('Contacts carry a stable cid; migration assigns one per person (email, else name+company)', () => {
+  if (!/function _contactKey\(c\)/.test(feSrc)) throw new Error('_contactKey missing');
+  const k = feSrc.slice(feSrc.indexOf('function _contactKey'), feSrc.indexOf('function _contactKey') + 400);
+  if (!/email/.test(k) || !/name/.test(k) || !/company/.test(k)) throw new Error('key must use email, else name+company');
+  if (!/function _migrateContactIds\(\)/.test(feSrc)) throw new Error('_migrateContactIds missing');
+  if (!/_migrateContactIds\(\);/.test(feSrc.slice(feSrc.indexOf('STATUS_MIGRATE[j.status]'), feSrc.indexOf('STATUS_MIGRATE[j.status]') + 600))) throw new Error('cid migration must run at load, next to the status migration');
+});
+
+t('saveContact propagates shared fields to every job with the same cid, and reuses cid for known people', () => {
+  const fn = feSrc.slice(feSrc.indexOf('function saveContact'), feSrc.indexOf('\n}\n', feSrc.indexOf('function saveContact')));
+  if (!/c\.cid === contact\.cid && c\.id !== contact\.id/.test(fn)) throw new Error('edit must propagate to other jobs sharing the cid');
+  if (!/_CONTACT_SHARED_FIELDS/.test(fn)) throw new Error('must propagate via the shared-field list');
+  if (!/_contactKey\(contact\)/.test(fn)) throw new Error('new contact must look up an existing cid by key');
+  if (!/contact\.cid = cid \|\| genId\(\)/.test(fn)) throw new Error('new contact must reuse found cid or mint one');
+});
+
+t('Contacts page + sidebar entry + "add existing" picker exist', () => {
+  if (!/function showContacts\(\)/.test(feSrc) || !/function renderContactsPage\(sv\)/.test(feSrc)) throw new Error('contacts page missing');
+  if (!/onclick="showContacts\(\)" data-section="contacts"/.test(feSrc)) throw new Error('sidebar Contacts button missing');
+  if (!/function linkExistingContact\(jobId, cid\)/.test(feSrc)) throw new Error('linkExistingContact missing');
+  const tab = feSrc.slice(feSrc.indexOf('function renderContactsTab'), feSrc.indexOf('function renderContactsTab') + 2500);
+  if (!/linkExistingContact\('\$\{j\.id\}', this\.value\)/.test(tab)) throw new Error('contacts tab must offer the add-existing picker');
+  if (!/c\.cid === d\.cid/.test(tab)) throw new Error('picker must exclude people already on this job');
+});
+
+t('Directory is virtual — built from jobs at render time, no new storage or server endpoint', () => {
+  if (!/function _contactDirectory\(\)/.test(feSrc)) throw new Error('_contactDirectory missing');
+  if (/\/api\/contacts/.test(feSrc) || /\/api\/contacts/.test(serverSrc)) throw new Error('shared contacts must not add a server endpoint (would break the zero-knowledge export model)');
+});
+
+console.log('\n── v1.20.16 CSV import');
+
+t('CSV parser handles quotes, embedded commas/newlines, CRLF, and BOM', () => {
+  const fn = feSrc.slice(feSrc.indexOf('function _parseCSV'), feSrc.indexOf('\n}\n', feSrc.indexOf('function _parseCSV')));
+  if (!/\\uFEFF/.test(fn)) throw new Error('must strip BOM');
+  if (!/ch === '"' && nx === '"'/.test(fn)) throw new Error('must handle escaped quotes');
+  if (!/ch === '\\r' && nx === '\\n'/.test(fn)) throw new Error('must handle CRLF');
+  if (!/inQ/.test(fn)) throw new Error('must track quoted state so commas/newlines inside quotes are preserved');
+});
+
+t('CSV import shows a mapping preview and never writes before confirm', () => {
+  if (!/function openCsvImport\(event\)/.test(feSrc) || !/function _renderCsvModal\(\)/.test(feSrc) || !/async function confirmCsvImport\(\)/.test(feSrc)) throw new Error('csv flow functions missing');
+  const open = feSrc.slice(feSrc.indexOf('function openCsvImport'), feSrc.indexOf('\n}\n', feSrc.indexOf('function openCsvImport')));
+  if (/_commitImportedJobs|CryptoEngine\.encrypt|fetch\(API/.test(open)) throw new Error('openCsvImport must only parse + render the preview — no writes');
+  if (!/_renderCsvModal\(\)/.test(open)) throw new Error('openCsvImport must render the mapping modal');
+  const confirm = feSrc.slice(feSrc.indexOf('async function confirmCsvImport'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function confirmCsvImport')));
+  if (!/_commitImportedJobs\(incoming, 'append'\)/.test(confirm)) throw new Error('confirm must commit via the shared encrypted path, append-only');
+  if (!/_sanitizeImportedJob\(_csvRowToJob\(row\)\)/.test(confirm)) throw new Error('every CSV row must go through the sanitiser');
+});
+
+t('CSV import dedupes against existing jobs (url, or company+title) and preserves unmapped columns', () => {
+  const confirm = feSrc.slice(feSrc.indexOf('async function confirmCsvImport'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function confirmCsvImport')));
+  if (!/'u:' \+ norm\(j\.url\)/.test(confirm) || !/'t:' \+ j\.company\.toLowerCase\(\) \+ '\|' \+ j\.title\.toLowerCase\(\)/.test(confirm)) throw new Error('dedupe keys missing');
+  const rowfn = feSrc.slice(feSrc.indexOf('function _csvRowToJob'), feSrc.indexOf('\n}\n', feSrc.indexOf('function _csvRowToJob')));
+  if (!/leftovers\.push\(/.test(rowfn) || !/Imported from CSV:/.test(rowfn)) throw new Error('unmapped columns must be preserved in the description');
+  if (/raw\.notes/.test(rowfn)) throw new Error('do not write to j.notes — that field is deprecated and swept at login');
+});
+
+t('JSON and CSV imports share one commit path (_commitImportedJobs) that encrypts + PUTs', () => {
+  const c = feSrc.slice(feSrc.indexOf('async function _commitImportedJobs'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function _commitImportedJobs')));
+  if (!/CryptoEngine\.encrypt\(dataKey, jobs\)/.test(c) || !/__enc:\s*true/.test(c)) throw new Error('commit must encrypt and PUT ciphertext');
+  if (!/_migrateContactIds\(\)/.test(c)) throw new Error('commit must assign cids to imported contacts');
+  const json = feSrc.slice(feSrc.indexOf('async function doImportData'), feSrc.indexOf('\n}\n', feSrc.indexOf('async function doImportData')));
+  if (!/_commitImportedJobs\(incoming, mode\)/.test(json)) throw new Error('JSON import must use the shared commit path');
 });
 
 console.log('\n── v1.20.9 admin auth repair');
