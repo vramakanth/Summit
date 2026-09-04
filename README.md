@@ -6,7 +6,7 @@
 
 Summit is a job-application planning and tracking web app with a companion Chrome/Safari extension. Its defining property is **zero-knowledge encryption**: your job data is encrypted in your browser with a key derived from your password, and the server only ever stores ciphertext. Nobody — including the operator — can read your workspace without your password.
 
-Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.13** · Extension **v2.6.2**
+Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.14** · Extension **v2.6.2**
 
 ---
 
@@ -36,7 +36,7 @@ Installable as a PWA on mobile. Works on any job board; there is no site-specifi
 - `dataKey` lives only in browser memory. A page reload keeps you signed in (the JWT persists) but shows an **unlock screen** to re-derive the key from your password — this is expected behaviour, not a bug.
 - **Recovery codes** (eight, single-use) are generated at registration. Each one independently wraps `dataKey`. Lose the password *and* every code and the data is unrecoverable by design.
 - The **browser extension** can't decrypt your workspace (it doesn't have the key). It posts captured jobs to a per-user server **inbox** in plaintext; the web app drains the inbox, dedupes, merges, and re-encrypts. Inbox entries are consumed atomically so multiple open tabs can't double-add.
-- **Analytics** are first-party and cookie-free: public screens (landing, login, register) send a beacon with the screen name and referrer host. The server stores no IP, no user-agent, and a visitor hash that rotates daily and can't be reversed. Do-Not-Track and Global Privacy Control are honoured. Nothing inside the workspace is tracked.
+- **Analytics** are first-party and cookie-free: public screens (landing, login, register) send a beacon with the screen name and referrer host. The server derives country/region and browser/OS/device class in memory, then stores those plus a visitor hash that rotates daily and can't be reversed — **never the IP or user-agent**. Geo lookup is offline (`fast-geoip`), so the IP is never sent to a third party; city is deliberately not recorded. Do-Not-Track and Global Privacy Control are honoured, and the operator's own browser is excluded by default. Nothing inside the workspace is tracked.
 
 ---
 
@@ -50,7 +50,7 @@ Installable as a PWA on mobile. Works on any job board; there is no site-specifi
 | Extension | Chrome/Safari Manifest V3 | `content.js` is a pure *reader* — no extraction logic |
 | AI | Groq → OpenRouter → Google Gemini fallback chain | Per-user daily token cap; model IDs env-overridable |
 | Crypto | PBKDF2 (100k) → AES-GCM-256, WebCrypto | Passwords: bcrypt (12 rounds); JWTs expire in 30 days |
-| Admin | `admin.html` — users, AI token usage, visitors + funnel | Gated by `ADMIN_USERNAME(S)` or `ADMIN_SECRET` |
+| Admin | `admin.html` — users (deactivate / delete), AI token usage, visitors + funnel with geo, device and date range | Gated by `ADMIN_USERNAME(S)` or `ADMIN_SECRET`. No password reset — impossible under zero-knowledge |
 
 **One extraction pipeline.** Whether a job arrives from the extension (which ships the rendered HTML, body text, JSON-LD, and meta tags — gzipped) or from a pasted URL (which the server fetches and renders itself), the same `extractJobFields()` runs: JSON-LD probe → salary regex → AI gap-fill. There's exactly one place to fix parsing bugs.
 
@@ -71,13 +71,12 @@ Summit/
 │       ├── jobs/  docs/  notes/   # Per-user encrypted blobs
 │       ├── settings/  inbox/      # Per-user settings; extension → webapp handoff queue
 │       ├── usage/                 # AI token usage (NDJSON, monthly)
-│       └── visits/                # Page-view log (NDJSON, monthly, no PII)
+│       └── visits/                # Page-view log (NDJSON, monthly, no IP/UA — country/region, device, browser only)
 ├── frontend/
 │   ├── public/
 │   │   ├── index.html             # The app + landing + auth screens
 │   │   ├── admin.html             # Operator dashboard
-│   │   ├── manifest.json  sw.js   # PWA manifest + service worker (static assets only)
-│   │   └── reset-password.html    # Legacy email-reset landing (recovery codes replaced it)
+│   │   └── manifest.json  sw.js   # PWA manifest + service worker (static assets only)
 │   └── tests/                     # smoke · filter · mobile · joblist (zero-dep)
 └── extension/
     ├── manifest.json              # MV3
@@ -137,7 +136,7 @@ Three tiers, all run by CI on every push. The first two are **blocking**.
 
 | Tier | Files | Tests | Deps |
 |---|---|---|---|
-| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 420 | none |
+| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 430 | none |
 | Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 334 | none |
 | Integration | `encryption` (boots the server, HTTP round-trips) · `ats` (jest) | 66 | `npm install` |
 
@@ -161,6 +160,7 @@ Most tests are **regression guards**: each fix ships with a test that fails if t
 - Recovery codes replace email reset (email reset is incompatible with zero-knowledge)
 - Rate limiting on login, recovery, and the analytics beacon
 - Admin routes require an admin-claim JWT re-validated against the env allow-list on every request, or the shared secret
+- Admins cannot read, reset, or regenerate a user's recovery codes — the server only ever holds the data key wrapped *by* each code, never the code. Admin password reset is intentionally absent: it would lock the user out of their own data
 - No third-party scripts, no cookies, no ad or analytics vendors
 
 ---

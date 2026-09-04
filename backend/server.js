@@ -11,6 +11,7 @@ const mammoth    = require('mammoth');
 const archiver   = require('archiver');
 const crypto     = require('crypto');
 const zlib       = require('zlib');  // v1.20.0: decompress gzipped html from extension
+const geoip      = require('fast-geoip');  // v1.20.14: OFFLINE ip→country/region for analytics. No network, IP never leaves the process.
 
 const app = express();
 
@@ -239,7 +240,7 @@ function _dailySalt() {
   return crypto.createHash('sha256').update(JWT_SECRET + '|' + todayKey()).digest('hex');
 }
 function _visitorHash(req) {
-  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const ip = _clientIp(req);
   const ua = req.headers['user-agent'] || '';
   return crypto.createHash('sha256').update(ip + '|' + ua + '|' + _dailySalt()).digest('hex').slice(0, 16);
 }
@@ -251,6 +252,39 @@ function _browserFamily(ua = '') {
   if (/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'safari';
   if (/bot|crawl|spider|slurp|facebookexternalhit|preview/i.test(ua)) return 'bot';
   return 'other';
+}
+// v1.20.14: coarse OS + device class. Still derived from the UA string in
+// memory; the UA itself is never written.
+function _osFamily(ua = '') {
+  if (/iPhone|iPad|iPod/.test(ua)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  if (/Windows/.test(ua)) return 'windows';
+  if (/Mac OS X|Macintosh/.test(ua)) return 'macos';
+  if (/CrOS/.test(ua)) return 'chromeos';
+  if (/Linux/.test(ua)) return 'linux';
+  return 'other';
+}
+function _deviceClass(ua = '') {
+  if (/iPad|Tablet|(Android(?!.*Mobile))/.test(ua)) return 'tablet';
+  if (/Mobi|iPhone|Android.*Mobile/.test(ua)) return 'mobile';
+  return 'desktop';
+}
+// v1.20.14: country + region from IP, resolved OFFLINE via fast-geoip's bundled
+// database — the IP is never sent anywhere. Private/loopback ranges short-
+// circuit to null (fast-geoip returns junk for them). City is deliberately
+// NOT stored: at this site's traffic level city+timestamp can identify a person.
+function _isPrivateIp(ip) {
+  return !ip || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80|0\.0\.0\.0)/.test(ip);
+}
+async function _geo(ip) {
+  if (_isPrivateIp(ip)) return null;
+  try {
+    const g = await geoip.lookup(ip);
+    return g && g.country ? { c: g.country, rg: g.region || '' } : null;
+  } catch { return null; }
+}
+function _clientIp(req) {
+  return (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
 }
 function _referrerHost(r = '') {
   try { return new URL(r).hostname.replace(/^www\./, ''); } catch { return ''; }
@@ -265,7 +299,9 @@ const _visitLimiter = rateLimit({ windowMs: 60_000, max: 60, keyFn: r => _visito
 
 // Public beacon. Body: { s: 'landing'|'login'|'register'|'unlock'|'recover', r: document.referrer }
 // Accepts sendBeacon's text/plain body as well as JSON.
-app.post('/api/v', express.text({ type: '*/*', limit: '2kb' }), _visitLimiter, (req, res) => {
+// Entry shape (v1.20.14): { ts, s, r, b, o, d, c, rg, v }
+//   s=screen  r=referrer host  b=browser  o=os  d=device  c=country  rg=region  v=daily hash
+app.post('/api/v', express.text({ type: '*/*', limit: '2kb' }), _visitLimiter, async (req, res) => {
   let b = {};
   try { b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); } catch {}
   const ALLOWED = new Set(['landing', 'login', 'register', 'unlock', 'recover']);
@@ -273,8 +309,14 @@ app.post('/api/v', express.text({ type: '*/*', limit: '2kb' }), _visitLimiter, (
   const ua = req.headers['user-agent'] || '';
   const fam = _browserFamily(ua);
   if (fam === 'bot') return res.status(204).end();   // don't count crawlers
-  appendVisitLog({ ts: Date.now(), s, r: _referrerHost(b.r), b: fam, v: _visitorHash(req) });
-  res.status(204).end();
+  res.status(204).end();                              // respond first; geo lookup is off the request path
+  const g = await _geo(_clientIp(req));
+  appendVisitLog({
+    ts: Date.now(), s, r: _referrerHost(b.r),
+    b: fam, o: _osFamily(ua), d: _deviceClass(ua),
+    c: g ? g.c : '', rg: g ? g.rg : '',
+    v: _visitorHash(req),
+  });
 });
 
 // Funnel step 3: "added first job". The jobs blob is encrypted, so the server
@@ -2506,16 +2548,20 @@ app.get('/api/admin/visits', adminMiddleware, (req, res) => {
     const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
     dayMap.set(d, { day: d, views: 0, uniq: new Set() });
   }
-  const byReferrer = {}, byScreen = {}, byBrowser = {};
+  const byReferrer = {}, byScreen = {}, byBrowser = {}, byOS = {}, byDevice = {}, byCountry = {}, byRegion = {};
+  const bump = (o, k) => { o[k] = (o[k] || 0) + 1; };
   const landingUniques = new Set();
   for (const e of lines) {
     const d = new Date(e.ts).toISOString().slice(0, 10);
     const row = dayMap.get(d);
     if (row) { row.views++; row.uniq.add(e.v); }
-    const r = e.r || '(direct)';
-    byReferrer[r] = (byReferrer[r] || 0) + 1;
-    byScreen[e.s || 'other'] = (byScreen[e.s || 'other'] || 0) + 1;
-    byBrowser[e.b || 'other'] = (byBrowser[e.b || 'other'] || 0) + 1;
+    bump(byReferrer, e.r || '(direct)');
+    bump(byScreen,   e.s || 'other');
+    bump(byBrowser,  e.b || 'other');
+    bump(byOS,       e.o || 'unknown');          // entries before v1.20.14 lack o/d/c/rg
+    bump(byDevice,   e.d || 'unknown');
+    bump(byCountry,  e.c || 'unknown');
+    bump(byRegion,   e.c ? `${e.c}${e.rg ? ' · ' + e.rg : ''}` : 'unknown');
     if (e.s === 'landing') landingUniques.add(e.v);
   }
   const daySeries = [...dayMap.values()].map(r => ({ day: r.day, views: r.views, uniques: r.uniq.size }));
@@ -2539,6 +2585,10 @@ app.get('/api/admin/visits', adminMiddleware, (req, res) => {
     byReferrer: top(byReferrer, 15),
     byScreen: top(byScreen),
     byBrowser: top(byBrowser),
+    byOS: top(byOS),
+    byDevice: top(byDevice),
+    byCountry: top(byCountry, 15),
+    byRegion: top(byRegion, 15),
     funnel: { landing: landingUniques.size, registered, firstJob },
   });
 });
@@ -2764,13 +2814,14 @@ app.post('/api/admin/deactivate', adminMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/reset-password', adminMiddleware, async (req, res) => {
-  const { username, newPassword = 'TempPass123!' } = req.body;
-  const users = loadUsers();
-  if (!users[username?.toLowerCase()]) return res.status(404).json({ error: 'Not found' });
-  users[username.toLowerCase()].passwordHash = await bcrypt.hash(newPassword, 12);
-  saveUsers(users);
-  res.json({ ok: true });
+// v1.20.14: REMOVED. Under zero-knowledge encryption an admin password reset
+// is not merely unsupported — it is destructive. It replaced the bcrypt hash
+// but left encryptedDataKey wrapped with the OLD password, so the user could
+// log in and then never unlock their data. The only recovery path is the
+// user's own recovery codes (client-side, see /recover). 410 so anyone with
+// an old admin build gets a clear error instead of silently bricking an account.
+app.post('/api/admin/reset-password', adminMiddleware, (req, res) => {
+  res.status(410).json({ error: 'Admin password reset is not possible under zero-knowledge encryption — it would permanently lock the user out of their data. Users recover with their own recovery codes.' });
 });
 
 app.delete('/api/admin/users/:username', adminMiddleware, (req, res) => {
@@ -2813,11 +2864,6 @@ app.get('/extension.zip', (req, res) => {
 app.get('/admin', (req, res) => {
   const f = path.join(__dirname, '../frontend/public/admin.html');
   fs.existsSync(f) ? res.sendFile(f) : res.status(404).send('Not found');
-});
-
-app.get('/reset-password', (req, res) => {
-  const f = path.join(__dirname, '../frontend/public/reset-password.html');
-  fs.existsSync(f) ? res.sendFile(f) : res.redirect('/');
 });
 
 app.get('*', (req, res) => {

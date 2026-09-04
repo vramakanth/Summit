@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pursuit — Admin</title>
+  <title>Summit — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Lato:wght@300;400;700;900&family=DM+Mono:wght@400;500&display=swap">
@@ -147,7 +147,7 @@ tr:hover td{background:rgba(255,235,180,0.02);}
         <svg viewBox="0 0 20 20" fill="none" width="20" height="20"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
       </div>
       <div>
-        <div class="login-name">Pursuit</div>
+        <div class="login-name">Summit</div>
         <div class="login-badge">ADMIN CONSOLE</div>
       </div>
     </div>
@@ -178,9 +178,9 @@ tr:hover td{background:rgba(255,235,180,0.02);}
       <div class="logo-mark" style="width:30px;height:30px">
         <svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M4 16V9l6-5 6 5v7H13v-5H7v5H4z" fill="#1a1917"/></svg>
       </div>
-      <span class="topbar-name">Pursuit</span>
+      <span class="topbar-name">Summit</span>
       <span class="topbar-pill">ADMIN</span>
-      <span class="topbar-version" id="topbar-version">v1.20.13</span>
+      <span class="topbar-version" id="topbar-version">v1.20.14</span>
     </div>
     <div class="topbar-right">
       <button class="topbar-btn" onclick="loadUsers()" id="refresh-btn" title="Refresh">
@@ -260,21 +260,33 @@ tr:hover td{background:rgba(255,235,180,0.02);}
       </div>
     </div>
 
-    <!-- VISITORS TAB (v1.20.13) — cookie-free, third-party-free page-view stats -->
+    <!-- VISITORS TAB (v1.20.14) — cookie-free, third-party-free page-view stats -->
     <div class="admin-tab-pane" data-pane="visitors" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <div id="vis-range" style="display:flex;gap:4px">
+          <button class="act-btn" data-days="1"  onclick="setVisRange(1)">Today</button>
+          <button class="act-btn" data-days="7"  onclick="setVisRange(7)">7 days</button>
+          <button class="act-btn" data-days="30" onclick="setVisRange(30)">30 days</button>
+          <button class="act-btn" data-days="90" onclick="setVisRange(90)">90 days</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer" title="Sets a flag in THIS browser so your own visits to the public pages are not counted. Per-browser — set it on each device you use.">
+          <input type="checkbox" id="vis-exclude-me" onchange="toggleExcludeMe(this.checked)"> Exclude my visits (this browser)
+        </label>
+      </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.5">
-        Counted from a first-party beacon on public screens only. No cookies, no IP stored, visitor hash rotates daily. Do-Not-Track and GPC are honoured.
+        First-party beacon on public screens only. No cookies, no IP or user-agent stored; country/region resolved offline; visitor hash rotates daily. Do-Not-Track and GPC honoured.
+        <span id="vis-range-label" style="color:var(--text2)"></span>
       </div>
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-label">PAGE VIEWS · 30D</div><div class="stat-value" id="vis-views" style="color:var(--blue)">—</div></div>
-        <div class="stat-card"><div class="stat-label">UNIQUE VISITORS · 30D</div><div class="stat-value" id="vis-uniques" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="stat-label">PAGE VIEWS</div><div class="stat-value" id="vis-views" style="color:var(--blue)">—</div></div>
+        <div class="stat-card"><div class="stat-label">UNIQUE VISITORS</div><div class="stat-value" id="vis-uniques" style="color:var(--green)">—</div></div>
         <div class="stat-card"><div class="stat-label">VIEWS / VISITOR</div><div class="stat-value" id="vis-ratio" style="color:var(--amber)">—</div></div>
       </div>
 
       <div class="section-title" style="margin-top:20px">DAILY VIEWS &amp; UNIQUES</div>
       <div class="chart-wrap"><svg id="vis-chart" viewBox="0 0 600 140" preserveAspectRatio="none" style="width:100%;height:140px;display:block"></svg></div>
 
-      <div class="section-title" style="margin-top:20px">FUNNEL · 30D</div>
+      <div class="section-title" style="margin-top:20px">FUNNEL</div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>STAGE</th><th style="text-align:right">COUNT</th><th style="text-align:right">CONVERSION</th></tr></thead>
@@ -282,15 +294,25 @@ tr:hover td{background:rgba(255,235,180,0.02);}
         </table>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:20px">
         <div>
           <div class="section-title">TOP REFERRERS</div>
           <div class="table-wrap"><table><thead><tr><th>SOURCE</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-referrers"></tbody></table></div>
+          <div class="section-title" style="margin-top:16px">SCREENS</div>
+          <div class="table-wrap"><table><thead><tr><th>SCREEN</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-screens"></tbody></table></div>
         </div>
         <div>
-          <div class="section-title">SCREENS</div>
-          <div class="table-wrap"><table><thead><tr><th>SCREEN</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-screens"></tbody></table></div>
-          <div class="section-title" style="margin-top:16px">BROWSERS</div>
+          <div class="section-title">LOCATION</div>
+          <div class="table-wrap"><table><thead><tr><th>COUNTRY · REGION</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-regions"></tbody></table></div>
+          <div class="section-title" style="margin-top:16px">COUNTRY</div>
+          <div class="table-wrap"><table><thead><tr><th>COUNTRY</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-countries"></tbody></table></div>
+        </div>
+        <div>
+          <div class="section-title">DEVICE</div>
+          <div class="table-wrap"><table><thead><tr><th>CLASS</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-devices"></tbody></table></div>
+          <div class="section-title" style="margin-top:16px">OS</div>
+          <div class="table-wrap"><table><thead><tr><th>OS</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-os"></tbody></table></div>
+          <div class="section-title" style="margin-top:16px">BROWSER</div>
           <div class="table-wrap"><table><thead><tr><th>BROWSER</th><th style="text-align:right">VIEWS</th></tr></thead><tbody id="vis-browsers"></tbody></table></div>
         </div>
       </div>
@@ -299,31 +321,6 @@ tr:hover td{background:rgba(255,235,180,0.02);}
 </div>
 
 <!-- MODALS -->
-<div class="modal-bg" id="modal-reset" onclick="if(event.target===this)closeModal('modal-reset')">
-  <div class="modal">
-    <div class="modal-title">Reset Password</div>
-    <div class="modal-sub" id="modal-reset-sub"></div>
-    <div class="field"><label>NEW PASSWORD</label><input id="modal-new-pw" type="password" placeholder="Min 6 characters"></div>
-    <div class="modal-status" id="modal-reset-status"></div>
-    <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeModal('modal-reset')">Cancel</button>
-      <button class="btn-success" onclick="submitReset()">Set Password</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bg" id="modal-link" onclick="if(event.target===this)closeModal('modal-link')">
-  <div class="modal">
-    <div class="modal-title">Send Reset Link</div>
-    <div class="modal-sub" id="modal-link-sub"></div>
-    <div class="modal-status" id="modal-link-status"></div>
-    <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeModal('modal-link')">Cancel</button>
-      <button class="btn-success" onclick="submitSendLink()">Send Email</button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-bg" id="modal-deactivate" onclick="if(event.target===this)closeModal('modal-deactivate')">
   <div class="modal">
     <div class="modal-title" id="modal-deactivate-title"></div>
@@ -348,22 +345,8 @@ tr:hover td{background:rgba(255,235,180,0.02);}
   </div>
 </div>
 
-<div class="modal-bg" id="modal-edit" onclick="if(event.target===this)closeModal('modal-edit')">
-  <div class="modal">
-    <div class="modal-title">Edit User</div>
-    <div class="modal-sub" id="modal-edit-sub"></div>
-    <div class="field"><label>EMAIL</label><input type="email" id="modal-edit-email" placeholder="user@example.com"></div>
-    <div class="field"><label>USERNAME <span style="color:var(--text3);font-weight:400">(read-only)</span></label><input id="modal-edit-username" readonly></div>
-    <div class="modal-status" id="modal-edit-status"></div>
-    <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeModal('modal-edit')">Cancel</button>
-      <button class="btn-success" onclick="submitEdit()">Save Changes</button>
-    </div>
-  </div>
-</div>
-
 <script>
-const API='', APP_VERSION = '1.20.13';
+const API='', APP_VERSION = '1.20.14';
 let token=sessionStorage.getItem('admin_token');
 let adminUser=sessionStorage.getItem('admin_user');
 let users=[],selectedUser=null,deactivateAction=null;
@@ -390,6 +373,7 @@ async function doLogin(){
     if(!res.ok){err.textContent=data.error||'Login failed';return;}
     if(!data.isAdmin){err.textContent='This account does not have admin access.';return;}
     token=data.token;adminUser=data.username;
+    try{ if(localStorage.getItem('summit_notrack')===null) localStorage.setItem('summit_notrack','1'); }catch{}  // v1.20.14: operator excluded by default
     sessionStorage.setItem('admin_token',token);
     sessionStorage.setItem('admin_user',adminUser);
     showApp();loadUsers();
@@ -445,11 +429,7 @@ function renderTable(){
       <td>${u.isAdmin
         ?'<span style="font-size:12px;color:var(--text3)">Admin account</span>'
         :`<div class="actions">
-          <button class="act-btn" onclick="openEdit('${esc(u.username)}','${esc(u.email||'')}')">Edit</button>
           <button class="act-btn ${u.isActive?'danger':'success'}" onclick="openDeactivate('${esc(u.username)}',${!u.isActive})">${u.isActive?'Deactivate':'Reactivate'}</button>
-          <button class="act-btn warn" onclick="openReset('${esc(u.username)}','${esc(u.email||'')}')">Reset PW</button>
-          <button class="act-btn purple" onclick="adminResetRecoveryCodes('${esc(u.username)}')">Rec. codes</button>
-          <button class="act-btn" onclick="openSendLink('${esc(u.username)}','${esc(u.email||'')}')">Send link</button>
           <button class="act-btn danger" onclick="openDelete('${esc(u.username)}')">Delete</button>
         </div>`}
       </td>
@@ -482,40 +462,6 @@ async function submitDeactivate(){
   }catch(e){setModalStatus('modal-deactivate','err',e.message);}
 }
 
-function openReset(username,email){
-  selectedUser=username;
-  document.getElementById('modal-reset-sub').textContent=`Set a new password for ${username}${email?' \u00b7 '+email:''}. An email will be sent if an address is on file.`;
-  document.getElementById('modal-new-pw').value='';
-  openModal('modal-reset');setTimeout(()=>document.getElementById('modal-new-pw').focus(),80);
-}
-async function submitReset(){
-  const pw=document.getElementById('modal-new-pw').value;
-  if(pw.length<6){setModalStatus('modal-reset','err','Password must be at least 6 characters');return;}
-  try{
-    const res=await fetch(API+'/api/admin/reset-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({username:selectedUser,newPassword:pw})});
-    const data=await res.json();
-    if(!res.ok){setModalStatus('modal-reset','err',data.error);return;}
-    setModalStatus('modal-reset','ok','Password updated successfully.');
-    setTimeout(()=>closeModal('modal-reset'),1800);
-  }catch(e){setModalStatus('modal-reset','err',e.message);}
-}
-
-function openSendLink(username,email){
-  selectedUser=username;
-  if(!email){alert('No email address on file for this user.');return;}
-  document.getElementById('modal-link-sub').textContent=`Send a self-service password reset link to ${username} at ${email}. The link expires in 1 hour.`;
-  openModal('modal-link');
-}
-async function submitSendLink(){
-  try{
-    const res=await fetch(API+'/api/admin/send-reset-link',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({username:selectedUser})});
-    const data=await res.json();
-    if(!res.ok||!data.ok){setModalStatus('modal-link','err',data.error||'Failed to send');return;}
-    setModalStatus('modal-link','ok','Reset link sent successfully.');
-    setTimeout(()=>closeModal('modal-link'),1800);
-  }catch(e){setModalStatus('modal-link','err',e.message);}
-}
-
 function openDelete(username){
   selectedUser=username;
   document.getElementById('modal-delete-sub').textContent=`Permanently delete ${username}'s account. All data will be removed. This cannot be undone.`;
@@ -529,36 +475,6 @@ async function submitDelete(){
     setModalStatus('modal-delete','ok','User deleted.');
     await loadUsers();setTimeout(()=>closeModal('modal-delete'),1500);
   }catch(e){setModalStatus('modal-delete','err',e.message);}
-}
-
-function openEdit(username,email){
-  selectedUser=username;
-  document.getElementById('modal-edit-sub').textContent=`Update profile for ${username}`;
-  document.getElementById('modal-edit-username').value=username;
-  document.getElementById('modal-edit-email').value=email||'';
-  openModal('modal-edit');setTimeout(()=>document.getElementById('modal-edit-email').focus(),80);
-}
-async function submitEdit(){
-  const email=document.getElementById('modal-edit-email').value.trim();
-  if(!email||!email.includes('@')){setModalStatus('modal-edit','err','Enter a valid email address');return;}
-  try{
-    const res=await fetch(API+'/api/admin/update-user',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({username:selectedUser,email})});
-    const data=await res.json();
-    if(!res.ok){setModalStatus('modal-edit','err',data.error||'Failed');return;}
-    setModalStatus('modal-edit','ok','Saved.');
-    await loadUsers();setTimeout(()=>closeModal('modal-edit'),1200);
-  }catch(e){setModalStatus('modal-edit','err',e.message);}
-}
-
-async function adminResetRecoveryCodes(username){
-  if(!confirm(`Generate new recovery codes for ${username}?\n\nThis will invalidate all existing codes.`))return;
-  try{
-    const res=await fetch(API+'/api/admin/reset-recovery-codes',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({username})});
-    const data=await res.json();
-    if(!res.ok){alert('Error: '+(data.error||'Failed'));return;}
-    const codes=(data.recoveryCodes||[]).join('\n');
-    alert(`New recovery codes for ${username}:\n\n${codes}\n\nSave these \u2014 they won\u2019t be shown again.`+(data.emailed?'\n\nEmail sent to user.':'\n(No email on file \u2014 share manually.)'));
-  }catch(e){alert('Could not connect to server.');}
 }
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -637,11 +553,18 @@ async function loadTokenUsage(){
   }
 }
 
-// ── Visitors (v1.20.13) ────────────────────────────────────────────────────
+// ── Visitors (v1.20.14) ────────────────────────────────────────────────────
+// v1.20.14: range + operator opt-out
+let visDays = parseInt(localStorage.getItem('summit_vis_days')||'30',10);
+function setVisRange(d){ visDays=d; localStorage.setItem('summit_vis_days',String(d)); loadVisitors(); }
+function toggleExcludeMe(on){ try{ if(on) localStorage.setItem('summit_notrack','1'); else localStorage.removeItem('summit_notrack'); }catch{} }
 async function loadVisitors(){
   const fmt=n=>(n||0).toLocaleString();
+  document.querySelectorAll('#vis-range .act-btn').forEach(b=>b.style.background=(parseInt(b.dataset.days,10)===visDays)?'var(--bg4)':'');
+  document.getElementById('vis-range-label').textContent=' · Showing '+(visDays===1?'today':'last '+visDays+' days')+'.';
+  try{ document.getElementById('vis-exclude-me').checked=localStorage.getItem('summit_notrack')==='1'; }catch{}
   try{
-    const res=await fetch('/api/admin/visits?days=30',{headers:{Authorization:'Bearer '+token}});
+    const res=await fetch('/api/admin/visits?days='+visDays,{headers:{Authorization:'Bearer '+token}});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const d=await res.json();
 
@@ -661,7 +584,7 @@ async function loadVisitors(){
              `<rect x="${xp}" y="${130-hu}" width="${barW}" height="${hu}" fill="var(--accent-bg)" opacity="0.95"><title>${x.day}: ${fmt(x.uniques)} unique</title></rect>`;
     }).join('');
     const labels=d.daySeries.map((x,i)=>{
-      if(i%7!==0&&i!==n-1)return '';
+      const step=n>60?14:(n>14?7:1); if(i%step!==0&&i!==n-1)return '';
       return `<text x="${10+i*slot}" y="138" font-size="9" font-family="monospace" fill="var(--text3)">${x.day.slice(5)}</text>`;
     }).join('');
     svg.innerHTML=bars+labels;
@@ -679,6 +602,10 @@ async function loadVisitors(){
     document.getElementById('vis-referrers').innerHTML=rows(d.byReferrer,'No visits yet.');
     document.getElementById('vis-screens').innerHTML=rows(d.byScreen,'No visits yet.');
     document.getElementById('vis-browsers').innerHTML=rows(d.byBrowser,'No visits yet.');
+    document.getElementById('vis-regions').innerHTML=rows(d.byRegion,'No visits yet.');
+    document.getElementById('vis-countries').innerHTML=rows(d.byCountry,'No visits yet.');
+    document.getElementById('vis-devices').innerHTML=rows(d.byDevice,'No visits yet.');
+    document.getElementById('vis-os').innerHTML=rows(d.byOS,'No visits yet.');
   }catch(e){
     console.error('admin visitors error:',e);
     document.getElementById('vis-funnel').innerHTML=`<tr><td colspan="3" style="color:var(--red);text-align:center;padding:20px">Could not load visitors: ${esc(e.message)}</td></tr>`;

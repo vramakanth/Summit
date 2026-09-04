@@ -4965,6 +4965,83 @@ t('/api/v/first-job is auth-gated and idempotent', () => {
   if (!/loadUsers\(\)/.test(body)) throw new Error('first-job must loadUsers() (bare users[] guard)');
 });
 
+t('Geo lookup is OFFLINE (fast-geoip) — the IP is never sent to a third party', () => {
+  if (!/require\('fast-geoip'\)/.test(serverSrc)) throw new Error('fast-geoip not required');
+  const geo = serverSrc.slice(serverSrc.indexOf('async function _geo'), serverSrc.indexOf('async function _geo') + 400);
+  if (/fetch\(|https?:\/\//.test(geo)) throw new Error('_geo must not make network calls — offline lookup only');
+  if (!/_isPrivateIp\(ip\)/.test(geo)) throw new Error('_geo must short-circuit private/loopback IPs (fast-geoip returns junk for them)');
+  // city must NOT be stored — at this traffic level city+timestamp identifies a person
+  if (/city/i.test(geo.replace(/\/\/[^\n]*/g, ''))) throw new Error('_geo must not return city');
+});
+
+t('Visit log entry has geo/client fields but STILL no ip / user-agent', () => {
+  const call = serverSrc.slice(serverSrc.indexOf("app.post('/api/v'"), serverSrc.indexOf("app.post('/api/v'") + 1600);
+  const entry = call.match(/appendVisitLog\(\{([\s\S]*?)\}\)/)?.[1] || '';
+  for (const k of ['o:', 'd:', 'c:', 'rg:']) if (!entry.includes(k)) throw new Error(`entry missing ${k}`);
+  for (const forbidden of ['ip:', 'ua:', 'remoteAddress', 'x-forwarded-for', "req.headers['user-agent']"]) {
+    if (entry.includes(forbidden)) throw new Error(`entry must not include ${forbidden}`);
+  }
+});
+
+t('/api/admin/visits returns geo + client breakdowns and tolerates pre-v1.20.14 rows', () => {
+  const body = serverSrc.slice(serverSrc.indexOf("app.get('/api/admin/visits'"), serverSrc.indexOf("app.get('/api/admin/visits'") + 4500);
+  for (const k of ['byOS', 'byDevice', 'byCountry', 'byRegion']) if (!body.includes(k)) throw new Error(`rollup missing ${k}`);
+  if (!/e\.o \|\| 'unknown'/.test(body) || !/e\.c \|\| 'unknown'/.test(body)) throw new Error('old rows (no o/d/c/rg) must bucket as "unknown", not crash');
+});
+
+t('Operator opt-out: beacon honours localStorage summit_notrack; admin.html sets it', () => {
+  const ps = feSrc.slice(feSrc.indexOf('function _privacySignalOn'), feSrc.indexOf('function _privacySignalOn') + 600);
+  if (!/summit_notrack/.test(ps)) throw new Error('_privacySignalOn must check summit_notrack');
+  if (!/toggleExcludeMe/.test(adminHtml) || !/summit_notrack/.test(adminHtml)) throw new Error('admin.html must expose the exclude-me toggle');
+  // default ON at admin login so the operator is excluded unless they opt back in
+  const login = adminHtml.slice(adminHtml.indexOf('async function doLogin'), adminHtml.indexOf('async function doLogin') + 1500);
+  if (!/summit_notrack.*===null.*setItem\('summit_notrack','1'\)/.test(login)) throw new Error('admin login should default summit_notrack on when unset');
+});
+
+t('Visitors tab has a date-range selector wired to ?days=', () => {
+  if (!/setVisRange\(/.test(adminHtml)) throw new Error('setVisRange missing');
+  for (const d of ['1', '7', '30', '90']) if (!new RegExp(`data-days="${d}"`).test(adminHtml)) throw new Error(`range button ${d} missing`);
+  if (!/\/api\/admin\/visits\?days='\+visDays/.test(adminHtml)) throw new Error('loadVisitors must pass the selected range');
+});
+
+console.log('\n── v1.20.14 admin cleanup (zero-knowledge consistency)');
+
+t('Admin password reset is a 410 tombstone (it would brick the user\'s data)', () => {
+  const idx = serverSrc.indexOf("app.post('/api/admin/reset-password'");
+  if (idx < 0) throw new Error('tombstone missing — an old admin build would get 404 with no explanation');
+  const body = serverSrc.slice(idx, idx + 500);
+  if (!/status\(410\)/.test(body)) throw new Error('must be 410');
+  if (/bcrypt\.hash/.test(body)) throw new Error('admin reset-password still rewrites the password hash — this permanently locks the user out of their encrypted data');
+});
+
+t('admin.html has no dead or dangerous user actions left', () => {
+  for (const dead of ['openReset', 'openSendLink', 'openEdit', 'adminResetRecoveryCodes', 'send-reset-link', 'update-user', 'reset-recovery-codes', '/api/admin/reset-password']) {
+    if (adminHtml.includes(dead)) throw new Error(`admin.html still references ${dead}`);
+  }
+  if (!/openDeactivate\(/.test(adminHtml) || !/openDelete\(/.test(adminHtml)) throw new Error('the two real actions (deactivate, delete) must remain');
+});
+
+t('admin.html is branded Summit, not the old name', () => {
+  if (/Pursuit/.test(adminHtml)) throw new Error('admin.html still says Pursuit');
+  if (!/<title>Summit — Admin<\/title>/.test(adminHtml)) throw new Error('title should be "Summit — Admin"');
+});
+
+t('Server never receives raw recovery codes (only wrapped slots) — nothing for admin to expose', () => {
+  // Registration sends {index, slot: wrapKey(dataKey, deriveKey(code))}. The
+  // code itself is derivation input only. /api/admin/users may expose a COUNT.
+  const reg = feSrc.slice(feSrc.indexOf('const recoveryKeySlots = await Promise.all'), feSrc.indexOf('const recoveryKeySlots = await Promise.all') + 400);
+  if (!/CryptoEngine\.wrapKey\(/.test(reg) || !/CryptoEngine\.deriveKey\(code/.test(reg)) throw new Error('recovery slots must be wrapKey(dataKey, deriveKey(code))');
+  if (/code\s*[,}]/.test(reg.slice(reg.indexOf('return {')))) throw new Error('raw code must not be included in the slot object sent to the server');
+  const au = serverSrc.slice(serverSrc.indexOf("app.get('/api/admin/users'"), serverSrc.indexOf("app.get('/api/admin/users'") + 800);
+  if (!/recoveryKeySlots \|\| \[\]\)\.filter\(s => !s\.used\)\.length/.test(au)) throw new Error('/api/admin/users should expose only a count of unused slots');
+  if (/\.slot\b/.test(au)) throw new Error('/api/admin/users must not return slot contents');
+});
+
+t('Legacy email-reset landing page and route are gone', () => {
+  if (fs.existsSync(path.join(__dirname, '../../frontend/public/reset-password.html'))) throw new Error('reset-password.html still exists');
+  if (/app\.get\('\/reset-password'/.test(serverSrc)) throw new Error('/reset-password route still registered');
+});
+
 console.log('\n── v1.20.9 admin auth repair');
 
 t('adminMiddleware accepts EITHER x-admin-secret OR an admin-claim JWT', () => {
