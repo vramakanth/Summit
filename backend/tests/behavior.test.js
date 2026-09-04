@@ -5182,6 +5182,52 @@ t('Every third-party require() in server.js is stubbed in the load test (zero-de
   if (missing.length) throw new Error(`server.js requires ${missing.join(', ')} but the load test has no stub for it - it will fail in a fresh checkout / CI`);
 });
 
+console.log('\n── v1.20.18 launch hardening');
+
+t('/api/register is rate-limited per IP', () => {
+  const sig = serverSrc.slice(serverSrc.indexOf("app.post('/api/register'"), serverSrc.indexOf('=>', serverSrc.indexOf("app.post('/api/register'")));
+  if (!/_registerLimiter/.test(sig)) throw new Error('register has no rate limiter — a script can fill users.json');
+  const decl = serverSrc.slice(serverSrc.indexOf('const _registerLimiter'), serverSrc.indexOf('const _registerLimiter') + 200);
+  if (!/keyFn:\s*r => _clientIp\(r\)/.test(decl)) throw new Error('register limiter must key by client IP');
+});
+
+t('Every route that awaits between loadUsers() and saveUsers() is serialized by _usersMutex', () => {
+  // Load -> await -> save is a lost-update race on a single JSON file. The
+  // mutex serializes the whole request; sync routes are atomic already.
+  const races = [];
+  for (const m of serverSrc.matchAll(/saveUsers\(users\)/g)) {
+    const start = serverSrc.lastIndexOf('loadUsers()', m.index);
+    const block = serverSrc.slice(start, m.index);
+    if (!/\bawait\b/.test(block)) continue;
+    const routeStart = serverSrc.lastIndexOf('\napp.', start);
+    const sig = serverSrc.slice(routeStart, serverSrc.indexOf('=>', routeStart));
+    if (!/_usersMutex/.test(sig)) races.push(sig.trim().slice(0, 60));
+  }
+  if (races.length) throw new Error('unserialized load->await->save in: ' + races.join(' | '));
+  if (!/function _usersMutex\(req, res, next\)/.test(serverSrc)) throw new Error('_usersMutex missing');
+});
+
+t('Every AI (token-capped) route is behind the global _aiGate', () => {
+  const capped = (serverSrc.match(/tokenCapMiddleware,/g) || []).length;
+  const gated  = (serverSrc.match(/tokenCapMiddleware, _aiGate,/g) || []).length;
+  if (capped === 0) throw new Error('no token-capped routes found');
+  if (gated !== capped) throw new Error(`${capped - gated} AI route(s) lack _aiGate — a burst can exhaust the provider free tier for everyone`);
+});
+
+t('_aiGate bounds concurrency + RPM, queues with a timeout, and fails with a clean 503', () => {
+  const g = serverSrc.slice(serverSrc.indexOf('const AI_MAX_CONCURRENT'), serverSrc.indexOf('\n}\n', serverSrc.indexOf('function _aiGate')));
+  for (const k of ['AI_MAX_CONCURRENT', 'AI_MAX_RPM', 'AI_MAX_QUEUE', 'AI_QUEUE_WAIT_MS']) if (!new RegExp(`process\\.env\\.${k}`).test(g)) throw new Error(`${k} must be env-tunable`);
+  if (!/_ai\.inFlight < AI_MAX_CONCURRENT && _ai\.admitted\.length < AI_MAX_RPM/.test(g)) throw new Error('slot check must enforce both concurrency and RPM');
+  if ((g.match(/status\(503\)/g) || []).length < 2) throw new Error('both queue-full and queue-timeout must return 503');
+  if (!/code: 'ai_busy'/.test(g) || !/retryAfter/.test(g)) throw new Error('503 must carry code ai_busy + retryAfter');
+  if (!/res\.once\('finish', release\); res\.once\('close', release\)/.test(g)) throw new Error('slot must be released on finish AND close (aborted requests must not leak slots)');
+});
+
+t('admin status exposes AI gate stats', () => {
+  const st = serverSrc.slice(serverSrc.indexOf("app.get('/api/admin/status'"), serverSrc.indexOf("app.get('/api/admin/status'") + 800);
+  if (!/aiGateStats\(\)/.test(st) || !/aiGate,/.test(st)) throw new Error('/api/admin/status should report aiGate so the operator can tune the caps');
+});
+
 console.log('\n── v1.20.9 admin auth repair');
 
 t('adminMiddleware accepts EITHER x-admin-secret OR an admin-claim JWT', () => {

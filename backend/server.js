@@ -768,6 +768,65 @@ function rateLimit({ windowMs, max, keyFn, label }) {
     next();
   };
 }
+
+// ── v1.20.18: users.json write serialization ─────────────────────────────────
+// Four routes do loadUsers() -> await bcrypt -> saveUsers(). Between the await,
+// another request can load+save, and the first then overwrites it with stale
+// data (lost registration, lost password change). Node is single-threaded, so
+// an in-process mutex is sufficient on one instance. Applied as middleware so
+// the whole handler is the critical section; released when the response ends.
+let _usersChain = Promise.resolve();
+function _usersMutex(req, res, next) {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const prev = _usersChain;
+  _usersChain = prev.then(() => gate);
+  let done = false;
+  const finish = () => { if (!done) { done = true; release(); } };
+  res.once('finish', finish); res.once('close', finish);
+  prev.then(next);
+}
+
+// ── v1.20.18: global AI gate ─────────────────────────────────────────────────
+// Per-user daily caps don't stop a burst of new users from exhausting the
+// provider's free tier in an hour and 429-storming every fallback. This caps
+// concurrent AI requests and smooths to a requests-per-minute ceiling; excess
+// waits in a bounded queue and gets a clean 503 rather than a raw provider
+// error. Tune via env once real usage numbers exist (see admin AI Tokens tab).
+const AI_MAX_CONCURRENT = parseInt(process.env.AI_MAX_CONCURRENT || '4', 10);
+const AI_MAX_RPM        = parseInt(process.env.AI_MAX_RPM        || '30', 10);   // Groq free tier is ~30 RPM on large models
+const AI_MAX_QUEUE      = parseInt(process.env.AI_MAX_QUEUE      || '24', 10);
+const AI_QUEUE_WAIT_MS  = parseInt(process.env.AI_QUEUE_WAIT_MS  || '20000', 10);
+const _ai = { inFlight: 0, waiting: 0, admitted: [] };
+function _aiSlotFree() {
+  const now = Date.now();
+  _ai.admitted = _ai.admitted.filter(t => now - t < 60_000);
+  return _ai.inFlight < AI_MAX_CONCURRENT && _ai.admitted.length < AI_MAX_RPM;
+}
+function aiGateStats() { return { inFlight: _ai.inFlight, waiting: _ai.waiting, lastMinute: _ai.admitted.filter(t => Date.now() - t < 60_000).length, maxConcurrent: AI_MAX_CONCURRENT, maxRpm: AI_MAX_RPM }; }
+function _aiGate(req, res, next) {
+  const admit = () => {
+    _ai.inFlight++; _ai.admitted.push(Date.now());
+    let done = false;
+    const release = () => { if (!done) { done = true; _ai.inFlight--; } };
+    res.once('finish', release); res.once('close', release);
+    next();
+  };
+  if (_aiSlotFree()) return admit();
+  if (_ai.waiting >= AI_MAX_QUEUE) {
+    return res.status(503).json({ error: 'AI is busy right now - please try again in a minute.', code: 'ai_busy', retryAfter: 60 });
+  }
+  _ai.waiting++;
+  const started = Date.now();
+  const tick = setInterval(() => {
+    if (_aiSlotFree()) { clearInterval(tick); _ai.waiting--; admit(); }
+    else if (Date.now() - started > AI_QUEUE_WAIT_MS) {
+      clearInterval(tick); _ai.waiting--;
+      res.status(503).json({ error: 'AI is busy right now - please try again in a minute.', code: 'ai_busy', retryAfter: 60 });
+    }
+  }, 250);
+  res.once('close', () => { clearInterval(tick); });
+}
 // Periodic cleanup — prevent unbounded growth of the bucket map
 setInterval(() => {
   const now = Date.now();
@@ -787,6 +846,10 @@ const _recoverLimiter = rateLimit({
   keyFn:    req => `recover:${(req.body?.username || '').toLowerCase() || req.ip}`,
   label:    'recovery',
 });
+// v1.20.18: registration was the only auth route with no limiter. 5/hour/IP
+// is generous for humans and stops a script from filling users.json.
+const _registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyFn: r => _clientIp(r), label: 'register' });
+
 const _loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,  // 15 minutes
   max:      20,               // generous — legit users sometimes fat-finger passwords
@@ -794,7 +857,7 @@ const _loginLimiter = rateLimit({
   label:    'login',
 });
 
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', _registerLimiter, _usersMutex, async (req, res) => {
   const { username, password, email, encryptedDataKey, recoveryKeySlots } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   if (username.length < 3)    return res.status(400).json({ error: 'Username must be 3+ chars' });
@@ -897,7 +960,7 @@ app.get('/api/me', authMiddleware, (req, res) => {
   });
 });
 
-app.post('/api/change-password', authMiddleware, async (req, res) => {
+app.post('/api/change-password', authMiddleware, _usersMutex, async (req, res) => {
   const { currentPassword, newPassword, newEncryptedDataKey } = req.body;
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
   if (newPassword.length < 6) return res.status(400).json({ error: 'New password too short' });
@@ -937,7 +1000,7 @@ app.get('/api/recovery-codes', authMiddleware, (req, res) => {
   });
 });
 
-app.post('/api/recovery-codes/generate', authMiddleware, async (req, res) => {
+app.post('/api/recovery-codes/generate', authMiddleware, _usersMutex, async (req, res) => {
   const { password, encryptedDataKey, recoveryKeySlots } = req.body;
   if (!password) return res.status(400).json({ error: 'Password required' });
   const users = loadUsers();
@@ -967,7 +1030,7 @@ app.post('/api/enable-encryption', authMiddleware, (req, res) => {
   res.status(410).json({ error: 'Endpoint removed in v1.19 — all accounts are encrypted by default.' });
 });
 
-app.post('/api/recover', _recoverLimiter, async (req, res) => {
+app.post('/api/recover', _recoverLimiter, _usersMutex, async (req, res) => {
   const { username, recoveryCode, newPassword, newEncryptedDataKey, slotIndex } = req.body;
   if (!username || !recoveryCode) return res.status(400).json({ error: 'username and recoveryCode required' });
   // Rate limiting is handled by the _recoverLimiter middleware: 10 attempts
@@ -1319,7 +1382,7 @@ app.post('/api/jobs/inbox', authMiddleware, (req, res) => {
 // in a separate POST after the user reviews/edits the fields.
 //
 // tokenCapMiddleware because the AI path may run during extraction.
-app.post('/api/extract-job-fields', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/extract-job-fields', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const b = req.body || {};
   if (!b.url || typeof b.url !== 'string') {
     return res.status(400).json({ error: 'url required' });
@@ -2076,7 +2139,7 @@ Do these describe the SAME job? Return {"match": true|false, "confidence": 0.0-1
   } catch { return { match: false, confidence: 0, reason: 'verify-failed' }; }
 }
 
-app.post('/api/find-posting-mirror', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/find-posting-mirror', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { title, company, location, originalUrl } = req.body || {};
   if (!title || !company) return res.status(400).json({ error: 'title and company required' });
 
@@ -2119,7 +2182,7 @@ app.post('/api/find-posting-mirror', authMiddleware, tokenCapMiddleware, async (
   res.json({ ok: false, reason: 'no-verified-match' });
 });
 
-app.post('/api/extract-fields', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/extract-fields', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const postingText = req.body.postingText || req.body.text || '';
   const tailText    = req.body.tailText || '';
   // domSalary: precise salary pre-extracted by the client (from JSON-LD, <bdi>
@@ -2172,7 +2235,7 @@ Fields: title(string), company(string), location(city+state only, null if remote
 // Returns null values for anything the text doesn't contain — we never
 // fabricate. The frontend presents results in an editable form for the user
 // to correct before saving.
-app.post('/api/parse-contact-signature', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/parse-contact-signature', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const text = (req.body.text || '').trim();
   if (!text) return res.status(400).json({ error: 'text required' });
   if (text.length > 4000) return res.status(400).json({ error: 'text too long (max 4000 chars)' });
@@ -2215,7 +2278,7 @@ Hard rules: do not fabricate. If a field isn't clearly in the text, return null 
 // AI FEATURES
 // ════════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/tailor', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/tailor', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { company, title, location, salary, postingText, content, docType, context } = req.body;
   if (!content || !docType) return res.status(400).json({ error: 'content and docType required' });
   const label = docType === 'resume' ? 'RESUME' : 'COVER LETTER';
@@ -2227,7 +2290,7 @@ app.post('/api/tailor', authMiddleware, tokenCapMiddleware, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/tailor-docx', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/tailor-docx', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { docxBase64, company, title, location, salary, postingText, docType, context } = req.body;
   if (!docxBase64) return res.status(400).json({ error: 'DOCX data required' });
   try {
@@ -2261,7 +2324,7 @@ app.post('/api/tailor-docx', authMiddleware, tokenCapMiddleware, async (req, res
   } catch (e) { console.error('tailor-docx:', e.message); res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/insights', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/insights', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { company, title, location, salary, postingText, finnhubKey } = req.body;
   if (!company || !title) return res.status(400).json({ error: 'company and title required' });
   let stock = null;
@@ -2418,7 +2481,7 @@ app.post('/api/insights/refresh-dynamic', authMiddleware, async (req, res) => {
   res.json({ stock, news, dynamicUpdatedAt: Date.now() });
 });
 
-app.post('/api/outreach-targets', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/outreach-targets', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { company, title } = req.body;
   try {
     const raw = await callAI(['groq','openrouter','google'],
@@ -2429,7 +2492,7 @@ app.post('/api/outreach-targets', authMiddleware, tokenCapMiddleware, async (req
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/interview-questions', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/interview-questions', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { company, title, postingText, count = 15, existingQuestions = [] } = req.body;
   const avoidSection = existingQuestions.length > 0
     ? `\n\nDO NOT repeat these existing questions:\n${existingQuestions.map(q => '- ' + q).join('\n')}` : '';
@@ -2449,7 +2512,7 @@ Return ONLY this JSON:
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/keyword-gap', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/keyword-gap', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { resumeText, postingText } = req.body;
   try {
     const raw = await callAI(['groq','openrouter','google'],
@@ -2460,7 +2523,7 @@ app.post('/api/keyword-gap', authMiddleware, tokenCapMiddleware, async (req, res
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/email-template', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/email-template', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { company, title, type, context } = req.body;
   try {
     const raw = await callAI(['groq','openrouter','google'],
@@ -2471,7 +2534,7 @@ app.post('/api/email-template', authMiddleware, tokenCapMiddleware, async (req, 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/salary-benchmark', authMiddleware, tokenCapMiddleware, async (req, res) => {
+app.post('/api/salary-benchmark', authMiddleware, tokenCapMiddleware, _aiGate, async (req, res) => {
   const { title, location, company } = req.body;
   try {
     const raw = await callAI(['groq','openrouter','google'],
@@ -2831,7 +2894,8 @@ app.delete('/api/admin/users/:username', adminMiddleware, (req, res) => {
 });
 
 app.get('/api/admin/status', adminMiddleware, (req, res) => {
-  res.json({ ok: true, users: Object.keys(loadUsers()).length });
+  const aiGate = aiGateStats();
+  res.json({ aiGate, ok: true, users: Object.keys(loadUsers()).length });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════

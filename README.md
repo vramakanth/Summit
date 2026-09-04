@@ -6,7 +6,7 @@
 
 Summit is a job-application planning and tracking web app with a companion Chrome/Safari extension. Its defining property is **zero-knowledge encryption**: your job data is encrypted in your browser with a key derived from your password, and the server only ever stores ciphertext. Nobody — including the operator — can read your workspace without your password.
 
-Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.17** · Extension **v2.6.2**
+Live at **[jobsummit.app](https://jobsummit.app)** · Current version **v1.20.18** · Extension **v2.6.2**
 
 ---
 
@@ -125,6 +125,8 @@ Backend and frontend deploy together — the server serves `frontend/public` sta
 | `GROQ_MODEL` / `GROQ_FALLBACK_MODEL` | — | Default `openai/gpt-oss-120b` / `openai/gpt-oss-20b`. Override here when a provider deprecates a model — no redeploy needed |
 | `OPENROUTER_MODEL` / `GOOGLE_MODEL` | — | Defaults `openrouter/free` / `gemini-2.5-flash` |
 | `DAILY_TOKEN_CAP` | — | Per-user daily AI token budget. Default 100,000 |
+| `AI_MAX_CONCURRENT` / `AI_MAX_RPM` | — | Global AI gate: max in-flight AI requests (default 4) and requests-per-minute ceiling (default 30 — roughly Groq's free-tier RPM on large models). Excess requests queue briefly, then get a clean 503 `ai_busy`. Raise these when you move Groq to pay-as-you-go |
+| `AI_MAX_QUEUE` / `AI_QUEUE_WAIT_MS` | — | Gate queue depth (default 24) and max wait before 503 (default 20000). Current gate stats are on `/api/admin/status` |
 | `ADMIN_USERNAME` or `ADMIN_USERNAMES` | for admin | Summit username(s) allowed into `admin.html` — comma-separated, case-insensitive; both names accepted and merged. Removing a name revokes access immediately |
 | `ADMIN_SECRET` | — | Alternative `x-admin-secret` header for scripted access to `/api/admin/*` |
 | `PORT` | — | Default `3000` |
@@ -137,7 +139,7 @@ Three tiers, all run by CI on every push. The first two are **blocking**.
 
 | Tier | Files | Tests | Deps |
 |---|---|---|---|
-| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 445 | none |
+| Backend zero-dep | `architecture` `behavior` `e2e` `crypto` | 450 | none |
 | Frontend + extension zero-dep | `smoke` `filter` `mobile` `joblist` `extension` | 334 | none |
 | Integration | `encryption` (boots the server, HTTP round-trips) · `ats` (jest) | 66 | `npm install` |
 
@@ -159,7 +161,8 @@ Most tests are **regression guards**: each fix ships with a test that fails if t
 - End-to-end encrypted workspace; server holds ciphertext and a password-wrapped key only
 - Passwords hashed with bcrypt (12 rounds); JWTs expire after 30 days
 - Recovery codes replace email reset (email reset is incompatible with zero-knowledge)
-- Rate limiting on login, recovery, and the analytics beacon
+- Rate limiting on registration, login, recovery, and the analytics beacon; `users.json` writes serialized against lost-update races
+- Global AI concurrency + RPM gate so a traffic burst degrades to a clean "busy, try again" instead of exhausting provider quotas for everyone
 - Admin routes require an admin-claim JWT re-validated against the env allow-list on every request, or the shared secret
 - Admins cannot read, reset, or regenerate a user's recovery codes — the server only ever holds the data key wrapped *by* each code, never the code. Admin password reset is intentionally absent: it would lock the user out of their own data
 - No third-party scripts, no cookies, no ad or analytics vendors
